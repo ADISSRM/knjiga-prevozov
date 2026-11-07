@@ -22,7 +22,7 @@ const timeOf = iso => { if (!iso) return '–'; const d = new Date(iso); return 
 function planSig(date){
   const plan = computePlan(date);
   const rides = ensureDay(date).filter(r => plan.assign[r.id]).map(r => [r.id, r.name, r.time, r.from, r.to, r.phone, r.mode, r.note]);
-  return hashStr(JSON.stringify([plan.crews.map(c => [c.id, c.driver.name, c.escorts.map(e => e.name), c.trips.map(t => [fmtT(t.depart), t.rides.map(r => r.id)])]), rides]));
+  return hashStr(JSON.stringify([plan.crews.map(c => [c.id, c.driver.name, c.escorts.map(e => e.name), (c.helpers || []).map(h => h.name), c.trips.map(t => [fmtT(t.depart), t.rides.map(r => r.id)])]), rides]));
 }
 function publishState(date){
   const p = S.published[date]; if (!p || !p.at) return 'ni';
@@ -34,7 +34,7 @@ async function publishDay(date){
   const runs = [], noAccount = new Set(), ridesAssigned = new Set();
   for (const c of plan.crews){
     if (!c.trips.length) continue;
-    const members = [c.driver, ...c.escorts], staffs = members.map(staffOfDuty);
+    const members = [c.driver, ...c.escorts, ...(c.helpers || [])], staffs = members.map(staffOfDuty);
     members.forEach((m, i) => { if (!(staffs[i] && staffs[i].userId)) noAccount.add(m.name); });
     const uids = [...new Set(staffs.map(s => s && s.userId).filter(Boolean))];
     const key = date + '_' + c.id, rides = {}, trips = [];

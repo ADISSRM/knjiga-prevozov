@@ -699,36 +699,78 @@ const fits = (counts, v, lvl = 0) => { const c = capOf(v, lvl); return counts.se
 const countModes = rides => { const c = { sede:0, leze:0, utila:0 }; rides.forEach(r => { c[r.mode] = (c[r.mode] || 0) + 1; }); return c; };
 
 /* ---------- Parjenje: kateri zaposleni vozi katero vozilo ---------- */
+const isHelperRole = r => r === 'student' || r === 'dijak';
+const ROLE_TAG = { spremljevalec:'sp.', student:'štud.', dijak:'dij.' };
+/* Posadka = voznik + spremljevalec (NN in pripravljenost: 2 reševalca samodejno). Študent in dijak sta dodatna pomočnika,
+   ne vozita in ne nadomestita spremljevalca. Leže pacient vedno potrebuje voznika + spremljevalca in vozilo z nosili. */
 function pairCrews(date){
   const duty = S.duty[date] || [];
-  const veh = availableVehicles(date);
-  const used = new Set(), crews = [];
   const split = !!(S.dayRules[date] && S.dayRules[date].split);   // ekipa se razdeli: vsak je voznik v svojem vozilu
-  const drivers = duty.filter(d => split || d.role !== 'spremljevalec');
-  const escorts = split ? [] : duty.filter(d => d.role === 'spremljevalec');
+  const veh = availableVehicles(date);
+  const used = new Set(), crews = [], notes = [];
+  const roleMap = new Map(), roleOf = d => roleMap.get(d) || d.role || 'voznik';
+  if (!split) ['NN', 'pripravljenost'].forEach(tm => {   // 2 reševalca v ekipi: eden je voznik, drugi spremljevalec
+    const V = duty.filter(d => d.team === tm && !isHelperRole(roleOf(d)) && roleOf(d) !== 'spremljevalec');
+    const E = duty.filter(d => d.team === tm && roleOf(d) === 'spremljevalec');
+    V.slice(Math.ceil((V.length + E.length) / 2)).forEach(d => roleMap.set(d, 'spremljevalec'));
+  });
+  const helpers = duty.filter(d => isHelperRole(roleOf(d)));
+  const drivers = duty.filter(d => !isHelperRole(roleOf(d)) && (split || roleOf(d) !== 'spremljevalec'));
+  const escorts = split ? [] : duty.filter(d => roleOf(d) === 'spremljevalec');
+  const needLeze = (S.rides[date] || []).some(r => isFilled(r) && !r.done && !r.odpovedano && r.status !== 'preklicana' && r.mode === 'leze');
   const take = (d, v) => {
     used.add(v.id);
     const shift = toMin(d.from) ?? toMin(S.settings.shift) ?? 360;
     const explicit = !!(d.from || d.to);
     let end = null;
     if (explicit && S.rules.enforceShift){ end = d.to ? toMin(d.to) : shift + (S.rules.shiftHours || 8) * 60; if (end != null && end <= shift) end += 1440; }
-    crews.push({ id:v.id, vehicle:v, driver:d, escorts:[], team:d.team, shift, end, ot:Math.max(0, +d.ot || 0) });
+    crews.push({ id:v.id, vehicle:v, driver:d, escorts:[], helpers:[], team:d.team, shift, end, ot:Math.max(0, +d.ot || 0) });
   };
   drivers.forEach(d => { if (d.vehicleId){ const v = veh.find(x => x.id === d.vehicleId && !used.has(x.id)); if (v) take(d, v); } });
   const rest = drivers.filter(d => !crews.some(c => c.driver === d));
+  const hasMate = d => !split && escorts.some(e => e.team === d.team);
   const pickFor = d => {
     const free = veh.filter(v => !used.has(v.id));
     const want = d.team === 'NN' ? ['NN','oboje'] : ['redna','oboje'];
-    return free.find(v => want.includes(v.ns)) || free[0] || null;
+    const lz = needLeze && hasMate(d) ? free.filter(v => v.leze > 0) : [];   // ekipa z dvema: vozilo z nosili, če je leže prevoz
+    return lz.find(v => want.includes(v.ns)) || lz[0] || free.find(v => want.includes(v.ns)) || free[0] || null;
   };
   [...rest.filter(d => d.team === 'NN'), ...rest.filter(d => d.team !== 'NN')].forEach(d => { const v = pickFor(d); if (v) take(d, v); });
   const unpaired = rest.filter(d => !crews.some(c => c.driver === d));
   const order = veh.map(v => v.id);
-  crews.sort((a,b) => order.indexOf(a.id) - order.indexOf(b.id));
-  const looseEsc = [];
-  escorts.forEach((e, i) => { const c = crews[i % Math.max(crews.length,1)]; if (c && i < crews.length + 99 && crews.length) c.escorts.push(e); else looseEsc.push(e); });
+  const sortCrews = () => crews.sort((a,b) => order.indexOf(a.id) - order.indexOf(b.id));
+  sortCrews();
+  const looseEsc = [], looseHelp = [];
+  const fewest = () => crews.slice().sort((a, b) => a.escorts.length - b.escorts.length || (needLeze ? (b.vehicle.leze > 0) - (a.vehicle.leze > 0) : 0));
+  escorts.forEach(e => { const cand = fewest(), c = cand.find(c => !c.escorts.length && c.team === e.team) || cand.find(c => !c.escorts.length) || cand[0]; if (c) c.escorts.push(e); else looseEsc.push(e); });
+  helpers.forEach(h => { const cand = crews.slice().sort((a, b) => a.helpers.length - b.helpers.length), c = cand.find(c => c.team === h.team) || cand[0]; if (c) c.helpers.push(h); else looseHelp.push(h); });
+  /* Leže: če nobena posadka nima spremljevalca in vozila z nosili, aplikacija sama sestavi posadko (voznik + spremljevalec) */
+  if (needLeze && !split && !crews.some(c => c.escorts.length && c.vehicle.leze > 0)){
+    const lezV = veh.filter(v => v.leze > 0), setVeh = (c, v) => { c.vehicle = v; c.id = v.id; };
+    const freeLez = () => lezV.find(v => !used.has(v.id));
+    let lead = crews.find(c => c.escorts.length) || null;
+    if (lead){
+      if (lead.vehicle.leze <= 0){
+        const f = freeLez();
+        if (f){ used.delete(lead.vehicle.id); used.add(f.id); setVeh(lead, f); }
+        else { const oth = crews.find(c => c !== lead && c.vehicle.leze > 0); if (oth){ const tv = lead.vehicle; setVeh(lead, oth.vehicle); setVeh(oth, tv); } }
+      }
+    } else if (crews.length >= 2 && lezV.length){
+      lead = crews.find(c => c.vehicle.leze > 0) || crews[0];
+      if (lead.vehicle.leze <= 0){ const f = freeLez(); if (f){ used.delete(lead.vehicle.id); used.add(f.id); setVeh(lead, f); } }
+      if (lead.vehicle.leze > 0){
+        const donor = crews.filter(c => c !== lead).sort((a, b) => (a.team === lead.team ? 0 : 1) - (b.team === lead.team ? 0 : 1) || a.vehicle.skupaj - b.vehicle.skupaj)[0];
+        if (donor){
+          lead.escorts.push(donor.driver); lead.helpers.push(...donor.helpers);
+          crews.splice(crews.indexOf(donor), 1); used.delete(donor.vehicle.id);
+          notes.push(`Zaradi prevoza leže sta ${lead.driver.name} (voznik) in ${donor.driver.name} (spremljevalec) združena v eno posadko (${lead.vehicle.name}).`);
+        }
+      }
+    }
+    sortCrews();
+  }
   crews.forEach(c => { c.solo = c.escorts.length === 0; });   // solo = samo voznik, leže pacienta ne more peljati
-  return { crews, unpaired, looseEsc, split };
+  return { crews, unpaired, looseEsc, looseHelp, notes, split };
 }
 
 /* ---------- Geometrija ---------- */
@@ -857,6 +899,8 @@ function planLevel(date, level){
   const crews = pr.crews.map(c => ({ ...c, free:c.shift, pos:BASE_POINT_G(), trips:[], km:0, busy:0 }));
   pr.unpaired.forEach(d => plan.warnings.push({ level:'warn', text:`${d.name} je na delu, a ni prostega vozila.` }));
   pr.looseEsc.forEach(d => plan.warnings.push({ level:'info', text:`${d.name} (spremljevalec) nima voznika.` }));
+  pr.looseHelp.forEach(d => plan.warnings.push({ level:'info', text:`${d.name} (${d.role === 'dijak' ? 'dijak' : 'študent'}) nima posadke.` }));
+  pr.notes.forEach(t => plan.warnings.push({ level:'info', text:t }));
   if (!crews.length && rides.length) plan.warnings.push({ level:'bad', text:'Ni nobene posadke z vozilom. Dodaj zaposlene in razpoložljiva vozila.' });
   if (plan.standby && crews.length > 1) plan.warnings.push({ level:'info', text:'Vikend/praznik: običajno sta v pripravljenosti 2 zaposlena (ena posadka).' });
 
@@ -1017,7 +1061,7 @@ function BASE_POINT_G(){ return { key:'poi:'+BASE_POI.n, lat:BASE_POINT.lat, lon
 
 /* ---------- Knjiga: samodejni vpis posadk v mesečni pregled ---------- */
 const shortName = n => n;
-function crewLabel(c){ return [c.driver.name, ...c.escorts.map(e => e.name + ' (sp.)')].join(', '); }
+function crewLabel(c){ return [c.driver.name, ...c.escorts.map(e => e.name + ' (sp.)'), ...(c.helpers || []).map(h => h.name + ' (' + (ROLE_TAG[h.role] || '') + ')')].join(', '); }
 function writeBook(date){
   const duty = S.duty[date] || [];
   const book = S.crewBook[date] || (S.crewBook[date] = {});
@@ -1057,7 +1101,7 @@ function dayWarnings(date){
     if (r.name.trim()){ (names[k] = names[k] || []).push(nr); }
     if (r.mode === 'leze'){
       if (avail.length && !avail.some(v => v.leze > 0)) out.push({ nr, text:`Polje ${nr}: pacient leže, razpoložljivo vozilo pa nima nosil.` });
-      else { const duty = S.duty[date] || [], sp = S.dayRules[date] && S.dayRules[date].split; if (duty.length && (sp || duty.length < 2)) out.push({ nr, text:`Polje ${nr}: pacient leže potrebuje 2 reševalca (voznik + spremljevalec).` }); }
+      else if ((S.duty[date] || []).length && !pairCrews(date).crews.some(c => !c.solo && c.vehicle.leze > 0)) out.push({ nr, text:`Polje ${nr}: pacient leže potrebuje voznika in spremljevalca (2 reševalca) ter vozilo z nosili. Vpiši še enega zaposlenega ali izključi razdelitev ekipe.` });
     }
   });
   Object.values(names).filter(a => a.length > 1).forEach(a => out.push({ nr:a[0], text:`Polja ${a.join(' in ')}: ista oseba z isto uro (morebitni dvojni vpis).` }));
@@ -1506,7 +1550,7 @@ function dutyHTML(date){
       <div class="dn">${esc(d.name)} ${st && st.userId ? '<span class="chip ok" title="Ima račun in vidi razpored v aplikaciji">račun</span>' : '<span class="chip warn" title="Brez računa ne vidi razporeda v aplikaciji. Poveži v Nastavitve → Zaposleni.">brez računa</span>'}</div><button type="button" class="icon-btn" data-act="rmDuty" data-i="${i}" aria-label="Odstrani ${esc(d.name)}">${IC.x}</button>
       <div class="dsel">
         <select data-duty="team" aria-label="Ekipa"><option value="redna" ${d.team==='redna'?'selected':''}>Redna ekipa</option><option value="NN" ${d.team==='NN'?'selected':''}>NN ekipa</option><option value="pripravljenost" ${d.team==='pripravljenost'?'selected':''}>Pripravljenost</option></select>
-        <select data-duty="role" aria-label="Vloga"><option value="voznik" ${d.role!=='spremljevalec'?'selected':''}>Voznik</option><option value="spremljevalec" ${d.role==='spremljevalec'?'selected':''}>Spremljevalec</option></select>
+        <select data-duty="role" aria-label="Vloga"><option value="voznik" ${!['spremljevalec','student','dijak'].includes(d.role)?'selected':''}>Voznik</option><option value="spremljevalec" ${d.role==='spremljevalec'?'selected':''}>Spremljevalec</option><option value="student" ${d.role==='student'?'selected':''}>Študent</option><option value="dijak" ${d.role==='dijak'?'selected':''}>Dijak</option></select>
         <label class="mini">Začetek izmene<input type="time" data-duty="from" value="${esc(d.from||'')}" title="Prazno = izmena ni omejena"></label>
         <label class="mini">Konec izmene<input type="time" data-duty="to" value="${esc(d.to||'')}" title="Prazno = začetek + ${S.rules.shiftHours} h (če je vpisan začetek)"></label>
         <select data-duty="vehicleId" aria-label="Vozilo"><option value="">Vozilo: samodejno</option>${avail.map(v => `<option value="${v.id}" ${d.vehicleId===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select>
@@ -1518,7 +1562,7 @@ function dutyHTML(date){
     ${items || '<div class="empty-state" style="padding:14px">Še nihče ni vpisan za ta dan.</div>'}
     <form class="row" data-form="addDuty" style="flex-wrap:nowrap"><input type="text" name="name" placeholder="Ime novega zaposlenega" list="staffList" aria-label="Ime zaposlenega" autocomplete="off"><button class="btn primary" type="submit">Dodaj</button></form>
     <label class="check"><input type="checkbox" data-act="daySplit" ${S.dayRules[date] && S.dayRules[date].split ? 'checked' : ''}> Ekipa se razdeli na 2 voznika (vsak v svojem vozilu)</label>
-    <div class="hint">Nenujna ekipa sta voznik in spremljevalec. Leže pacienta lahko peljeta samo skupaj (2 reševalca, vozilo z nosili).</div>
+    <div class="hint">NN ekipa ima 2 reševalca: voznik in spremljevalec (samodejno). Leže pacient vedno potrebuje voznika + spremljevalca in vozilo z nosili. Študent in dijak sta dodatna pomočnika.</div>
     <div class="row"><button type="button" class="btn sm" data-act="copyDuty">${IC.copy} Kopiraj osebje od prejšnjega dne</button></div>
   </div>`;
 }
@@ -1557,7 +1601,7 @@ function renderDispatch(){
   const tot = plan.totals;
   const rows = plan.crews.map(c => `<tr>
       <td><b>${esc(c.vehicle.name)}</b><div class="hint">${esc(capText(c.vehicle))}</div></td>
-      <td>${esc(c.driver.name)}${c.team === 'NN' ? ' <span class="chip">NN</span>' : ''}${c.escorts.map(e => `<div class="hint">${esc(e.name)} (sp.)</div>`).join('')}</td>
+      <td>${esc(c.driver.name)}${c.team === 'NN' ? ' <span class="chip">NN</span>' : ''}${c.escorts.map(e => `<div class="hint">${esc(e.name)} (sp.)</div>`).join('')}${(c.helpers || []).map(h => `<div class="hint">${esc(h.name)} (${ROLE_TAG[h.role] || ''})</div>`).join('')}</td>
       <td><div class="numchips">${c.rideNrs.length ? c.rideNrs.map(n => `<span class="chip mono">${n}</span>`).join('') : '<span class="dim">–</span>'}</div></td>
       <td>${c.trips.length ? `<b class="mono">Štart ${fmtT(c.firstDepart)}</b> iz postaje<div class="hint">${c.trips.map(t => `${fmtT(t.depart)} → ${esc(t.kind === 'to' ? (t.anchor.label || '') : (t.anchor.label || '') + ' (odvoz)')}`).join(' · ')}</div>${c.trips.some(t=>t.late>0) ? '<div><span class="chip bad">zamuda</span></div>' : ''}${c.overtime > 0 ? `<div><span class="chip accent">nadure ~${c.overtime} min</span></div>` : ''}` : '<span class="dim">Brez prevozov</span>'}</td></tr>`).join('');
   const blockedRows = blocked.map(v => { const b = vehBlocked(date, v.id); return `<tr><td><b>${esc(v.name)}</b></td><td colspan="2"><span class="chip bad">${esc(b.tip)}</span></td><td class="muted">${esc(b.note || 'Vozilo ni na voljo')}</td></tr>`; }).join('');
@@ -2130,7 +2174,7 @@ const timeOf = iso => { if (!iso) return '–'; const d = new Date(iso); return 
 function planSig(date){
   const plan = computePlan(date);
   const rides = ensureDay(date).filter(r => plan.assign[r.id]).map(r => [r.id, r.name, r.time, r.from, r.to, r.phone, r.mode, r.note]);
-  return hashStr(JSON.stringify([plan.crews.map(c => [c.id, c.driver.name, c.escorts.map(e => e.name), c.trips.map(t => [fmtT(t.depart), t.rides.map(r => r.id)])]), rides]));
+  return hashStr(JSON.stringify([plan.crews.map(c => [c.id, c.driver.name, c.escorts.map(e => e.name), (c.helpers || []).map(h => h.name), c.trips.map(t => [fmtT(t.depart), t.rides.map(r => r.id)])]), rides]));
 }
 function publishState(date){
   const p = S.published[date]; if (!p || !p.at) return 'ni';
@@ -2142,7 +2186,7 @@ async function publishDay(date){
   const runs = [], noAccount = new Set(), ridesAssigned = new Set();
   for (const c of plan.crews){
     if (!c.trips.length) continue;
-    const members = [c.driver, ...c.escorts], staffs = members.map(staffOfDuty);
+    const members = [c.driver, ...c.escorts, ...(c.helpers || [])], staffs = members.map(staffOfDuty);
     members.forEach((m, i) => { if (!(staffs[i] && staffs[i].userId)) noAccount.add(m.name); });
     const uids = [...new Set(staffs.map(s => s && s.userId).filter(Boolean))];
     const key = date + '_' + c.id, rides = {}, trips = [];
@@ -2328,9 +2372,10 @@ const dutyList = date => (S.duty[date] = S.duty[date] || []);
 function addDuty(date, name, team){
   const list = dutyList(date); if (list.some(d => norm(d.name) === norm(name))) return false;
   const standby = isStandby(date);
-  const hasDriver = list.some(d => d.role !== 'spremljevalec');
+  const tm = standby ? 'pripravljenost' : (team || 'redna');
+  const nV = list.filter(d => d.team === tm && d.role !== 'spremljevalec' && !isHelperRole(d.role)).length, nE = list.filter(d => d.team === tm && d.role === 'spremljevalec').length;
   const st = S.staff.find(s => norm(s.name) === norm(name));
-  list.push({ id:uid(), name:name.trim(), staffId:st ? st.id : '', team: standby ? 'pripravljenost' : (team || 'redna'), role: standby && hasDriver ? 'spremljevalec' : 'voznik', from:'', to:'', ot:0, vehicleId:'' });
+  list.push({ id:uid(), name:name.trim(), staffId:st ? st.id : '', team: standby ? 'pripravljenost' : (team || 'redna'), role: (tm === 'NN' || tm === 'pripravljenost') && nV > nE ? 'spremljevalec' : 'voznik', from:'', to:'', ot:0, vehicleId:'' });
   return true;
 }
 function setPath(path, el){

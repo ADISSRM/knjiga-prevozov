@@ -16,3 +16,4 @@ Interna PWA za iPhone in Android: dispečer (knjiga, pacienti in nalogi, razpore
 - Prevozi se lahko označijo kot ODPOVEDANO (rdeče, izven razporeda).
 - Hitrosti po ZPrCP: naselje 50, izven naselij 90, hitra cesta 110, avtocesta 130 km/h (Nastavitve → Izračun).
 - Barve nalogov: letni (modra), mesečni (vijolična), enkratni (zelena), za čas zdravljenja (oranžna); polje prevoza je celo obarvano, ko je pacient v bazi.
+- Vloge zaposlenih na delu: voznik, spremljevalec, študent, dijak. NN ekipa (2 reševalca) je samodejno voznik + spremljevalec. Leže prevoz vedno potrebuje voznika + spremljevalca in vozilo z nosili; če nobena posadka nima obeh, aplikacija sama združi dva zaposlena v eno posadko.

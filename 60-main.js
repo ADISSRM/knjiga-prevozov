@@ -41,9 +41,10 @@ const dutyList = date => (S.duty[date] = S.duty[date] || []);
 function addDuty(date, name, team){
   const list = dutyList(date); if (list.some(d => norm(d.name) === norm(name))) return false;
   const standby = isStandby(date);
-  const hasDriver = list.some(d => d.role !== 'spremljevalec');
+  const tm = standby ? 'pripravljenost' : (team || 'redna');
+  const nV = list.filter(d => d.team === tm && d.role !== 'spremljevalec' && !isHelperRole(d.role)).length, nE = list.filter(d => d.team === tm && d.role === 'spremljevalec').length;
   const st = S.staff.find(s => norm(s.name) === norm(name));
-  list.push({ id:uid(), name:name.trim(), staffId:st ? st.id : '', team: standby ? 'pripravljenost' : (team || 'redna'), role: standby && hasDriver ? 'spremljevalec' : 'voznik', from:'', to:'', ot:0, vehicleId:'' });
+  list.push({ id:uid(), name:name.trim(), staffId:st ? st.id : '', team: standby ? 'pripravljenost' : (team || 'redna'), role: (tm === 'NN' || tm === 'pripravljenost') && nV > nE ? 'spremljevalec' : 'voznik', from:'', to:'', ot:0, vehicleId:'' });
   return true;
 }
 function setPath(path, el){
