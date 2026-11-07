@@ -45,6 +45,8 @@ const DOW_LONG = ['nedelja','ponedeljek','torek','sreda','četrtek','petek','sob
 const DOW_SHORT = ['ned','pon','tor','sre','čet','pet','sob'];
 const MONTHS = ['januar','februar','marec','april','maj','junij','julij','avgust','september','oktober','november','december'];
 const MODES = { sede:'Sede', leze:'Leže', utila:'Utila' };
+const VEH_VRSTE = { osebno:'Osebno vozilo', resevalni:'Reševalni kombi', transportni:'Transportni kombi' };
+const VEH_FN = { vse:'Vsi prevozi', dializa:'Primarno dializa (drugo po potrebi)' };
 
 /* ---------- Vloge, statusi prevoza, barve pacientov ---------- */
 const ROLES = { skrbnik:'Skrbnik', dispecer:'Dispečer', voznik:'Voznik', spremljevalec:'Spremljevalec' };
@@ -80,7 +82,7 @@ function defaultState(){
   return {
     v:2,
     settings:{
-      speed:45, speedHw:85, road:1.3, pickMin:4, dropMin:3, buffer:15, window:60, detour:25, maxRide:120,
+      speed:45, speedHw:85, lim:{ naselje:50, izven:90, hitra:110, avtocesta:130 }, eff:85, road:1.3, pickMin:4, dropMin:3, buffer:15, window:60, detour:25, maxRide:120,
       shift:'06:00', idleMin:30, slots:35, waitTol:10,
       dia:{
         D1:{ start:'06:30', end:'10:30', days:[1,3,5] },

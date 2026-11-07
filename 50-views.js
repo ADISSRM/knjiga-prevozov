@@ -37,7 +37,7 @@ const NAV_ALL = [
   { id:'nastavitve', label:'Nastavitve', short:'Nastav.', ic:'gear' }
 ];
 const TITLES = {
-  knjiga:['Knjiga prevozov', 'Mesečni pregled. Pod vsakim dnevom so vozila in zaposleni.'],
+  knjiga:['Knjiga prevozov', 'Mesečni pregled. Pod vsakim dnevom je polje Ostalo za opombe.'],
   dan:['Dnevna knjiga', ''],
   dispecer:['Dispečer', 'Zaposleni in vozila vpišeš ti. Razpored in vrstni red izračuna aplikacija.'],
   zivo:['Živo stanje', 'Posadke sporočajo korake prevoza. Tukaj vidiš status in čase.'],
@@ -77,25 +77,23 @@ const hasDemo = () => Object.values(S.rides).some(a => a.some(r => r.demo)) || S
 /* ---------- Mesečna knjiga ---------- */
 function renderMonth(){
   const { y, m } = UI.month, n = daysInMonth(y, m), today = todayStr();
-  let tr = 0, td = 0, dd = 0; const cards = [];
+  let tr = 0, td = 0, dd = 0, tcn = 0; const cards = [];
   for (let d = 1; d <= n; d++){
     const date = `${y}-${pad(m+1)}-${pad(d)}`;
-    const filled = (S.rides[date] || []).filter(isFilled), done = filled.filter(r => r.done).length;
-    tr += filled.length; td += done; if (filled.length) dd++;
+    const all = (S.rides[date] || []).filter(isFilled), filled = all.filter(r => !r.odpovedano), canc = all.length - filled.length, done = filled.filter(r => r.done).length;
+    tcn += canc; tr += filled.length; td += done; if (filled.length) dd++;
     const hol = holiday(date), wk = isStandby(date), groups = diaGroupsFor(date, S);
     const book = S.crewBook[date] || {};
-    const rows = S.vehicles.filter(v => v.aktiv).map(v => {
-      const c = book[v.id] || { text:'', manual:false };
-      return `<div class="crew-row"><label title="${esc(v.name)}">${esc(v.name)}</label><input type="text" data-crew="${date}|${v.id}" class="${c.text && !c.manual ? 'auto' : ''}" value="${esc(c.text)}" placeholder="zaposleni" aria-label="${esc(v.name)}, ${fmtShort(date)}"></div>`;
-    }).join('');
+    const oc = (S.crewBook[date] || {}).ost || { text:'', manual:false };
+    const rows = `<div class="crew-row"><label>Opomba</label><input type="text" data-crew="${date}|ost" value="${esc(oc.text)}" placeholder="kaj je narobe / opomba" aria-label="Ostalo, ${fmtShort(date)}"></div>`;
     cards.push(`<article class="day ${date === today ? 'today' : ''} ${wk ? 'wk' : ''} ${date < today ? 'past' : ''}">
       <button type="button" class="day-head" data-act="openDay" data-date="${date}">
         <span class="dnum tnum">${pad(d)}</span>
         <span class="dtxt"><span class="dname">${DOW_LONG[dow(date)]}</span>
           <span class="dmeta">${date === today ? '<span class="chip accent">danes</span>' : ''}${hol ? `<span class="chip warn" title="${esc(hol)}">praznik</span>` : ''}${wk ? '<span class="chip info">pripravljenost</span>' : ''}${groups.map(g => `<span class="chip mono" title="Dializa">${g}</span>`).join('')}</span></span>
-        <span class="dcount"><b>${filled.length}</b>${filled.length ? `${done}/${filled.length} ✓` : 'prevozov'}</span>
+        <span class="dcount"><b>${filled.length}</b>${filled.length ? `${done}/${filled.length} ✓` : 'prevozov'}${canc ? `<span class="chip bad">${canc} odpov.</span>` : ''}</span>
       </button>
-      <div class="crew"><h4>Službena vozila · zaposleni</h4>${rows}</div></article>`);
+      <div class="crew"><h4>Ostalo</h4>${rows}</div></article>`);
   }
   $('#view').innerHTML = `
     ${demoBanner()}${alertsBanner()}
@@ -104,10 +102,12 @@ function renderMonth(){
       <h2>${MONTHS[m]} ${y}</h2>
       <button type="button" class="btn" data-act="monthNext" aria-label="Naslednji mesec">${IC.right}</button>
       <button type="button" class="btn" data-act="monthToday">Danes</button>
+      <button type="button" class="btn" data-act="printMonth">Natisni mesec</button>
       <div class="stats" style="margin-left:auto">
         <div class="stat"><b>${tr}</b><span>prevozov v mesecu</span></div>
         <div class="stat"><b>${td}</b><span>opravljenih</span></div>
         <div class="stat"><b>${dd}</b><span>dni z vpisi</span></div>
+        <div class="stat"><b>${tcn}</b><span>odpovedanih</span></div>
       </div>
     </div>
     <div class="days">${cards.join('')}</div>`;
@@ -134,12 +134,15 @@ function boxHTML(date, r, nr, plan){
   const a = plan.assign[r.id];
   const g = r.from.trim() ? geo(r.from) : null;
   const pc = pcClass(r.patientId);
+  const ptc = r.patientId ? patientById(r.patientId) : null, nlc = ptc ? ((ptc.naloge || []).find(n => n.id === r.nalogId) || activeNalog(ptc, date)) : null;
+  const nt = ptc ? 'nt-' + (nlc ? nlc.vrsta : 'none') : '';
   const showSt = r.status && r.status !== 'nova';
-  return `<article class="box ${pc} ${filled ? '' : 'empty'} ${r.done ? 'done' : ''}" data-ride="${r.id}" data-date="${date}" data-nr="${nr}">
+  return `<article class="box ${pc} ${nt} ${filled ? '' : 'empty'} ${r.done ? 'done' : ''} ${r.odpovedano ? 'cancelled' : ''}" data-ride="${r.id}" data-date="${date}" data-nr="${nr}">
     <div class="bhead"><span class="nr">${nr}</span>
       <span class="chip ${dir === 'from' ? 'ok' : 'info'}" data-role="dir" ${filled ? '' : 'hidden'}>${dir === 'from' ? 'ODVOZ' : 'TJA'}</span>
       ${r.dia ? `<span class="chip mono">${esc(r.dia)}</span>` : ''}
       ${r.demo ? '<span class="chip warn">PRIMER</span>' : ''}
+      ${r.odpovedano ? '<span class="chip bad cancel-chip">ODPOVEDANO</span>' : ''}
       ${showSt ? stChip(r.status) : ''}
       <span class="sp"></span>
       <span class="assign ${a && a.late > 0 ? 'late' : ''}" data-role="assign" ${a ? '' : 'hidden'}>${a ? esc(a.veh) + ' · ' + fmtT(a.t) : ''}</span>
@@ -160,6 +163,7 @@ function boxHTML(date, r, nr, plan){
     ${showSt && r.times && Object.keys(r.times).length ? `<div class="row" style="gap:4px">${timesChips(r)}</div>` : ''}
     <div class="donerow">
       <label class="check"><input type="checkbox" data-f="done" ${r.done ? 'checked' : ''}> Opravljeno</label>
+      <label class="check cancel-check" title="Prevoz je odpovedan: označen je rdeče in ni v razporedu"><input type="checkbox" data-f="odpovedano" ${r.odpovedano ? 'checked' : ''}> Odpovedano</label>
       <label class="check" title="Dovoli, da se za ta prevoz pravila prilagodijo (npr. več pacientov v vozilu, daljša pot)"><input type="checkbox" data-f="exc" ${r.exc ? 'checked' : ''}> Izjema pravil</label>
       <div class="field whodid"><input type="text" data-f="doneBy" list="staffList" value="${esc(r.doneBy)}" placeholder="Kdo je naredil odvoz" aria-label="Kdo je naredil odvoz" autocomplete="off"></div>
     </div>
@@ -250,6 +254,8 @@ function dutyHTML(date){
     ${chips ? `<div class="row" style="gap:6px">${chips}</div><div class="hint">Tapni ime, da ga dodaš ali odstraniš.</div>` : '<div class="hint">Seznam zaposlenih dodaš v Nastavitve → Zaposleni ali kar spodaj.</div>'}
     ${items || '<div class="empty-state" style="padding:14px">Še nihče ni vpisan za ta dan.</div>'}
     <form class="row" data-form="addDuty" style="flex-wrap:nowrap"><input type="text" name="name" placeholder="Ime novega zaposlenega" list="staffList" aria-label="Ime zaposlenega" autocomplete="off"><button class="btn primary" type="submit">Dodaj</button></form>
+    <label class="check"><input type="checkbox" data-act="daySplit" ${S.dayRules[date] && S.dayRules[date].split ? 'checked' : ''}> Ekipa se razdeli na 2 voznika (vsak v svojem vozilu)</label>
+    <div class="hint">Nenujna ekipa sta voznik in spremljevalec. Leže pacienta lahko peljeta samo skupaj (2 reševalca, vozilo z nosili).</div>
     <div class="row"><button type="button" class="btn sm" data-act="copyDuty">${IC.copy} Kopiraj osebje od prejšnjega dne</button></div>
   </div>`;
 }
@@ -257,7 +263,7 @@ function vehiclesHTML(date){
   return `<div class="card card-pad stack" style="gap:10px"><div class="card-head" style="margin:0"><h3>Vozila na voljo</h3></div>
     ${S.vehicles.filter(v => v.aktiv && v.tip !== 'ostalo').map(v => {
       const b = vehBlocked(date, v.id), off = vehOff(date, v.id);
-      return `<div class="veh-item ${b || off ? 'off' : ''}"><label><input type="checkbox" data-act="vehToggle" data-id="${v.id}" ${!off && !b ? 'checked' : ''} ${b ? 'disabled' : ''}><span><span class="vn">${esc(v.name)}</span><br><span class="hint">${esc(capText(v))}</span></span></label>${b ? `<span class="chip bad">${esc(b.tip)}</span>` : (v.ns === 'NN' ? '<span class="chip">NN</span>' : '')}</div>`;
+      return `<div class="veh-item ${b || off ? 'off' : ''}"><label><input type="checkbox" data-act="vehToggle" data-id="${v.id}" ${!off && !b ? 'checked' : ''} ${b ? 'disabled' : ''}><span><span class="vn">${esc(v.name)}</span><br><span class="hint">${esc(VEH_VRSTE[v.vrsta] || '')} · ${esc(capText(v))}${v.fn === 'dializa' ? ' · primarno dializa' : ''}</span></span></label>${b ? `<span class="chip bad">${esc(b.tip)}</span>` : (v.ns === 'NN' ? '<span class="chip">NN</span>' : '')}</div>`;
     }).join('') || '<div class="hint">Vozila dodaš v Nastavitve → Vozila.</div>'}
   </div>`;
 }
@@ -332,7 +338,7 @@ function renderDispatch(){
           ${plan.crews.length || blocked.length ? `<div class="tablewrap"><table><thead><tr><th>Vozilo</th><th>Voznik</th><th>Prevozi (št. v knjigi)</th><th>Posebnosti · ure štarta</th></tr></thead><tbody>${rows}${blockedRows}</tbody></table></div>`
             : '<div class="empty-state">Vpiši zaposlene na delu in označi vozila. Razpored se sestavi sam.</div>'}
           ${unRows ? `<p style="margin:10px 0 0"><b>Nerazporejeni prevozi:</b> ${unRows}</p>` : ''}
-          <p class="hint" style="margin:10px 0 0">Časi so ocena: zračna razdalja × ${S.settings.road}, ${S.settings.speed} km/h lokalno in ${S.settings.speedHw} km/h na daljših relacijah, rezerva ${S.settings.buffer} min pred preiskavo. Razpored se vpiše tudi v mesečno knjigo.</p>
+          <p class="hint" style="margin:10px 0 0">Časi so ocena: zračna razdalja × ${S.settings.road}, omejitve ${S.settings.lim.naselje}/${S.settings.lim.izven}/${S.settings.lim.hitra}/${S.settings.lim.avtocesta} km/h (naselje/izven/hitra/avtocesta), dejansko ${S.settings.eff} %, rezerva ${S.settings.buffer} min pred preiskavo. Razpored se vpiše tudi v mesečno knjigo.</p>
         </div>
         ${cards}
         ${closeList ? `<div class="card card-pad stack" style="gap:10px"><div class="card-head" style="margin:0"><h3>Zaključek prevozov</h3><span class="hint">Označi opravljeno in vpiši, kdo je naredil odvoz.</span></div>${closeList}</div>` : ''}
@@ -387,9 +393,11 @@ function renderSettings(){
     const num = (i, k, v, lbl) => field(`vehicles.${i}.${k}`, v, { num:1, label:lbl });
     body = `<div class="card card-pad stack"><div class="card-head" style="margin:0"><h3>Vozila in kapaciteta</h3><button type="button" class="btn primary sm" data-act="addVeh">${IC.plus} Dodaj vozilo</button></div>
       <div class="banner"><span>${IC.info}</span><div><b>Običajno</b> je število pacientov, ki jih vozilo vozi po pravilih. <b>Izjemoma</b> je največ, kar vozilo še lahko pelje, kadar je treba pravila prilagoditi (npr. vozilo s 6 sedeži, ki običajno vozi 4 paciente). Prilagoditev se uporabi samo, ko je potrebna, in je vedno izpisana. Vrstica »OSTALO« ni vozilo, ampak mesto za zaposlene brez vozila. Začetne številke so ocena, popravi jih.</div></div>
-      <div class="tablewrap"><table class="edtable"><thead><tr><th rowspan="2">Ime</th><th rowspan="2">Vrsta</th><th rowspan="2">Ekipa</th><th colspan="4">Običajno</th><th colspan="4">Izjemoma največ</th><th rowspan="2">Aktivno</th><th rowspan="2"></th></tr><tr><th>Sede</th><th>Leže</th><th>Utila</th><th>Skupaj</th><th>Sede</th><th>Leže</th><th>Utila</th><th>Skupaj</th></tr></thead><tbody>
+      <div class="tablewrap"><table class="edtable"><thead><tr><th rowspan="2">Ime</th><th rowspan="2">Vrsta</th><th rowspan="2">Tip vozila</th><th rowspan="2">Namen</th><th rowspan="2">Ekipa</th><th colspan="4">Običajno</th><th colspan="4">Izjemoma največ</th><th rowspan="2">Aktivno</th><th rowspan="2"></th></tr><tr><th>Sede</th><th>Leže</th><th>Utila</th><th>Skupaj</th><th>Sede</th><th>Leže</th><th>Utila</th><th>Skupaj</th></tr></thead><tbody>
       ${S.vehicles.map((v, i) => `<tr><td>${field(`vehicles.${i}.name`, v.name, { label:'Ime' })}</td>
         <td><select data-path="vehicles.${i}.tip" aria-label="Vrsta"><option value="sanitetno" ${v.tip==='sanitetno'?'selected':''}>Sanitetno</option><option value="resevalno" ${v.tip==='resevalno'?'selected':''}>Reševalno</option><option value="ostalo" ${v.tip==='ostalo'?'selected':''}>Ostalo (brez vozila)</option></select></td>
+        <td><select data-path="vehicles.${i}.vrsta" aria-label="Tip vozila">${Object.entries(VEH_VRSTE).map(([k, l]) => `<option value="${k}" ${v.vrsta === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+        <td><select data-path="vehicles.${i}.fn" aria-label="Namen">${Object.entries(VEH_FN).map(([k, l]) => `<option value="${k}" ${v.fn === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
         <td><select data-path="vehicles.${i}.ns" aria-label="Ekipa"><option value="redna" ${v.ns==='redna'?'selected':''}>Redna</option><option value="NN" ${v.ns==='NN'?'selected':''}>NN</option><option value="oboje" ${v.ns==='oboje'?'selected':''}>Oboje</option></select></td>
         <td>${num(i,'sede',v.sede,'Sede')}</td><td>${num(i,'leze',v.leze,'Leže')}</td><td>${num(i,'utila',v.utila,'Utila')}</td><td>${num(i,'skupaj',v.skupaj,'Skupaj')}</td>
         <td>${num(i,'sedeMax',v.sedeMax,'Sede največ')}</td><td>${num(i,'lezeMax',v.lezeMax,'Leže največ')}</td><td>${num(i,'utilaMax',v.utilaMax,'Utila največ')}</td><td>${num(i,'skupajMax',v.skupajMax,'Skupaj največ')}</td>
@@ -415,8 +423,9 @@ function renderSettings(){
       ${dp.length ? `<div class="row" style="gap:6px">${dp.map(p => `<button type="button" class="chip toggle ${pcClass(p.id)}" data-act="openPatient" data-id="${p.id}"><span class="pdot ${pcClass(p.id)}"></span>${esc(p.name)} · ${esc(p.dia)}</button>`).join('')}</div>` : '<div class="empty-state">Še ni dializnih pacientov. V bazi pacientov izberi skupino dialize.</div>'}</div></div>`;
   } else if (T === 'planiranje'){
     const k = (label, path, step=1, unit='') => `<label for="k-${path}">${label}${unit ? ' <span class="dim">(' + unit + ')</span>' : ''}</label>${field(path, S.settings[path.split('.')[1]], { num:1, step, label })}`.replace('data-path', `id="k-${path}" data-path`);
+    const kl = (label, key) => `<label for="k-lim-${key}">${label} <span class="dim">(km/h)</span></label>${field('settings.lim.' + key, S.settings.lim[key], { num:1, step:1, label }).replace('data-path', 'id="k-lim-' + key + '" data-path')}`;
     body = `<div class="card card-pad stack"><h3>Parametri izračuna</h3><div class="kv">
-      ${k('Hitrost po lokalnih cestah','settings.speed',1,'km/h')}${k('Hitrost na daljših relacijah','settings.speedHw',1,'km/h')}${k('Faktor ceste (cesta / zračna črta)','settings.road',0.05)}${k('Čas pobiranja pacienta','settings.pickMin',1,'min')}${k('Čas odpuščanja pacienta','settings.dropMin',1,'min')}
+      ${kl('Omejitev v naselju','naselje')}${kl('Omejitev izven naselij','izven')}${kl('Omejitev na hitri cesti','hitra')}${kl('Omejitev na avtocesti','avtocesta')}${k('Dejanska hitrost glede na omejitev','settings.eff',1,'%')}${k('Faktor ceste (cesta / zračna črta)','settings.road',0.05)}${k('Čas pobiranja pacienta','settings.pickMin',1,'min')}${k('Čas odpuščanja pacienta','settings.dropMin',1,'min')}
       ${k('Rezerva pred preiskavo','settings.buffer',1,'min')}${k('Okno združevanja po uri','settings.window',5,'min')}${k('Največji dodaten čas za soprevoznika','settings.detour',5,'min')}${k('Najdaljša vožnja pacienta v vozilu','settings.maxRide',5,'min')}
       ${k('Čakanje pri odvozu brez zamude','settings.waitTol',1,'min')}${k('Število polj v knjigi na dan','settings.slots',1,'polj')}${k('Samodejna odjava','settings.idleMin',5,'min')}
       <label for="k-shift">Privzet začetek izmene</label><input id="k-shift" type="time" data-path="settings.shift" value="${esc(S.settings.shift)}"></div>

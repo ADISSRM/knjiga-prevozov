@@ -47,7 +47,7 @@ function patientMatches(p){
 }
 function nalogCardHTML(p, n){
   const s = nalogState(n), miss = missingNalog(n), open = UI.nid === n.id;
-  const head = `<div class="ncard-head"><span class="chip accent">${esc(NALOG_VRSTE[n.vrsta].l)}</span><b class="mono">${esc(n.stevilka || 'brez številke')}</b>${nalogChip(n)}${miss.length ? `<span class="chip warn" title="Manjka: ${esc(miss.join(', '))}">nepopoln</span>` : ''}</div>`;
+  const head = `<div class="ncard-head"><span class="chip nt nt-${n.vrsta}">${esc(NALOG_VRSTE[n.vrsta].l)}</span><b class="mono">${esc(n.stevilka || 'brez številke')}</b>${nalogChip(n)}${miss.length ? `<span class="chip warn" title="Manjka: ${esc(miss.join(', '))}">nepopoln</span>` : ''}</div>`;
   const sum = `<div class="hint ncard-sum">${esc(n.od || '–')} → ${esc(n.do || '–')} · ${esc(MODES[n.mode] || n.mode)} · ${fmtDMY(n.veljaOd)} – ${fmtDMY(n.veljaDo)}${n.razlog ? ' · ' + esc(n.razlog) : ''}</div>`;
   const acts = `<div class="row" style="gap:6px">
     <button type="button" class="btn sm" data-act="editNalog" data-id="${n.id}">${open ? 'Zapri' : 'Uredi'}</button>
@@ -346,4 +346,25 @@ function renderModal(){
     <p class="hint" style="margin:0">Klikni vrstico za kopiranje samo te vrstice.</p>
     <div class="row" style="justify-content:flex-end"><button type="button" class="btn" data-act="closeModal">Zapri</button><button type="button" class="btn primary" data-act="copyVariant">${IC.copy} Kopiraj vse</button></div></div>`;
   const b = host.querySelector('.btn.primary'); if (b) b.focus();
+}
+
+
+/* ---------- Tisk knjige prevozov za mesec ---------- */
+function printMonthHTML(){
+  const { y, m } = UI.month, n = daysInMonth(y, m); let body = '', total = 0, canc = 0;
+  for (let d = 1; d <= n; d++){
+    const date = `${y}-${pad(m + 1)}-${pad(d)}`, rs = filledRides(date), note = ((S.crewBook[date] || {}).ost || {}).text || '';
+    if (!rs.length && !note) continue;
+    rs.forEach(({ r }) => { if (r.odpovedano) canc++; else total++; });
+    const rows = rs.map(({ r, nr }) => `<tr class="${r.odpovedano ? 'p-cancel' : ''}"><td>${nr}</td><td>${esc(r.time)}</td><td>${esc(r.name)}</td><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td>${esc(MODES[r.mode] || '')}</td><td>${esc(r.dia)}</td><td>${esc(r.note || '')}</td><td>${r.odpovedano ? '<b>ODPOVEDANO</b>' : r.done ? 'opravljeno' + (r.doneBy ? ' · ' + esc(r.doneBy) : '') : ''}</td></tr>`).join('');
+    const hol = holiday(date);
+    body += `<section><h3>${DOW_LONG[dow(date)]}, ${fmtDMY(date)}${hol ? ' · ' + esc(hol) : ''}</h3>${rs.length ? `<table><thead><tr><th>Št.</th><th>Ura</th><th>Pacient</th><th>Od</th><th>Do</th><th>Način</th><th>Dial.</th><th>Opomba</th><th>Stanje</th></tr></thead><tbody>${rows}</tbody></table>` : ''}${note ? `<p class="p-note"><b>Ostalo:</b> ${esc(note)}</p>` : ''}</section>`;
+  }
+  return `<h2>Knjiga prevozov · ${MONTHS[m]} ${y}</h2><p>Reševalna postaja Brežice · prevozov: ${total}${canc ? ` · odpovedanih: ${canc}` : ''}</p>${body || '<p>Ni vpisov.</p>'}`;
+}
+function printMonth(){
+  let el = document.getElementById('printArea');
+  if (!el){ el = document.createElement('div'); el.id = 'printArea'; document.body.appendChild(el); }
+  el.innerHTML = printMonthHTML();
+  window.print();
 }

@@ -6,7 +6,7 @@ const PLAN_CACHE = new Map();
 
 /* ---------- Knjiga: polja ---------- */
 const blankRide = () => ({ id:uid(), name:'', time:'', from:'', to:'', phone:'', mode:'sede', dia:'', diaKey:'', done:false, doneBy:'', doneAt:'', pin:'', demo:false,
-  patientId:'', nalogId:'', note:'', exc:false, status:'nova', times:{}, statusBy:'', runKey:'' });
+  patientId:'', nalogId:'', note:'', exc:false, odpovedano:false, prevStatus:'', status:'nova', times:{}, statusBy:'', runKey:'' });
 const isFilled = r => !!((r.name||'').trim() || (r.from||'').trim() || (r.to||'').trim());
 function ensureDay(date){
   let a = S.rides[date]; if (!a) a = S.rides[date] = [];
@@ -69,8 +69,9 @@ function pairCrews(date){
   const duty = S.duty[date] || [];
   const veh = availableVehicles(date);
   const used = new Set(), crews = [];
-  const drivers = duty.filter(d => d.role !== 'spremljevalec');
-  const escorts = duty.filter(d => d.role === 'spremljevalec');
+  const split = !!(S.dayRules[date] && S.dayRules[date].split);   // ekipa se razdeli: vsak je voznik v svojem vozilu
+  const drivers = duty.filter(d => split || d.role !== 'spremljevalec');
+  const escorts = split ? [] : duty.filter(d => d.role === 'spremljevalec');
   const take = (d, v) => {
     used.add(v.id);
     const shift = toMin(d.from) ?? toMin(S.settings.shift) ?? 360;
@@ -92,7 +93,8 @@ function pairCrews(date){
   crews.sort((a,b) => order.indexOf(a.id) - order.indexOf(b.id));
   const looseEsc = [];
   escorts.forEach((e, i) => { const c = crews[i % Math.max(crews.length,1)]; if (c && i < crews.length + 99 && crews.length) c.escorts.push(e); else looseEsc.push(e); });
-  return { crews, unpaired, looseEsc };
+  crews.forEach(c => { c.solo = c.escorts.length === 0; });   // solo = samo voznik, leže pacienta ne more peljati
+  return { crews, unpaired, looseEsc, split };
 }
 
 /* ---------- Geometrija ---------- */
@@ -108,9 +110,11 @@ function makeLeg(cfg){
     let v = memo.get(k);
     if (!v){
       const km = Math.max(hav(a, b) * cfg.road, a.key === b.key ? 1.2 : 0.8);
-      /* prvih 10 km po lokalnih cestah, preostanek po hitrejših (magistralnih) cestah */
-      const near = Math.min(km, 10), far = Math.max(0, km - 10);
-      v = { km, min: near / cfg.speed * 60 + far / (cfg.speedHw || cfg.speed) * 60 + 1 };
+      /* Omejitve po ZPrCP (46. člen): naselje 50, izven naselij 90, hitra cesta 110, avtocesta 130 km/h.
+         Profil poti: prvih 6 km naselje, nato 14 km izven naselij, 15 km hitra cesta, preostanek avtocesta. */
+      const L = cfg.lim || {}, e = (cfg.eff || 85) / 100;
+      const s1 = Math.min(km, 6), s2 = Math.min(Math.max(km - 6, 0), 14), s3 = Math.min(Math.max(km - 20, 0), 15), s4 = Math.max(km - 35, 0);
+      v = { km, min: (s1 / (L.naselje || 50) + s2 / (L.izven || 90) + s3 / (L.hitra || 110) + s4 / (L.avtocesta || 130)) / e * 60 + 1 };
       memo.set(k, v);
     }
     return v;
@@ -205,10 +209,10 @@ function planLevel(date, level){
   // 1) vožnje, ki jih je treba opraviti
   const rides = [];
   ensureDay(date).forEach((r, i) => {
-    if (!isFilled(r) || r.done || r.status === 'preklicana') return;
+    if (!isFilled(r) || r.done || r.odpovedano || r.status === 'preklicana') return;
     const f = geo(r.from), t = geo(r.to);
     rides.push({ id:r.id, nr:i+1, name:(r.name || '').trim() || '(brez imena)', mode:r.mode || 'sede', phone:r.phone || '', time:toMin(r.time), timeTxt:r.time || '',
-      from:f, to:t, fromTxt:r.from || '', toTxt:r.to || '', kind:rideDir(r), pin:r.pin || '', exc:!!r.exc, force:!!(r.exc || r.pin), pid:r.patientId || '' });
+      from:f, to:t, fromTxt:r.from || '', toTxt:r.to || '', kind:rideDir(r), pin:r.pin || '', exc:!!r.exc, force:!!(r.exc || r.pin), pid:r.patientId || '', dia:r.dia || '' });
     if (f.kind === 'prazno' || t.kind === 'prazno') plan.warnings.push({ level:'warn', nr:i+1, text:`Prevoz ${i+1}: manjka naslov (${f.kind === 'prazno' ? 'od' : 'do'}). Razdalja je ocenjena iz centra Brežic.` });
   });
   plan.totals.rides = rides.length;
@@ -278,9 +282,10 @@ function planLevel(date, level){
     let pool = crewFor(t.pin);
     if (t.pin && !crews.some(c => c.id === t.pin)){ pool = crews; plan.warnings.push({ level:'info', text:`Pripeto vozilo za prevoz ${t.rides.map(r => r.nr).join(', ')} ni na voljo; izbrano je drugo vozilo.` }); }
     const stages = (level === 1 || t.force || t.lvl) ? [0, 1] : [0];
-    let best = null, capOk = false, shiftBlocked = false;
+    let best = null, capOk = false, shiftBlocked = false, lezNoTeam = false;
     for (const st of stages){
       for (const c of pool){
+        if (t.counts.leze > 0 && c.solo){ lezNoTeam = true; continue; }   // leže: 2 reševalca za nošenje
         if (!fits(t.counts, c.vehicle, st)) continue;
         capOk = true;
         const d = leg(c.pos, t.first), arrive = c.free + d.min;
@@ -292,10 +297,12 @@ function planLevel(date, level){
         if (c.end != null){ const okOt = Math.max(c.ot, st ? (S.rules.overtimeMax || 0) : 0); if (endAbs > c.end + okOt){ shiftBlocked = true; continue; } }
         const idle = start - arrive;
         let cost = late * 20 + d.min + idle * 0.05 + c.trips.length * 0.5 + (st ? 25 : 0);
+        if (c.vehicle.fn === 'dializa') cost += t.rides.some(r => r.dia) ? -15 : 45;   // dializno vozilo za druge prevoze samo po potrebi
         if (t.sbReturn){ if (c.team === 'NN') cost -= 20; else if (hasNN) cost += 15; }
         if (!best || cost < best.cost) best = { c, d, arrive, start, late, cost, st, latest };
       }
     }
+    if (!best && lezNoTeam) plan.warnings.push({ level:'bad', text:`Prevoz ${t.rides.map(r => r.nr).join(', ')}: pacient leže potrebuje 2 reševalca (voznik + spremljevalec) in vozilo z nosili.` });
     if (!best){
       if (t.rides.length > 1){
         t.rides.forEach(r => { const a = r.kind === 'from' ? r.from : r.to; const nt = { id:uid(), kind:r.kind, anchor:a, rides:[r], ev:evalTrip(r.kind,[r],a,cfgS,leg), pin:r.pin, lvl:r.force ? 1 : 0 }; prep(nt); queue.push(nt); });
@@ -387,7 +394,7 @@ function writeBook(date){
   if (ost){ const names = [...pr.unpaired.map(d => d.name), ...pr.looseEsc.map(d => d.name)]; if (names.length) auto[ost.id] = names.join(', '); }
   for (const v of S.vehicles){
     const cell = book[v.id] || (book[v.id] = { text:'', manual:false });
-    if (cell.manual) continue;
+    if (cell.manual || v.tip === 'ostalo') continue;   // »Ostalo« je prosto polje za opombe, ga ne prepisujemo
     cell.text = auto[v.id] || '';
   }
   if (!duty.length && !Object.values(book).some(c => c.text || c.manual)) delete S.crewBook[date];
@@ -400,6 +407,7 @@ function dayWarnings(date){
   const names = {};
   const avail = availableVehicles(date);
   rides.forEach(({ r, nr }) => {
+    if (r.odpovedano) return;
     if (!r.name.trim()) out.push({ nr, text:`Polje ${nr}: manjka ime in priimek.` });
     if (!r.time) out.push({ nr, text:`Polje ${nr}: manjka ura preiskave.` });
     if (!r.from.trim() || !r.to.trim()) out.push({ nr, text:`Polje ${nr}: manjka naslov ${!r.from.trim() ? 'od' : 'do'}.` });
@@ -413,7 +421,10 @@ function dayWarnings(date){
     }
     const k = norm(r.name) + '|' + (r.dia ? r.diaKey : r.time) + '|' + rideDir(r);
     if (r.name.trim()){ (names[k] = names[k] || []).push(nr); }
-    if (avail.length && r.mode === 'leze' && !avail.some(v => v.leze > 0)) out.push({ nr, text:`Polje ${nr}: pacient leže, razpoložljivo vozilo pa nima nosil.` });
+    if (r.mode === 'leze'){
+      if (avail.length && !avail.some(v => v.leze > 0)) out.push({ nr, text:`Polje ${nr}: pacient leže, razpoložljivo vozilo pa nima nosil.` });
+      else { const duty = S.duty[date] || [], sp = S.dayRules[date] && S.dayRules[date].split; if (duty.length && (sp || duty.length < 2)) out.push({ nr, text:`Polje ${nr}: pacient leže potrebuje 2 reševalca (voznik + spremljevalec).` }); }
+    }
   });
   Object.values(names).filter(a => a.length > 1).forEach(a => out.push({ nr:a[0], text:`Polja ${a.join(' in ')}: ista oseba z isto uro (morebitni dvojni vpis).` }));
   return out;

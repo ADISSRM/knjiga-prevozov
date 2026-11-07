@@ -82,7 +82,7 @@ function nalogChip(n, date){
   if (!n) return '<span class="chip">brez naloga</span>';
   const s = nalogState(n, date || todayStr());
   const icon = s.tone === 'bad' ? '⚠ ' : s.tone === 'warn' ? '⏳ ' : '';
-  return `<span class="chip ${s.tone}" title="${esc(NALOG_VRSTE[n.vrsta].l)} nalog ${esc(n.stevilka || '')}">${icon}${esc(NALOG_VRSTE[n.vrsta].l)} · ${esc(s.label)}</span>`;
+  return `<span class="chip nt nt-${n.vrsta}" title="${esc(NALOG_VRSTE[n.vrsta].l)} nalog ${esc(n.stevilka || '')}">${esc(NALOG_VRSTE[n.vrsta].l)}</span><span class="chip ${s.tone}">${icon}${esc(s.label)}</span>`;
 }
 
 /* ---------- Barve pacientov ---------- */

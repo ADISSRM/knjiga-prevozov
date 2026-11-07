@@ -65,6 +65,7 @@ function onRideField(el){
   const date = art.dataset.date, hit = rideById(date, art.dataset.ride); if (!hit) return;
   const r = hit.r, f = el.dataset.f;
   if (f === 'done'){ r.done = el.checked; r.doneAt = r.done ? new Date().toISOString() : ''; if (!r.done) r.doneBy = ''; else { const p = r.nalogId && patientById(r.patientId); const n = p && (p.naloge || []).find(x => x.id === r.nalogId); if (n && n.vrsta === 'enkratna' && !n.porabljen){ n.porabljen = date; } } }
+  else if (f === 'odpovedano'){ r.odpovedano = el.checked; if (el.checked){ r.prevStatus = r.status; r.status = 'preklicana'; } else { r.status = r.prevStatus || 'nova'; r.prevStatus = ''; } }
   else if (el.type === 'checkbox') r[f] = el.checked;
   else r[f] = el.value;
   save();
@@ -133,6 +134,7 @@ document.addEventListener('click', async e => {
     case 'openDay': UI.date = date; go('dan'); break;
     case 'monthPrev': UI.month.m--; if (UI.month.m < 0){ UI.month.m = 11; UI.month.y--; } ensureRange(`${UI.month.y}-${pad(UI.month.m + 1)}-01`, `${UI.month.y}-${pad(UI.month.m + 1)}-31`); render(); break;
     case 'monthNext': UI.month.m++; if (UI.month.m > 11){ UI.month.m = 0; UI.month.y++; } ensureRange(`${UI.month.y}-${pad(UI.month.m + 1)}-01`, `${UI.month.y}-${pad(UI.month.m + 1)}-31`); render(); break;
+    case 'printMonth': printMonth(); break;
     case 'monthToday': { const d = new Date(); UI.month = { y:d.getFullYear(), m:d.getMonth() }; render(); break; }
     case 'dayPrev': UI.date = addDays(UI.date, -1); ensureRange(addDays(UI.date, -1), addDays(UI.date, 1)); render(); break;
     case 'dayNext': UI.date = addDays(UI.date, 1); ensureRange(addDays(UI.date, -1), addDays(UI.date, 1)); render(); break;
@@ -171,7 +173,7 @@ document.addEventListener('click', async e => {
     case 'dDate': UI.dDate = date; render(); break;
     case 'lDate': UI.lDate = date; render(); break;
     case 'dayMode': { const d = UI.dDate; S.dayRules[d] = { ...(S.dayRules[d] || {}), mode:el.dataset.k }; audit('pravila.dan', { datum:d, nacin:el.dataset.k }); save(); rerender(); break; }
-    case 'dayModeReset': { delete S.dayRules[UI.dDate]; save(); rerender(); break; }
+    case 'dayModeReset': { const rr = S.dayRules[UI.dDate]; if (rr){ delete rr.mode; if (!Object.keys(rr).length) delete S.dayRules[UI.dDate]; } save(); rerender(); break; }
     case 'ruleMode': { S.rules.mode = el.dataset.k; audit('pravila.privzeto', { nacin:el.dataset.k }); save(); render(); break; }
     case 'publish': {
       el.disabled = true; const r = await publishDay(date).catch(err => ({ ok:false, msg:String(err && err.message || err) })); el.disabled = false;
@@ -186,7 +188,7 @@ document.addEventListener('click', async e => {
     case 'closeNotice': { const n = S.notices.find(x => x.id === el.dataset.id); if (n){ n.closed = true; if (!n.to || n.to > todayStr()) n.to = todayStr(); save(); render(); } break; }
     case 'delNotice': S.notices = S.notices.filter(x => x.id !== el.dataset.id); save(); render(); break;
     case 'setTab': UI.setTab = el.dataset.k; if (UI.setTab === 'varnost') loadAudit(); if (UI.setTab === 'uporabniki') loadRemoteUsers(); render(); break;
-    case 'addVeh': S.vehicles.push({ id:uid(), name:'Novo vozilo', tip:'sanitetno', ns:'redna', sede:3, leze:0, utila:0, skupaj:3, sedeMax:3, lezeMax:0, utilaMax:0, skupajMax:3, aktiv:true }); save(); rerender(); break;
+    case 'addVeh': S.vehicles.push({ id:uid(), name:'Novo vozilo', vrsta:'osebno', fn:'vse', tip:'sanitetno', ns:'redna', sede:3, leze:0, utila:0, skupaj:3, sedeMax:3, lezeMax:0, utilaMax:0, skupajMax:3, aktiv:true }); save(); rerender(); break;
     case 'delVeh': { const v = S.vehicles[+el.dataset.i]; if (!v) break; if (el.dataset.arm){ S.vehicles.splice(+el.dataset.i, 1); save(); rerender(); } else { el.dataset.arm = '1'; el.classList.add('danger'); el.style.width = 'auto'; el.style.padding = '0 8px'; el.textContent = 'Potrdi'; } break; }
     case 'delStaff': S.staff.splice(+el.dataset.i, 1); save(); rerender(); break;
     case 'exportAddr': {
@@ -280,13 +282,14 @@ document.addEventListener('change', async e => {
   if (el.dataset.f){
     const res = onRideField(el);
     if (res && (res.f === 'from' || res.f === 'to') && el.value.trim()) learnAddress(el.value);
-    if (res && (res.f === 'done' || res.f === 'nalogId' || res.f === 'exc') && (el.closest('.dispatch') || res.f === 'nalogId')) rerender();
+    if (res && (res.f === 'odpovedano' || ((res.f === 'done' || res.f === 'nalogId' || res.f === 'exc') && (el.closest('.dispatch') || res.f === 'nalogId')))) rerender();
     return;
   }
   if (el.dataset.pf){ setPf(el); return; }
   if (el.dataset.nf){ setNf(el); return; }
   if (el.dataset.crew){ const [date, vid] = el.dataset.crew.split('|'); const book = S.crewBook[date] = S.crewBook[date] || {}; const cell = book[vid] = book[vid] || { text:'', manual:false }; cell.text = el.value; cell.manual = el.value.trim() !== ''; el.classList.toggle('auto', false); save(); return; }
   if (el.dataset.duty){ const i = +el.closest('[data-di]').dataset.di; const d = dutyList(UI.dDate)[i]; if (d){ d[el.dataset.duty] = el.dataset.duty === 'ot' ? (+el.value || 0) : el.value; save(); rerender(); } return; }
+  if (el.dataset.act === 'daySplit'){ const d = UI.dDate, rr = S.dayRules[d] = S.dayRules[d] || {}; if (el.checked) rr.split = true; else delete rr.split; if (!Object.keys(rr).length) delete S.dayRules[d]; audit('pravila.dan', { datum:d, razdelitev:el.checked }); save(); rerender(); return; }
   if (el.dataset.act === 'vehToggle'){ const list = S.vehOff[UI.dDate] = S.vehOff[UI.dDate] || []; const i = list.indexOf(el.dataset.id); if (el.checked && i >= 0) list.splice(i, 1); if (!el.checked && i < 0) list.push(el.dataset.id); save(); rerender(); return; }
   if (el.dataset.act === 'pin'){ const hit = rideById(UI.dDate, el.dataset.ride); if (hit){ hit.r.pin = el.value; save(); rerender(); } return; }
   if (el.dataset.diaday){ const [g, d] = el.dataset.diaday.split('|'); const days = S.settings.dia[g].days; const n = +d; const i = days.indexOf(n); if (el.checked && i < 0) days.push(n); if (!el.checked && i >= 0) days.splice(i, 1); save(); return; }

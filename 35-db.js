@@ -129,6 +129,9 @@ async function firebaseAdapter(){
 
 /* ---------- Dokumenti: pretvorba med stanjem aplikacije in zbirkami ---------- */
 function normalizeState(){
+  S.settings.lim = Object.assign({ naselje:50, izven:90, hitra:110, avtocesta:130 }, S.settings.lim || {});
+  if (S.settings.eff == null) S.settings.eff = 85;
+  S.vehicles.forEach(v => { if (!v.vrsta) v.vrsta = (+v.leze > 0) ? 'resevalni' : 'osebno'; if (!v.fn) v.fn = 'vse'; });
   S.vehicles.forEach(v => {
     ['sede','leze','utila','skupaj'].forEach(k => { v[k + 'Max'] = Math.max(+v[k] || 0, v[k + 'Max'] == null ? (+v[k] || 0) : +v[k + 'Max']); });
   });

@@ -417,3 +417,32 @@ a.btn{text-decoration:none}
 @media (max-width:420px){ .logoitem img{height:24px} }
 @media (max-width:640px){ .prow{flex-wrap:wrap} .pr-main{flex:1 1 0} .pr-side{flex:1 1 100%;flex-direction:row;flex-wrap:wrap;justify-content:flex-start;padding-left:53px} .pr-side .chip{white-space:normal;text-align:left} }
 </style>
+
+<style>
+/* Vrste nalogov: barva celega polja prevoza, ko je pacient prepoznan v bazi */
+:root{--nt-letna:#2563EB;--nt-mesecna:#7C3AED;--nt-enkratna:#0F8B6D;--nt-zdravljenje:#C2410C;--nt-none:#B7791F}
+.chip.nt{color:#fff;font-weight:600}
+.chip.nt-letna{background:var(--nt-letna)} .chip.nt-mesecna{background:var(--nt-mesecna)} .chip.nt-enkratna{background:var(--nt-enkratna)} .chip.nt-zdravljenje{background:var(--nt-zdravljenje)}
+.box.nt-letna{--nt:var(--nt-letna)} .box.nt-mesecna{--nt:var(--nt-mesecna)} .box.nt-enkratna{--nt:var(--nt-enkratna)} .box.nt-zdravljenje{--nt:var(--nt-zdravljenje)} .box.nt-none{--nt:var(--nt-none)}
+.box[class*="nt-"]{background:color-mix(in srgb,var(--nt) 15%,var(--surface));border-color:color-mix(in srgb,var(--nt) 55%,var(--line));border-left:6px solid var(--nt)}
+.box[class*="nt-"] input,.box[class*="nt-"] select{background:color-mix(in srgb,var(--nt) 6%,var(--surface))}
+/* Odpovedano: rdeče */
+.box.cancelled,.box.cancelled[class*="nt-"]{background:var(--bad-soft);border:1px solid var(--bad);border-left:6px solid var(--bad)}
+.box.cancelled .bgrid input,.box.cancelled .bgrid select{color:var(--bad);text-decoration:line-through;background:transparent}
+.cancel-chip{background:var(--bad);color:#fff;font-weight:700}
+.check.cancel-check{color:var(--bad);font-weight:600}
+/* Tisk meseca */
+#printArea{display:none}
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body>*:not(#printArea){display:none!important}
+  #printArea{display:block!important;background:#fff;color:#000;font:11px/1.35 system-ui,sans-serif}
+  #printArea h2{margin:0 0 2px;font-size:18px} #printArea h3{margin:12px 0 4px;font-size:13px;text-transform:capitalize}
+  #printArea section{break-inside:avoid} #printArea table{width:100%;border-collapse:collapse}
+  #printArea th,#printArea td{border:1px solid #888;padding:2px 5px;text-align:left;vertical-align:top;color:#000;background:#fff}
+  #printArea th{background:#e8e8e8}
+  #printArea tr.p-cancel td{background:#fde2e2;color:#b00020}
+  #printArea .p-note{margin:4px 0 0}
+}
+</style>
