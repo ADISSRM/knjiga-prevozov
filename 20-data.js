@@ -1,0 +1,115 @@
+'use strict';
+/* =====================================================================
+   PODATKI: naselja Občine Brežice, ustanove, privzete nastavitve
+   Imena naselij: uradni seznam (gov.si, Upravna enota Brežice).
+   KOORDINATE SO PRIBLIŽNE (ocena na ~1 km). Popravi jih v Nastavitve > Naselja,
+   ali uvozi CSV naslovov (GURS RPE) v Nastavitve > Naslovi.
+   ===================================================================== */
+const SETTLEMENT_RAW =
+'Arnovo selo|45.98|15.54;Artiče|45.94|15.49;Bizeljska vas|46.01|15.70;Bizeljsko|46.02|15.71;Blatno|45.98|15.69;Bojsno|46.03|15.66;Boršt|45.99|15.65;Bračna vas|45.99|15.57;Brezje|45.94|15.57;Brezovica na Bizeljskem|46.03|15.69;'+
+'Brežice|45.90|15.59;Brvi|45.98|15.59;Bukošek|45.99|15.62;Bukovje|45.99|15.63;Bušeča vas|45.88|15.57;Cerina|45.95|15.52;Cerklje ob Krki|45.89|15.50;Cirnik|45.92|15.50;Cundrovec|45.93|15.62;Curnovec|45.95|15.64;'+
+'Čatež ob Savi|45.89|15.62;Čedem|45.99|15.55;Črešnjice pri Cerkljah|45.88|15.48;Dečno selo|45.86|15.58;Dednja vas|45.86|15.55;Dobeno|45.97|15.65;Dobova|45.90|15.66;Dolenja Pirošica|45.97|15.50;Dolenja vas pri Artičah|45.93|15.48;Dolenje Skopice|45.90|15.54;'+
+'Dramlja|45.97|15.53;Drenovec pri Bukovju|45.99|15.62;Dvorce|45.93|15.48;Gabrje|45.94|15.55;Gaj|45.92|15.51;Gazice|45.93|15.57;Globočice|45.91|15.66;Globoko|45.91|15.48;Glogov brod|45.95|15.58;Gorenja Pirošica|45.98|15.49;'+
+'Gorenje Skopice|45.91|15.53;Gornji Lenart|45.88|15.58;Gregovce|45.96|15.62;Hrastje|45.92|15.51;Izvir|45.90|15.68;Jereslavec|45.95|15.60;Jesenice|45.86|15.64;Kamence|45.95|15.55;Kapele|45.97|15.61;Koritno|45.97|15.68;'+
+'Kraška vas|45.88|15.54;Križe|45.94|15.65;Krška vas|45.88|15.48;Laze|45.99|15.59;Loče|45.99|15.58;Mala Dolina|45.89|15.54;Mali Cirnik|45.92|15.51;Mali Obrež|45.92|15.62;Mali Vrh|45.92|15.53;Mihalovec|45.87|15.62;'+
+'Mostec|45.91|15.61;Mrzlava vas|45.88|15.49;Nova vas ob Sotli|46.03|15.75;Nova vas pri Mokricah|45.84|15.63;Obrežje|45.86|15.71;Oklukova gora|45.98|15.47;Orešje na Bizeljskem|46.03|15.68;Pavlova vas|46.02|15.69;Pečice|45.94|15.63;Perišče|45.96|15.58;'+
+'Piršenbreg|45.92|15.57;Pišece|46.00|15.46;Podgorje|45.94|15.51;Podgračeno|45.99|15.51;Podvinje|45.95|15.66;Ponikve|45.98|15.64;Poštena vas|45.88|15.67;Prilipe|45.90|15.69;Račja vas|45.88|15.60;Rajec|45.99|15.47;'+
+'Rakovec|45.88|15.68;Ribnica|45.95|15.71;Rigonce|45.97|15.58;Sela|45.90|15.63;Silovec|45.98|15.67;Slogonsko|45.90|15.47;Slovenska vas|45.87|15.69;Sobenja vas|45.99|15.68;Spodnja Pohanca|45.91|15.55;Sromlje|45.97|15.52;'+
+'Stankovo|45.99|15.69;Stara vas - Bizeljsko|46.00|15.72;Stojanski vrh|45.98|15.70;Trebež|45.88|15.64;Velika Dolina|45.89|15.53;Velike Malence|45.90|15.55;Veliki Obrež|45.91|15.63;Vinji vrh|45.96|15.57;Vitna vas|45.94|15.61;Volčje|45.96|15.55;'+
+'Vrhje|45.94|15.55;Vrhovska vas|45.98|15.53;Zasap|45.91|15.66;Zgornja Pohanca|45.92|15.54;Zgornji Obrež|45.92|15.64;Žejno|45.87|15.65;Župeča vas|45.92|15.69;Župelevec|45.87|15.56';
+
+const SETTLEMENTS = SETTLEMENT_RAW.split(';').map(s => { const p = s.split('|'); return { n: p[0], lat: +p[1], lon: +p[2] }; });
+
+/* Delni seznam ulic v mestu Brežice. Dopolni z uvozom CSV ali pa se naslovi naučijo sami. */
+const BREZICE_STREETS = ['Cesta prvih borcev','Trg izgnancev','Cesta bratov Milavcev','Černelčeva cesta','Cesta svobode','Bizeljska cesta','Prešernova ulica','Aškerčeva ulica','Levstikova ulica','Gubčeva ulica'];
+
+/* Ustanove (cilji prevozov). Koordinate približne. */
+const POIS = [
+  { n:'SB Brežice', al:['sb brezice','bolnisnica brezice','splosna bolnisnica brezice','sb brez'], lat:45.903, lon:15.590, sub:'Splošna bolnišnica Brežice', home:true },
+  { n:'SB Brežice – dializa', al:['dializa','dializni center','sb brezice dializa'], lat:45.903, lon:15.590, sub:'Dializni center', home:true },
+  { n:'ZD Brežice', al:['zd brezice','zdravstveni dom brezice','rp brezice','resevalna postaja'], lat:45.905, lon:15.589, sub:'Zdravstveni dom Brežice', home:true },
+  { n:'ZD Krško', al:['zd krsko','zdravstveni dom krsko'], lat:45.959, lon:15.492, sub:'Zdravstveni dom Krško' },
+  { n:'SB Novo mesto', al:['sb novo mesto','bolnisnica novo mesto','sb nm'], lat:45.803, lon:15.170, sub:'Splošna bolnišnica Novo mesto' },
+  { n:'SB Celje', al:['sb celje','bolnisnica celje'], lat:46.237, lon:15.265, sub:'Splošna bolnišnica Celje' },
+  { n:'UKC Ljubljana', al:['ukc ljubljana','ukc lj','ukcl','klinicni center','kc ljubljana'], lat:46.054, lon:14.525, sub:'Univerzitetni klinični center' },
+  { n:'Onkološki inštitut Ljubljana', al:['onkoloski institut','oi ljubljana','onkologija'], lat:46.064, lon:14.521, sub:'Zaloška cesta, Ljubljana' },
+  { n:'URI Soča Ljubljana', al:['uri soca','soca','rehabilitacija'], lat:46.062, lon:14.513, sub:'Linhartova, Ljubljana' },
+  { n:'UKC Maribor', al:['ukc maribor','kc maribor'], lat:46.560, lon:15.635, sub:'Univerzitetni klinični center Maribor' },
+  { n:'Klinika Golnik', al:['golnik','bolnisnica golnik'], lat:46.349, lon:14.338, sub:'Univerzitetna klinika Golnik' },
+  { n:'KBC Zagreb', al:['zagreb','kbc zagreb'], lat:45.820, lon:15.990, sub:'Hrvaška' }
+];
+const BASE_POI = POIS.find(p => p.n === 'ZD Brežice');
+
+const DIA_GROUPS = ['D1','D2','SaD4','D3'];
+const DOW_LONG = ['nedelja','ponedeljek','torek','sreda','četrtek','petek','sobota'];
+const DOW_SHORT = ['ned','pon','tor','sre','čet','pet','sob'];
+const MONTHS = ['januar','februar','marec','april','maj','junij','julij','avgust','september','oktober','november','december'];
+const MODES = { sede:'Sede', leze:'Leže', utila:'Utila' };
+
+/* ---------- Vloge, statusi prevoza, barve pacientov ---------- */
+const ROLES = { skrbnik:'Skrbnik', dispecer:'Dispečer', voznik:'Voznik', spremljevalec:'Spremljevalec' };
+const isCrewRole = r => r === 'voznik' || r === 'spremljevalec';
+/* Potek prevoza. Voznik pritisne naslednji korak, čas se zapiše samodejno. */
+const STATUSI = {
+  nova:{ l:'Vpisan', s:'Vpisan', tone:'' },
+  dodeljena:{ l:'Dodeljen posadki', s:'Dodeljen', tone:'info' },
+  sprejeta:{ l:'Sprejet', s:'Sprejet', tone:'info' },
+  na_poti:{ l:'Na poti do pacienta', s:'Na poti', tone:'warn' },
+  na_kraju:{ l:'Na kraju (pri pacientu)', s:'Na kraju', tone:'warn' },
+  v_vozilu:{ l:'Pacient v vozilu', s:'V vozilu', tone:'accent' },
+  na_cilju:{ l:'Na cilju', s:'Na cilju', tone:'ok' },
+  zakljucena:{ l:'Zaključen', s:'Zaključen', tone:'ok' },
+  ni_doma:{ l:'Pacienta ni na naslovu', s:'Ni doma', tone:'bad' },
+  odklonjena:{ l:'Posadka je odklonila', s:'Odklonjen', tone:'bad' },
+  preklicana:{ l:'Preklican', s:'Preklican', tone:'bad' }
+};
+const STATUS_FLOW = ['dodeljena','sprejeta','na_poti','na_kraju','v_vozilu','na_cilju','zakljucena'];
+const STATUS_BTN = { dodeljena:'Sprejmem prevoz', sprejeta:'Krenil sem k pacientu', na_poti:'Sem pri pacientu', na_kraju:'Pacient je v vozilu', v_vozilu:'Prispel na cilj', na_cilju:'Zaključi prevoz' };
+const CASI_KLJUC = { sprejeta:'sprejeta', na_poti:'na_poti', na_kraju:'na_kraju', v_vozilu:'v_vozilu', na_cilju:'na_cilju', zakljucena:'zakljucena' };
+const NALOG_VRSTE = {
+  letna:{ l:'Letni', hint:'Dializa: velja do 1 leto (Navodilo ZZZS, 23. člen)' },
+  mesecna:{ l:'Mesečni', hint:'Ponavljajoči prevozi v koledarskem mesecu pri istem izvajalcu' },
+  enkratna:{ l:'Enkratni', hint:'Velja za en prevoz' },
+  zdravljenje:{ l:'Za čas zdravljenja', hint:'Obsevanje ali kemoterapija: velja za čas zdravljenja' }
+};
+const ZDRAVNIK_VRSTE = ['osebni','nadomestni','NMP','napotni'];
+/* 8 barv pacientov: odtenki so izbrani, da so berljivi na svetli in temni podlagi (glej CSS --pc0..--pc7) */
+const PCOLORS = 8;
+
+function defaultState(){
+  return {
+    v:2,
+    settings:{
+      speed:45, speedHw:85, road:1.3, pickMin:4, dropMin:3, buffer:15, window:60, detour:25, maxRide:120,
+      shift:'06:00', idleMin:30, slots:35, waitTol:10,
+      dia:{
+        D1:{ start:'06:30', end:'10:30', days:[1,3,5] },
+        D2:{ start:'11:00', end:'15:00', days:[1,3,5] },
+        SaD4:{ start:'15:30', end:'19:30', days:[1,3,5] },
+        D3:{ start:'06:30', end:'10:30', days:[2,4,6] }
+      }
+    },
+    /* Prilagodljiva pravila: "običajno" velja, "prilagoditev" se uporabi samo, ko je potrebna (ali ko dispečer tako izbere). */
+    rules:{
+      mode:'samodejno',            // strogo | samodejno | prosto
+      enforceShift:true, shiftHours:8, overtimeMax:240,
+      bend:{ maxRide:180, detour:45, window:120, buffer:5 },
+      opozoriloDni:30, opozoriloKratki:7
+    },
+    vehicles:[
+      { id:'v04', name:'Avto 04', tip:'sanitetno', ns:'redna', sede:3, leze:1, utila:0, skupaj:4, sedeMax:3, lezeMax:1, utilaMax:0, skupajMax:4, aktiv:true },
+      { id:'v13', name:'Avto 13', tip:'sanitetno', ns:'redna', sede:4, leze:0, utila:0, skupaj:4, sedeMax:6, lezeMax:0, utilaMax:0, skupajMax:6, aktiv:true },
+      { id:'c1', name:'C1 rdeči', tip:'sanitetno', ns:'oboje', sede:2, leze:0, utila:0, skupaj:2, sedeMax:2, lezeMax:0, utilaMax:0, skupajMax:2, aktiv:true },
+      { id:'ost', name:'OSTALO', tip:'ostalo', ns:'oboje', sede:0, leze:0, utila:0, skupaj:0, sedeMax:0, lezeMax:0, utilaMax:0, skupajMax:0, aktiv:true }
+    ],
+    staff:[], patients:[], duty:{}, vehOff:{}, rides:{}, crewBook:{}, notices:[], dayNote:{}, dayRules:{}, published:{}, nadure:{}, audit:[], diaPatients:[], addrBook:[], coordOv:{}, extraSlots:{}
+  };
+}
+
+/* Dovoljenja po vlogah. Prava pravila varnosti so v firestore.rules; to je samo za vmesnik in lokalni način. */
+const PERM = {
+  skrbnik:['book','publish','patients','staff','settings','users','audit'],
+  dispecer:['book','publish','patients','staff'],
+  voznik:['crew'],
+  spremljevalec:['crew']
+};

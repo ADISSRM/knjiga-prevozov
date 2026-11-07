@@ -1,0 +1,122 @@
+rules_version = '2';
+
+// ============================================================================
+//  Knjiga reševalnih prevozov – Reševalna postaja / ZD Brežice
+//  Varnostna pravila Firestore. Vse, kar ni izrecno dovoljeno, je ZAVRNJENO.
+//
+//  Vloge (users/{uid}.role):
+//    skrbnik, dispecer  -> "osebje": berejo/pišejo knjigo, paciente, nastavitve
+//    voznik, spremljevalec -> "posadka": berejo SAMO svoj objavljeni razpored
+//                              in lahko dodajo statuse (dogodke) za svoje vozilo
+//  Račun brez profila v users/ ali z active == false nima dostopa do ničesar.
+//  Vlogo lahko spreminja samo skrbnik; prvega skrbnika ustvariš ročno v konzoli.
+// ============================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- pomožne funkcije ----------
+    function signedIn() { return request.auth != null; }
+    function profPath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function hasProfile() { return signedIn() && exists(profPath()); }
+    function active() { return hasProfile() && get(profPath()).data.active == true; }
+    function role() { return get(profPath()).data.role; }
+    function isAdmin() { return active() && role() == 'skrbnik'; }
+    function isStaff() { return active() && (role() == 'skrbnik' || role() == 'dispecer'); }
+    function isCrew()  { return active() && (role() == 'voznik' || role() == 'spremljevalec'); }
+    function isDateId(id) { return id.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'); }
+    function str(v, max) { return v is string && v.size() <= max; }
+
+    // ---------- uporabniški profili ----------
+    // Vsak prebere svoj profil, osebje vse (za dodeljevanje računov osebju).
+    // Piše samo skrbnik (nihče si ne more sam dodeliti vloge).
+    match /users/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isStaff());
+      allow list: if isStaff();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['name', 'role', 'active'])
+        && str(request.resource.data.name, 80)
+        && request.resource.data.role in ['skrbnik', 'dispecer', 'voznik', 'spremljevalec']
+        && request.resource.data.active is bool;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'role', 'active'])
+        && request.resource.data.role in ['skrbnik', 'dispecer', 'voznik', 'spremljevalec']
+        && request.resource.data.active is bool;
+      allow delete: if false;   // račune se onemogoči (active = false), profil ostane zaradi sledljivosti
+    }
+
+    // ---------- nastavitve (vozila, osebje, pravila, naslovi) ----------
+    match /cfg/{doc} {
+      allow read: if isStaff();
+      // Prvi zapis (nastavitve) ustvari skrbnik. Dispečer lahko spreminja le osebje, obvestila, naslove in privzeti način pravil;
+      // vozila, razdalje, dializne skupine in varnostne nastavitve lahko spreminja samo skrbnik.
+      allow create: if isAdmin() && doc == 'main';
+      allow update: if doc == 'main' && (isAdmin()
+        || (isStaff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['staff', 'notices', 'addrBook', 'coordOv', 'rules'])));
+      allow delete: if false;
+    }
+
+    // ---------- dnevna knjiga: dan = en dokument (prevozi, posadke, okvare) ----------
+    match /days/{date} {
+      allow read: if isStaff();
+      allow create, update: if isStaff() && isDateId(date);
+      allow delete: if false;   // knjige se ne briše
+    }
+
+    // ---------- baza pacientov in nalogov ----------
+    match /patients/{id} {
+      allow read: if isStaff();
+      allow create, update: if isStaff()
+        && str(request.resource.data.name, 120)
+        && (!('naloge' in request.resource.data) || (request.resource.data.naloge is list && request.resource.data.naloge.size() <= 200));
+      allow delete: if isStaff();   // brisanje pacienta (v aplikaciji se zapiše v revizijsko sled)
+    }
+
+    // ---------- objavljen razpored vozila + statusi (dogodki) ----------
+    match /runs/{runKey} {
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if false;
+
+      // Dogodki so samo dodajanje (nespremenljiva sled). Posadka jih lahko dodaja le za vozilo, v katerem je po razporedu.
+      match /events/{eventId} {
+        allow read: if isStaff()
+          || (isCrew() && exists(/databases/$(database)/documents/runs/$(runKey))
+              && request.auth.uid in get(/databases/$(database)/documents/runs/$(runKey)).data.uids);
+        allow create: if (isStaff() || (isCrew() && exists(/databases/$(database)/documents/runs/$(runKey))
+                          && request.auth.uid in get(/databases/$(database)/documents/runs/$(runKey)).data.uids))
+          && request.resource.data.keys().hasOnly(['rideId', 'status', 't', 'c', 'uid', 'by', 'note', 'corr', 'ts'])
+          && request.resource.data.keys().hasAll(['rideId', 'status', 't', 'c', 'uid', 'by'])
+          && request.resource.data.uid == request.auth.uid
+          && str(request.resource.data.rideId, 40)
+          && request.resource.data.status in ['sprejeta', 'na_poti', 'na_kraju', 'v_vozilu', 'na_cilju', 'zakljucena', 'ni_doma', 'odklonjena']
+          && str(request.resource.data.t, 40) && str(request.resource.data.c, 40)
+          && str(request.resource.data.by, 80)
+          && (!('note' in request.resource.data) || str(request.resource.data.note, 200));
+        allow update, delete: if false;
+      }
+    }
+
+    // ---------- osebni razpored posadke: crew/{datum}_{uid} ----------
+    // Posadka bere samo dokument, katerega ID se konča z njenim uid. Piše samo osebje.
+    match /crew/{id} {
+      allow read: if isStaff()
+        || (isCrew() && id.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}_' + request.auth.uid + '$'));
+      allow create, update, delete: if isStaff();
+    }
+
+    // ---------- revizijska sled: samo dodajanje, bere skrbnik ----------
+    match /audit/{id} {
+      allow read: if isAdmin();
+      allow create: if active()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['t', 'uid', 'who', 'role', 'action', 'detail', 'ts'])
+        && str(request.resource.data.action, 80);
+      allow update, delete: if false;
+    }
+
+    // ---------- vse drugo ----------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

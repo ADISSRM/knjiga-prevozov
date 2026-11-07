@@ -1,0 +1,60 @@
+<div id="auth" class="auth" hidden>
+  <section class="auth-art" aria-hidden="false">
+    <div class="stack" style="gap:18px">
+      <div class="logobar on-dark" id="authLogos"></div>
+      <div class="brand">
+        <div class="brand-mark">KP</div>
+        <div><b>Reševalna postaja Brežice</b><span>Lokalni dispečer · Zdravstveni dom</span></div>
+      </div>
+    </div>
+    <div>
+      <h1>Knjiga reševalnih prevozov</h1>
+      <p>Prevozi za danes in jutri, razpored vozil in voznikov, vrstni red pobiranja pacientov. Vse v enem pregledu.</p>
+    </div>
+    <svg class="route" viewBox="0 0 560 300" fill="none" aria-hidden="true">
+      <path d="M20 250 C 110 250, 120 150, 210 160 S 330 250, 400 170 S 470 60, 540 50" stroke="#DD5207" stroke-width="4" stroke-linecap="round" stroke-dasharray="2 12"/>
+      <circle cx="20" cy="250" r="9" fill="#0D1A2C" stroke="#8C9BB5" stroke-width="3"/>
+      <circle cx="210" cy="160" r="9" fill="#0D1A2C" stroke="#DCE4F2" stroke-width="3"/>
+      <circle cx="400" cy="170" r="9" fill="#0D1A2C" stroke="#DCE4F2" stroke-width="3"/>
+      <rect x="524" y="34" width="32" height="32" rx="9" fill="#DD5207"/>
+      <path d="M540 42v16M532 50h16" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/>
+    </svg>
+  </section>
+  <section class="auth-form">
+    <div class="auth-card" id="authCard"></div>
+  </section>
+</div>
+
+<div id="app" hidden>
+  <div class="shell">
+    <aside class="rail" aria-label="Glavna navigacija">
+      <div class="logobar" id="railLogos"></div>
+      <div class="brand">
+        <div class="brand-mark">KP</div>
+        <div><b>Knjiga prevozov</b><span>RP Brežice</span></div>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="rail-foot">
+        <div class="userbox"><div class="avatar" id="avatar">?</div><div><b id="uName">—</b><span id="uRole">—</span></div></div>
+        <div class="rail-btns">
+          <button type="button" id="themeBtn" aria-label="Zamenjaj temo">Tema</button>
+          <button type="button" id="logoutBtn">Odjava</button>
+        </div>
+      </div>
+    </aside>
+    <div class="work">
+      <div class="logobar crewlogos" id="crewLogos" hidden></div>
+      <header class="top">
+        <div><h1 id="pageTitle">Knjiga</h1><div class="sub" id="pageSub"></div></div>
+        <div class="top-actions" id="topActions"></div>
+      </header>
+      <main id="view" tabindex="-1"></main>
+    </div>
+  </div>
+  <nav class="tabbar" id="tabbar" aria-label="Navigacija"></nav>
+</div>
+
+<div id="suggest" role="listbox" hidden></div>
+<div id="modal" hidden></div>
+<div id="toast" aria-live="polite"></div>
+<datalist id="staffList"></datalist>
