@@ -1,48 +1,30 @@
-// Brežice Autocomplete z OpenStreetMap (Nominatim API)
-// Brezplačna integracija vseh ulic, cest in hišnih številk v Občini Brežice (tako kot na Google Maps)
+// Lokalni zanesljivi seznami za Občino Brežice (deluje vedno in povsod)
+export const BREZICE_LOKACIJE = [
+  "Aškerčeva ulica, Brežice", "Bizeljska cesta, Brežice", "Bohoričeva ulica, Brežice",
+  "Cesta 4. julija, Brežice", "Cesta bratov Milavec, Brežice", "Cesta prvih borcev, Brežice",
+  "Černelčeva cesta, Brežice", "Finžgarjeva ulica, Brežice", "Gregorčičeva ulica, Brežice",
+  "Gubčeva ulica, Brežice", "Jurčičeva ulica, Brežice", "Kajuha ulica, Brežice",
+  "Kettejeva ulica, Brežice", "Kidričeva ulica, Brežice", "Kovinarska ulica, Brežice",
+  "Levstikova ulica, Brežice", "Ljubljanska cesta, Brežice", "Maistrova ulica, Brežice",
+  "Mladinska ulica, Brežice", "Obšolska ulica, Brežice", "Opekarniška ulica, Brežice",
+  "Prešernova cesta, Brežice", "Slomškova ulica, Brežice", "Slovenska ulica, Brežice",
+  "Stara pot, Brežice", "Šolska ulica, Brežice", "Tomsičeva ulica, Brežice",
+  "Tovarniška cesta, Brežice", "Trg izgnancev, Brežice", "Trg 7. oktobra, Brežice",
+  "Trnje, Brežice", "Ulica 11. novembra, Brežice", "Ulica stare pravde, Brežice",
+  "Vrtna ulica, Brežice", "Župančičeva ulica, Brežice",
+  "Topliška cesta, Čatež ob Savi", "Ulica pod gradom, Čatež ob Savi", "Dvorce, Čatež ob Savi", "Prilipe, Čatež ob Savi",
+  "Glavna ulica, Dobova", "Kapeška cesta, Dobova", "Mihalska cesta, Dobova", "Ulica 15. oktobra, Dobova", "Ulica Franca Valanta, Dobova",
+  "Artiče, Artiče", "Arnovo selo, Artiče", "Dečno selo, Artiče", "Glogov Brod, Artiče", "Spodnja Štajerska, Artiče",
+  "Bizeljsko, Bizeljsko", "Bizeljska Vas, Bizeljsko", "Drenovec pri Bukovju, Bizeljsko", "Orešje, Bizeljsko", "Stara vas - Bizeljsko, Bizeljsko",
+  "Boršt, Cerklje ob Krki", "Cerklje ob Krki, Cerklje ob Krki", "Gazice, Cerklje ob Krki", "Skradno, Cerklje ob Krki", "Zasap, Cerklje ob Krki",
+  "Globoko, Globoko", "Mali Vrh, Globoko", "Piršenbreg, Globoko",
+  "Jereslavec, Kapele", "Kapele, Kapele", "Podvinje, Kapele",
+  "Pavlova vas, Pišece", "Pišece, Pišece",
+  "Bukošek, Brežice", "Cundrovec, Brežice", "Krška vas, Krška vas", "Mostec, Dobova",
+  "Rigonce, Dobova", "Sela pri Dobovi, Dobova", "Velike Malence, Krška vas",
+  "Veliki Obrež, Dobova", "Mali Obrež, Dobova", "Zakot, Brežice"
+];
 
-const NOMINATIM_BASE_URL = 'https://nominatim.openstreetmap.org/search';
-
-/**
- * Poišče točne ceste ali hišne številke v Občini Brežice preko OpenStreetMap
- * @param {string} query - Vneseno besedilo (npr. "Cesta prvih borcev 12" ali "Zakot")
- * @return {Promise<Array<{display_name: string, lat: string, lon: string}>>}
- */
-export async function searchBreziceAddress(query) {
-  if (!query || query.trim().length < 2) return [];
-
-  const params = new URLSearchParams({
-    q: `${query}, Občina Brežice, Slovenija`,
-    format: 'json',
-    addressdetails: '1',
-    limit: '10',
-    countrycodes: 'si'
-  });
-
-  try {
-    const response = await fetch(`${NOMINATIM_BASE_URL}?${params.toString()}`, {
-      headers: {
-        'User-Agent': 'ResevalnaPostajaBrezice/2.0'
-      }
-    });
-    if (!response.ok) return [];
-    const results = await response.json();
-    return results.map(item => ({
-      display_name: item.display_name,
-      lat: item.lat,
-      lon: item.lon,
-      address: item.address
-    }));
-  } catch (error) {
-    console.error('Napaka pri iskanju naslova preko OpenStreetMap:', error);
-    return [];
-  }
-}
-
-/**
- * Nastavi dinamiko samodejnega predlaganja (autocomplete) na polju vnosov
- * @param {string} inputId - ID HTML vnosnega polja
- */
 export function setupDynamicOSMAutocomplete(inputId) {
   const inputEl = document.getElementById(inputId);
   if (!inputEl) return;
@@ -53,17 +35,7 @@ export function setupDynamicOSMAutocomplete(inputId) {
     datalist.id = `${inputId}-osm-list`;
     document.body.appendChild(datalist);
   }
+  
+  datalist.innerHTML = BREZICE_LOKACIJE.map(naslov => `<option value="${naslov}">`).join('');
   inputEl.setAttribute('list', datalist.id);
-
-  let timer = null;
-  inputEl.addEventListener('input', (e) => {
-    const val = e.target.value;
-    clearTimeout(timer);
-    if (val.length < 2) return;
-
-    timer = setTimeout(async () => {
-      const results = await searchBreziceAddress(val);
-      datalist.innerHTML = results.map(r => `<option value="${r.display_name}">`).join('');
-    }, 300);
-  });
 }
