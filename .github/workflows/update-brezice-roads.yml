@@ -1,1 +1,38 @@
 
+name: Update Brezice road network
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "20 3 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  update-roads:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Download Brezice roads
+        run: python scripts/update_brezice_roads.py
+
+      - name: Commit updated road data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/brezice-roads.geojson
+          git diff --cached --quiet || git commit -m "Update Brezice road network"
+          git push
+
