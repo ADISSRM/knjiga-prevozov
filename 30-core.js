@@ -135,6 +135,8 @@ function loadAddr(){
 }
 const SET_IDX = SETTLEMENTS.map(s => ({ ...s, nn:norm(s.n), re:new RegExp('(^|[^a-z0-9])' + norm(s.n).replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(?![a-z0-9])') }))
                            .sort((a,b) => b.nn.length - a.nn.length);
+const TOWN_IDX = TOWNS.map(s => ({ ...s, nn:norm(s.n), re:new RegExp('(^|[^a-z0-9])' + norm(s.n).replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(?![a-z0-9])') }))
+                      .sort((a,b) => b.nn.length - a.nn.length);
 const BASE_POINT = { lat:BASE_POI.lat, lon:BASE_POI.lon };
 function settlementPoint(s){ const o = S.coordOv[s.n]; return o ? { lat:o[0], lon:o[1] } : { lat:s.lat, lon:s.lon }; }
 
@@ -158,7 +160,15 @@ function geo(text){
     if (!best || pos > best.pos || (pos === best.pos && s.nn.length > best.s.nn.length)) best = { s, pos };
   }
   if (best){ const pt = settlementPoint(best.s); return { kind:'naselje', key:'n:'+best.s.n, lat:pt.lat, lon:pt.lon, label:best.s.n, naselje:best.s.n }; }
-  // 4) brez ujemanja: center Brežic
+  // 4) večje mesto izven občine (Ljubljana, Novo mesto, Krško …): središče mesta; zadnja omemba v besedilu
+  let bt = null;
+  for (const s of TOWN_IDX){
+    const m = s.re.exec(t); if (!m) continue;
+    const pos = m.index + m[1].length;
+    if (!bt || pos > bt.pos || (pos === bt.pos && s.nn.length > bt.s.nn.length)) bt = { s, pos };
+  }
+  if (bt) return { kind:'mesto', key:'t:' + bt.s.n, lat:bt.s.lat, lon:bt.s.lon, label:bt.s.n, naselje:bt.s.n };
+  // 5) brez ujemanja: center Brežic (cestnih podatkov za tak naslov ni; razdalja je ocena)
   return { kind:'neznano', key:'?:'+t, lat:BASE_POINT.lat, lon:BASE_POINT.lon, label:text.trim() };
 }
 
@@ -191,6 +201,7 @@ function suggestions(kind, raw){
   }
   BREZICE_STREETS.forEach(st => { const sc = scoreOf(st); if (sc < 9){ const full = num ? `${st} ${num}, Brežice` : null; if (full) push(full, 'ulica v Brežicah', full, sc); else push(st + ' …', 'ulica v Brežicah · dodaj hišno št.', st + ' ', sc + .1); } });
   SETTLEMENTS.forEach(s => { const sc = scoreOf(s.n); if (sc < 9){ const full = num ? `${s.n} ${num}` : s.n; push(full, 'naselje · Občina Brežice', full, sc + .3); } });
+  TOWNS.forEach(s => { const sc = scoreOf(s.n); if (sc < 9){ const full = num ? `${s.n} ${num}` : s.n; push(full, 'mesto izven občine', full, sc + .4); } });
   out.sort((a,b) => a.score - b.score || a.label.length - b.label.length);
   return out.slice(0, 8);
 }
@@ -228,6 +239,6 @@ function learnAddress(text){
   const t = text.trim(); if (t.length < 4) return;
   const g = geo(t); if (g.kind === 'poi' || g.kind === 'neznano' || g.kind === 'prazno') return;
   if (S.addrBook.some(a => norm(a.t) === norm(t))) return;
-  if (g.kind === 'naselje' && norm(t) === norm(g.label)) return;
+  if ((g.kind === 'naselje' || g.kind === 'mesto') && norm(t) === norm(g.label)) return;
   S.addrBook.push({ t, s:g.naselje || '' }); if (S.addrBook.length > 3000) S.addrBook.shift();
 }

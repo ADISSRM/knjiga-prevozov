@@ -14,7 +14,7 @@ css = '\n'.join(re.findall(r'<style>(.*?)</style>', head, re.S))
 assert css.strip(), 'CSS ni najden'
 (out / 'style.css').write_text(css, encoding='utf-8')
 
-order = ['20-data', '30-core', '35-db', '40-planner', '45-pacienti', '50-views', '52-views2', '55-live', '60-main']
+order = ['20-data', '30-core', '35-db', '38-routing', '40-planner', '45-pacienti', '50-views', '52-views2', '55-live', '60-main']
 js = '\n'.join((src / f'{n}.js').read_text(encoding='utf-8') for n in order)
 (out / 'app.js').write_text(js, encoding='utf-8')
 body = (src / '10-body.html').read_text(encoding='utf-8')
@@ -26,7 +26,8 @@ csp = "; ".join([
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
-    "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com",
+    # povezave: Firebase + strežnik za cestno usmerjanje (OSRM; samo koordinate). Če ga zamenjaš (config.js → routing), dodaj njegov izvor sem.
+    "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://router.project-osrm.org https://routing.openstreetmap.de",
     "manifest-src 'self'", "worker-src 'self'",
     "base-uri 'none'", "form-action 'self'", "object-src 'none'"])
 html = f'''<!doctype html>
@@ -80,6 +81,7 @@ ai = icon(180, True); ai.convert('RGB').save(out / 'icons/apple-touch-icon.png')
 (out / 'logos/README.txt').write_text('Sem skopiraj logotipa (PNG, prosojno ozadje, višina vsaj 120 px):\n  zd-brezice.png  (logotip ZD Brežice)\n  nmp.png         (logotip NMP)\nČe datotek ni, aplikacija pokaže besedilo. Logotipe lahko naložiš tudi v Nastavitve > Logotipi (velja samo za ta telefon/brskalnik).\n', encoding='utf-8')
 for f in ('config.js', 'boot.js', 'manifest.webmanifest', '.nojekyll'): shutil.copy(dep / f, out / f)
 if (dep / 'naslovi.json').exists(): shutil.copy(dep / 'naslovi.json', out / 'naslovi.json')
+if (dep / 'razdalje.json').exists(): shutil.copy(dep / 'razdalje.json', out / 'razdalje.json')
 build = hashlib.sha256(''.join((out / n).read_text(encoding='utf-8') for n in ('app.js', 'style.css', 'index.html', 'boot.js')).encode()).hexdigest()[:10]
 (out / 'sw.js').write_text((dep / 'sw.js').read_text(encoding='utf-8').replace('__BUILD__', build), encoding='utf-8')
 print('dist OK, build', build, {p.name: p.stat().st_size for p in out.iterdir() if p.is_file()})

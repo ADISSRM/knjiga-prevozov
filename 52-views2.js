@@ -123,6 +123,13 @@ function cleanupEmptyPatient(){
 }
 
 /* ---------- Živo stanje (dispečer) ---------- */
+/* Ocena prihoda glede na zadnje sporočilo posadke (po cestnih podatkih); prazno, če prevoz ni v teku */
+function etaChip(date, r){
+  let e = null; try { e = liveEta(date, r); } catch(err){}
+  if (!e) return '';
+  const late = e.appt != null && e.t > e.appt;
+  return `<span class="eta ${late ? 'bad' : ''}" title="Ocena iz zadnjega sporočila posadke in cestnih podatkov">${esc(e.what)} ~${fmtT(e.t)}${late ? ' · po uri preiskave' : ''}</span>`;
+}
 function renderLive(){
   const today = todayStr(), tom = addDays(today, 1), date = UI.lDate || today;
   const sum = liveSummary(date), rows = liveRows(date), pub = S.published[date], st = publishState(date);
@@ -134,7 +141,7 @@ function renderLive(){
     if (!items.length) return '';
     const done = items.filter(x => ['zakljucena'].includes(x.r.status)).length;
     return `<section class="card crewcard"><header><div><h3>${esc(run.vehName)} · ${esc((run.names || []).join(', '))}</h3><div class="timeline-note">${items.length} prevozov · ${done} zaključenih</div></div><div class="meta">${run.uids && run.uids.length ? `<span class="chip ok">${run.uids.length} v aplikaciji</span>` : '<span class="chip warn">nihče v aplikaciji</span>'}</div></header>
-      <div class="livelist">${items.map(({ r, nr }) => `<div class="liverow ${pcClass(r.patientId)}"><span class="pdot ${pcClass(r.patientId)}"></span><div class="lr-main"><b>${esc(r.name || '(brez imena)')}</b> <span class="chip mono">št. ${nr}</span> <span class="chip mono" style="color:var(--m-${r.mode})">${esc(MODES[r.mode] || r.mode)}</span><div class="hint">${esc(r.from)} → ${esc(r.to)} · ura ${esc(r.time || '–')}${r.statusBy ? ' · ' + esc(r.statusBy) : ''}${r.statusNote ? ' · ' + esc(r.statusNote) : ''}</div></div><div class="lr-side">${stChip(r.status || 'nova')}<div class="row" style="gap:4px;justify-content:flex-end">${timesChips(r)}</div></div></div>`).join('')}</div></section>`;
+      <div class="livelist">${items.map(({ r, nr }) => `<div class="liverow ${pcClass(r.patientId)}"><span class="pdot ${pcClass(r.patientId)}"></span><div class="lr-main"><b>${esc(r.name || '(brez imena)')}</b> <span class="chip mono">št. ${nr}</span> <span class="chip mono" style="color:var(--m-${r.mode})">${esc(MODES[r.mode] || r.mode)}</span><div class="hint">${esc(r.from)} → ${esc(r.to)} · ura ${esc(r.time || '–')}${r.statusBy ? ' · ' + esc(r.statusBy) : ''}${r.statusNote ? ' · ' + esc(r.statusNote) : ''}</div></div><div class="lr-side">${stChip(r.status || 'nova')}${etaChip(date, r)}<div class="row" style="gap:4px;justify-content:flex-end">${timesChips(r)}</div></div></div>`).join('')}</div></section>`;
   }).join('');
   const loose = (byRun._ || []).filter(x => !['zakljucena', 'preklicana'].includes(x.r.status) && !x.r.done);
   $('#view').innerHTML = `${demoBanner()}
@@ -169,7 +176,7 @@ function crewRideCard(date, doc, rid, r){
   return `<article class="rcard ${pc} st-card-${s}"><div class="rc-head"><span class="chip mono">${esc(r.pickT || r.time || '')}</span><span class="chip mono">št. ${r.nr}</span><span class="chip mono" style="color:var(--m-${r.mode})">${esc(MODES[r.mode] || r.mode)}</span>${r.dia ? `<span class="chip mono">${esc(r.dia)}</span>` : ''}<span class="sp"></span>${stChip(s)}</div>
     <h3 class="rc-name"><span class="pdot ${pc}"></span>${esc(r.name)}</h3>
     <div class="rc-addr"><div><span class="lbl">Od</span><div>${esc(r.from)}</div></div><div><span class="lbl">Do</span><div>${esc(r.to)}</div></div></div>
-    ${r.time ? `<div class="hint">Ura preiskave / dogovorjena ura: <b>${esc(r.time)}</b></div>` : ''}
+    ${r.time || /\d/.test(r.dropT || '') ? `<div class="hint">${r.time ? `Ura preiskave / dogovorjena ura: <b>${esc(r.time)}</b>` : ''}${/\d/.test(r.dropT || '') ? `${r.time ? ' · ' : ''}predviden ${r.kind === 'from' ? 'prihod domov' : 'prihod na cilj'}: <b class="mono">${esc(r.dropT)}</b>` : ''}</div>` : ''}
     ${r.note ? `<div class="banner warn" style="padding:8px 12px"><span>${IC.info}</span><div>${esc(r.note)}</div></div>` : ''}
     ${r.nalog ? `<div class="hint">Nalog: ${esc(r.nalog.v)}${r.nalog.st ? ', št. ' + esc(r.nalog.st) : ''}</div>` : ''}
     <div class="row" style="gap:6px">${tel ? `<a class="btn sm" href="tel:${esc(tel)}">${IC.phone} Pokliči</a>` : ''}<a class="btn sm" href="${esc(navUrl(toPick ? r.from : r.to))}" target="_blank" rel="noopener noreferrer">${IC.pin} Navigacija</a></div>

@@ -16,6 +16,7 @@ Interna aplikacija Reševalne postaje ZD Brežice: **dispečerski del** (knjiga 
 | Prijava in uporabniki | Firebase Authentication (načrt Spark) | 0 € | Uporabniško ime + geslo, vsak uporabnik svoj račun. |
 | Skupna baza | Cloud Firestore (načrt Spark) | 0 € do kvote | Knjiga, pacienti, nalogi, razporedi, statusi. Šifrirano pri prenosu in v mirovanju. |
 | Dostop po vlogah | `firestore.rules` | 0 € | Strežnik sam zavrne vse, kar vloga ne sme (glej razdelek 9). |
+| Cestno usmerjanje | OSRM nad podatki OpenStreetMap (javni strežnik ali lasten) | 0 € | Prave razdalje in časi vožnje po cestah, tudi do Ljubljane in Novega mesta (razdelek 10.2). Strežnik dobi samo koordinate. |
 
 Kvote načrta Spark po podatkih na strani firebase.google.com/pricing (preveri tudi sam, ker se lahko spremenijo): Firestore 1 GiB podatkov, **50.000 branj/dan, 20.000 pisanj/dan, 20.000 brisanj/dan**; Authentication 50.000 aktivnih uporabnikov na mesec. Načrt Spark ne zahteva plačilnega sredstva. Moja ocena (ni merjeno): pri 3–5 napravah dispečerja in 6–10 telefonih posadk je dnevna poraba pod 10 % kvote. Porabo vidiš v Firebase konzoli → Firestore Database → zavihek **Usage**.
 
@@ -31,6 +32,7 @@ Aplikacija obdeluje **zdravstvene podatke** (ime, naslov, razlog prevoza, števi
 1. Pred uporabo s pravimi podatki to **potrdita vodstvo ZD Brežice in pooblaščenec za varstvo podatkov (DPO)**. Vprašanja zanju: (a) ali je storitev Google Firebase kot podatkovni obdelovalec dovoljena (pogodba o obdelavi podatkov po členu 28 GDPR, Google Cloud Data Processing Addendum); (b) ali je dovoljena lokacija baze v EU, ker v Sloveniji ni na voljo; (c) ali je potrebna ocena učinka na varstvo podatkov (DPIA); (d) kdo je skrbnik aplikacije in kdo odobri račune.
 2. Informacijski pooblaščenec RS je v mnenju z dne 17. 10. 2024 izrazil stališče o shranjevanju zdravstvenih zbirk zunaj Slovenije. Zato **do pisne odobritve v aplikacijo vpisuj samo izmišljene podatke** (aplikacija ima gumb »Odstrani vse primere«).
 3. ZZZS: nalog za prevoz mora biti popoln, sicer ni veljaven; originale hrani po predpisih (najmanj 2 leti). Aplikacija je **pripomoček za evidenco in opozorila, ne nadomešča papirnatega naloga**.
+4. **Cestno usmerjanje pošilja koordinate zunanjemu strežniku** (privzeto javni strežnik OSRM). Ne pošilja imen, naslovov, telefonskih številk ali kakršnihkoli podatkov o pacientih, vendar so koordinate hišnega naslova (če je naslov uvožen iz registra) v načelu povezljive s posameznikom. Zato DPO vprašaj tudi: (a) ali je dovoljeno javno storitev uporabljati s pravimi pacienti, (b) ali naj se namesto nje uporabi lasten strežnik OSRM (razdelek 11.6) ali samo vnaprej izračunana datoteka `razdalje.json`, ki sploh ne zahteva povezave. Cestno usmerjanje lahko kadarkoli izklopiš: **Nastavitve → Izračun → Uporabi dejanske ceste** ali `routing.url: ''` v `config.js`; aplikacija se vrne k oceni po zračni razdalji.
 
 Če odobritve ne dobiš, aplikacijo še vedno uporabljaš v **lokalnem načinu** (podatki samo v tvojem brskalniku, brez oblaka) – glej razdelek 12.
 
@@ -128,6 +130,10 @@ window.KP_CONFIG = {
   userDomain: 'rp-brezice.example',   // pusti
   sdkVersion: '10.14.1',              // pusti
   offline: true,
+  routing: {                          // cestno usmerjanje (razdelek 10.2 in 11.6)
+    url: 'https://router.project-osrm.org',
+    fallback: ['https://routing.openstreetmap.de/routed-car']
+  },
   firebase: {
     apiKey: 'AIza…',                   // tvoja vrednost
     authDomain: 'knjiga-prevozov-zd-brezice.firebaseapp.com',
@@ -137,6 +143,8 @@ window.KP_CONFIG = {
 };
 ```
 3. Shrani datoteko. Če `apiKey` še vsebuje besedo `VSTAVI`, aplikacija **namenoma** teče v lokalnem demo načinu in v oblak ne pošilja ničesar.
+
+> **`routing`**: strežnik za cestno usmerjanje. Pusti kot je, ali zamenjaj z lastnim (11.6). `url: ''` cestno usmerjanje izklopi (ocena po zračni razdalji). Če uporabljaš drug strežnik, ga je treba dovoliti tudi v Content-Security-Policy (`connect-src` v `build-prod.py`, nato ponovna gradnja); javna strežnika sta že dovoljena.
 
 > `userDomain` je namišljena domena: uporabnik »matej« se v Firebase vodi kot `matej@rp-brezice.example`. Prijava je v aplikaciji vedno samo z uporabniškim imenom (`matej`); lahko pa vpišeš tudi celoten e-naslov, če računu daš pravi e-naslov.
 
@@ -279,6 +287,7 @@ Aplikacija je PWA: namesti se z začetnega zaslona, brez trgovin Apple/Google (b
 | Ugibanje gesel | Najmanj 10 znakov; po 5 napačnih poskusih 30 s zaklep v aplikaciji (Firebase dodatno omejuje poskuse). |
 | Odprt telefon | Samodejna odjava po 30 min nedejavnosti; odjava izbriše lokalno kopijo; PWA ne hrani podatkov o pacientih v predpomnilniku datotek. |
 | Uhajanje v javni repozitorij | Repozitorij vsebuje samo kodo; podatki so samo v Firestore. |
+| Podatki, ki zapustijo aplikacijo zaradi cest | Cestnemu strežniku gredo samo koordinate (brez imen, naslovov, pacientov), brez piškotkov in brez prilagojenih glav; `Referer` se ne pošilja. Hišni naslovi se ne shranjujejo v trajni predpomnilnik poti in se ob odjavi pozabijo. CSP dovoli samo nastavljene cestne strežnike. Možnost popolne izključitve: `razdalje.json` ali izklop (0.2, točka 4). |
 
 **Česa aplikacija NE more zagotoviti** (poštena omejitev): dvostopenjska prijava za račune v aplikaciji ni vključena v brezplačnem načrtu (ni preverjeno, ali jo je mogoče dodati brez Blaze); zato so pomembna dolga gesla, zaklep telefona in hitro onemogočanje računov. GitHub Pages ne omogoča nastavljanja HTTP glav; CSP je zato podan v `index.html` (nekaj glav, npr. `frame-ancestors`, tako ni mogoče nastaviti – nadomešča jih `boot.js`). Če želiš polne glave, lahko isto mapo objaviš na Firebase Hosting (brezplačno na Spark; `firebase.json` z glavami) – to je neobvezna nadgradnja.
 
@@ -291,7 +300,7 @@ Aplikacija je PWA: namesti se z začetnega zaslona, brez trgovin Apple/Google (b
 3. **Pacienti**: karton pacienta → **Nov nalog**. Izberi vrsto (**letni**, **mesečni**, **enkratni**, **za čas zdravljenja**); datumi veljavnosti se izpolnijo sami (letni: 1 leto minus 1 dan, mesečni: do konca meseca, enkratni: isti dan, za čas zdravljenja: 27 dni) in jih lahko popraviš. Obvezna polja: številka, naročnik, izvajalec, zdravnik, razlog, relacija (od – do), veljavnost. Nepopoln nalog je označen.
 4. **Opozorila o poteku**: letni nalog opozori **30 dni** vnaprej, mesečni in za čas zdravljenja **7 dni** vnaprej (nastavljivo v Nastavitve → Pravila). Če je vpisan nov nalog, ki se začne ob izteku starega, opozorila ni.
 5. **Predogled za kopiranje**: gumb pri prevozu ali nalogu odpre predogled (polna oblika, kratka, vrstica za knjigo); klik na vrstico kopira vrstico, »Kopiraj vse« kopira vse.
-6. **Razpored**: izberi, kdo je danes na delu, in vozila; aplikacija izračuna posadke, vrstni red in ure odhoda. Okvare in servisi so v zavihku **Okvare**.
+6. **Razpored**: izberi, kdo je danes na delu, in vozila; aplikacija izračuna posadke, vrstni red, ure odhoda in **ocenjene prihode** (razdelek 10.2). Okvare in servisi so v zavihku **Okvare**.
 7. **Objavi razpored**: vsak voznik/spremljevalec prejme svoj del. Spremembe po objavi: ponovno **Objavi**.
 8. **Živo**: statusi (dodeljen → sprejet → na poti → na kraju → v vozilu → na cilju → zaključen) in težave (»ni doma«, odklonjen). Ob zaključku se čas in **»Kdo je naredil odvoz«** vpišeta v knjigo sama.
 
@@ -310,6 +319,27 @@ Za vsak dan in za vsak prevoz posebej izbereš, kako strogo naj aplikacija ravna
 - **Ročna izjema:** pri prevozu obkljukaj **Izjema pravil** (dovoli prilagoditve samo za ta prevoz), ali pri prevozu v razporedu izberi **vozilo** namesto »Samodejno« (prestavi prevoz na izbrano vozilo, tudi v strogem načinu). Prilagoditve so izpisane.
 - **Varnost je trda meja:** ležečega pacienta aplikacija **nikoli** ne uvrsti v vozilo brez nosil, tudi v načinu »Prosto«. Takšen prevoz ostane nerazporejen z jasnim razlogom.
 - Vse prilagoditve so izpisane (opozorila rumene barve v razporedu in v besedilu razporeda), da dispečer ve, kaj je bilo upognjeno.
+
+---
+
+### 10.2 Cestno usmerjanje in samodejni razpored
+
+**Kaj se zgodi samo od sebe**
+- Razdalje in časi vožnje se računajo **po dejanskem cestnem omrežju** (OpenStreetMap, strežnik OSRM), tudi za vožnje do Ljubljane, Novega mesta, Celja, Maribora, Zagreba in drugih krajev (vgrajena je tabela ustanov in 24 mest). Zračna razdalja se uporabi **samo**, če cestnih podatkov za neko relacijo ni (izklop, izpad strežnika, neznan kraj); takšne vrednosti so povsod označene z **~**.
+- Pacienti s **sorodnimi cilji** (npr. UKC, Onkološki inštitut in URI Soča v Ljubljani) gredo lahko v **eni vožnji** z več izstopi; vrstni red pobiranja in izstopov je izračunan tako, da nihče ne zamudi in da je pot kratka. Meje nastaviš v Nastavitve → Izračun (največja vožnja med cilji, največ ciljev).
+- Za vsakega pacienta je izpisano: ura pobiranja, **predviden prihod na cilj**, **rezerva** do ure preiskave (rdeče, če bi zamudil) in pri odvozu **čakanje**. Vozila se izbirajo glede na kapaciteto in vrsto prevoza (ležeči, sedeči, invalidski voziček); ležeči pacient nikoli ne dobi vozila brez nosil.
+- Aplikacija **poišče učinkovitejši razpored**: poleg prvotnega izračuna preizkusi še nekaj različic (združevanje ciljev, primernejša vozila, drugačen vrstni red dodeljevanja) in izbere najboljšo. Ne sprejme razporeda, ki bi imel več nerazporejenih prevozov, in ne takega z več zamudami, razen če zato razporedi več prevozov. Kar je spremenila, je izpisano v kartici **Predlogi**.
+- **Prevozi, ki so že v teku** (posadka je sprejela, je na poti ali je pacient v vozilu), se ne prestavljajo na drugo vozilo.
+
+**Kaj aplikacija opozori** (rdeča/rumena opozorila in Predlogi)
+- **nerazporejeni prevozi** z razlogom (npr. manjka voznik, ni vozila z nosili) in predlogom, kaj bi pomagalo (zgodnejši začetek izmene, dodaten voznik, prosto vozilo, način »Samodejno«);
+- **zamude** in prevoz, ki bi pacienta pripeljal veliko prezgodaj;
+- **konflikti**: prekrivajoči se prevozi iste posadke, isto vozilo dvakrat, isti pacient na dveh prevozih hkrati ali z dvema terminoma, ki ju ni mogoče doseči (npr. ob 9:00 v Ljubljani in ob 9:30 v Novem mestu), odvoz, ki je načrtovan manj kot 15 min po terminu preiskave istega pacienta, prevoz, ki je že v teku, pa bi ga razpored dal drugemu vozilu;
+- naslov, ki je daleč od najbližje ceste (možna napaka v koordinatah).
+
+**Vrstica »Cestni podatki«** v Dispečerju pove, ali so podatki po cestah (**v redu**), se še nalagajo, ali strežnik ni dosegljiv (**ni povezave**: razpored se vseeno sestavi z oceno, ponovni poskus teče sam; gumb **Poskusi znova**). Pred **Objavi razpored** aplikacija počaka (do 9 s), da prispejo manjkajoči cestni podatki, zato so objavljene ure čim bolj točne. Pri vsaki vožnji gumb **Pot** pokaže pot po cestah (brez podlage zemljevida; podatki © prispevajoči OpenStreetMap). V pogledu **Živo** je pri prevozih v teku ocena prihoda, izračunana iz zadnjega sporočila posadke.
+
+**Točnost – poštena omejitev:** čas vožnje je izračunan iz cestnega omrežja in hitrostnih omejitev, **brez prometa v živo, zapor in zastojev** (po potrebi nastavi popravek časa, npr. 1,15). Naselja so predstavljena s središčno točko, kraji izven občine s središčem mesta; za vožnje do ustanov (UKC, SB Novo mesto …) so koordinate ustanove. Zato so ure prihoda **ocene**, ne jamstva.
 
 ---
 
@@ -342,6 +372,14 @@ Vgrajena so vsa naselja Občine Brežice, ustanove in del ulic v Brežicah. **Po
 ### 11.5 Poraba kvote
 Firebase konzola → **Firestore Database** → **Usage**. Če se približuješ 50.000 branj na dan, zmanjšaj število hkrati odprtih dispečerskih naprav ali me kontaktiraj za optimizacijo.
 
+### 11.6 Cestni podatki: preverjanje, `razdalje.json` in lasten strežnik
+1. **Preveri povezavo** (skrbnik): Nastavitve → Izračun → **Preveri cestne podatke**. Aplikacija vpraša strežnik za pot Brežice → UKC Ljubljana (pričakovano okoli 100 km in 65–75 min) in izpiše rezultat. **To naredi pri prvem zagonu**: v okolju, kjer je bil paket narejen, javni strežniki niso bili dosegljivi, zato je delovanje preizkušeno samo proti posnetku dokumentiranega API-ja (razdelek 14).
+2. **Vnaprej pripravljena datoteka `razdalje.json`** (priporočeno, neobvezno): klikni **Predpripravi vse relacije** (aplikacija prenese razdalje med vsemi naselji, ustanovami in mesti; traja od nekaj sekund do minute), nato **Prenesi razdalje.json** in datoteko naloži v GitHub poleg `index.html` (**Add file → Upload files**), kot pri `naslovi.json`. Vse naprave potem poznajo razdalje med splošnimi točkami brez klica strežnika; strežnik je potreben samo še za naslove, ki niso v seznamu. Datoteka vsebuje samo koordinate splošnih točk in številke, nobenih podatkov o pacientih. Ponovi, če spremeniš koordinate naselij.
+3. **Lasten strežnik OSRM** (za redno delo s pravimi pacienti): OSRM je prosta programska oprema; za Slovenijo zadošča majhen strežnik. Po dokumentaciji projekta OSRM (github.com/Project-OSRM/osrm-backend) se podatki pripravijo z orodji `osrm-extract`, `osrm-partition`, `osrm-customize` iz izvoza OpenStreetMap za Slovenijo (npr. `slovenia-latest.osm.pbf` pri Geofabrik), strežnik pa zažene `osrm-routed --algorithm mld`. Pogoji: (a) dostop **prek HTTPS** (brskalnik blokira klice na http s strani https), (b) strežnik mora dovoliti zahteve s tvoje strani (CORS), (c) izvor strežnika dodaš v `connect-src` v `build-prod.py` in ponovno zgradiš, (d) naslov vpišeš v `config.js` → `routing.url`. Postopka v tem paketu **nisem preizkusil**; vprašaj ZD-jevo informatiko.
+4. **GraphHopper** ni vgrajen. Aplikacija govori jezik OSRM (`/table/v1/driving` za matrike, `/route/v1/driving` za pot). Za GraphHopper bi bil potreben ločen vmesnik; v kodi je cestni del zaprt v datoteki `src/38-routing.js`.
+5. Pogoji uporabe javnih strežnikov (omejitve hitrosti, brez jamstva) se lahko spremenijo; preveri jih na straneh projektov OSRM oziroma FOSSGIS. Aplikacija zahteve združuje v pakete, jih redči in ob napaki preklopi na drugi strežnik ali na oceno.
+6. **Izbriši predpomnilnik poti** v istem zavihku pozabi vse prenesene razdalje (npr. po večji spremembi cest).
+
 ---
 
 ## 12. Lokalni (demo) način – brez oblaka
@@ -361,6 +399,8 @@ Firebase konzola → **Firestore Database** → **Usage**. Če se približuješ 
 | Statusi se ne prikažejo dispečerju | Voznik nima signala (koraki čakajo); preveri, da je aplikacija odprta. |
 | Stara različica po posodobitvi | Zapri aplikacijo in jo odpri še enkrat; na iPhonu odstrani ikono in jo ponovno dodaj. |
 | Prijava na iPhonu ne ostane | Vključena je samodejna odjava po 30 min; po odjavi se zahteva ponovna prijava. Obkljukaj »Ostani prijavljen« samo na osebnem, zaklenjenem telefonu. |
+| Vrstica »Cestni podatki: ni povezave« ali ure so označene z ~ | Strežnik za ceste ni dosegljiv ali ni nastavljen. Razpored deluje z oceno (zračna razdalja × faktor). Klikni **Poskusi znova**; v Nastavitve → Izračun klikni **Preveri cestne podatke**. Če sporoča napako CSP, izvor strežnika ni v `connect-src` (11.6). |
+| Čas ali kilometri se ne ujemajo z navigacijo | Aplikacija ne pozna prometa v živo, naselja so predstavljena s središčno točko. Nastavi popravek časa vožnje ali vpiši točnejše koordinate naselja (Nastavitve → Naslovi in naselja). |
 | Zapisi se čez dan nenadoma ne shranjujejo | Morda je presežena dnevna kvota Firestore Spark (razdelek 0.1): preveri **Usage** v Firebase konzoli; kvota se ponastavi vsak dan, ali zmanjšaj število hkrati odprtih naprav. |
 
 ---
@@ -373,8 +413,11 @@ Firebase konzola → **Firestore Database** → **Usage**. Če se približuješ 
 - Nalogi: izračun veljavnosti, opozorilo na mejnem dnevu (30 dni letni, 7 dni mesečni), podaljšanje utiša opozorilo, samodejno izpolnjevanje iz baze pacientov, predogled za kopiranje.
 - Povezava s Firebase: ves koda za prijavo, vloge, sinhronizacijo, objavo in statuse je preizkušena **proti nadomestnemu (lažnemu) Firebase SDK-ju**, vključno s strogim CSP. Preverjeno je, da voznikov brskalnik ne dostopa do `days`, `patients`, `cfg` in `audit`, in da dokumenti ustrezajo pravilom oblike Firestore (npr. brez ugnezdenih tabel).
 - Mobilni zasloni (390 px), temni način, PWA in delovanje brez povezave (lupina aplikacije).
+- **Cestno usmerjanje in planer** (mapa `source/tests`, zagon `node tests/run.js`): 21 preizkusov proti posnetku OSRM API-ja (oblika zahtev, bloki do 40 + 40 točk, izpad in preklop na drugi strežnik, omejitev hitrosti 429, relacije brez poti, uvoz/izvoz `razdalje.json`, Ljubljana, Novo mesto, več ciljev v eni vožnji, več izhodišč pri odvozu, ležeči, ustrezno vozilo, konflikti pacientov, zaklep prevozov v teku, predlogi, ocena prihoda v živo) ter 24 preverjanj zgrajene aplikacije v brskalniku Chromium (prikaz, ocene ETA, pot na zemljevidu, nastavitve, izklop, izpad in okrevanje, brez klicev razen na cestni strežnik, brez kršitev CSP). Izhodiščni izračun planerja je bil primerjan s prvotnim planerjem na 600 naključnih dneh (dva niza po 300): **enak rezultat**, kadar so cestni podatki in iskanje boljših razporedov izklopljeni.
 
 **NI preizkušeno (v mojem okolju ni bilo dostopa do Googlovih strežnikov):**
+- **Povezava z živim strežnikom OSRM (javnim ali lastnim)** – v okolju, kjer je bil paket narejen, je bil dostop do teh strežnikov blokiran. Oblika zahtev in odgovorov sledi dokumentaciji OSRM v5, a **prvi pravi preizkus je gumb »Preveri cestne podatke«** (razdelek 11.6). Ne vem, kako natančno javni strežniki obravnavajo naše število zahtev.
+- Točnost časov v primerjavi z resničnimi vožnjami (promet, zapore, hitrost reševalnega vozila) – potrebuje primerjavo na nekaj tednih resničnih prevozov.
 - **Prava povezava s tvojim Firebase projektom** – prvi zagon (razdelek 6) je prvi pravi preizkus; samotest in Rules Playground (3.1, 6.1) ti povesta, ali pravila delujejo.
 - **Veljavnost `firestore.rules` na pravem strežniku** – pravila nisem mogel zagnati v emulatorju. Napisana so po dokumentaciji; **prilepi jih in izvedi preizkuse iz razdelka 3.1**.
 - Uvoz **prave** datoteke GURS z naslovi; namestitev na pravih telefonih iPhone/Android; omejitev API ključa.

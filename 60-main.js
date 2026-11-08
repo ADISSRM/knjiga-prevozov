@@ -196,6 +196,31 @@ document.addEventListener('click', async e => {
       let rows = []; try { rows = JSON.parse(store.get('kp.addr') || '[]'); } catch(e){}
       if (!rows.length){ toast('Ni uvoženih naslovov za prenos'); break; }
       const u = URL.createObjectURL(new Blob([JSON.stringify(rows)], { type:'application/json' })); const l = document.createElement('a'); l.href = u; l.download = 'naslovi.json'; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 1000); audit('naslovi.izvoz', { vrstic:rows.length }); break; }
+    case 'routeRetry': ROUTE.retry(); toast('Ponovni poskus prenosa cestnih podatkov'); rerender(); break;
+    case 'routeTest': { if (!isAdmin()) break; UI.routeTest = { running:true }; rerender(); UI.routeTest = await ROUTE.test(); audit('cestni.podatki.preizkus', { uspeh:!!UI.routeTest.ok }); rerender(); break; }
+    case 'routeWarm': {
+      if (!isAdmin() || (UI.routeWarm && UI.routeWarm.running)) break;
+      UI.routeWarm = { running:true, done:0, total:0 }; rerender();
+      try { const n = await ROUTE.warm((d, t) => { UI.routeWarm.done = d; UI.routeWarm.total = t; const c = $('#routeProg'); if (c) c.textContent = `Prenos … ${d}/${t}`; }); UI.routeWarm = { msg:`Preneseno: ${n} novih relacij.` }; audit('cestni.podatki.prenos', { relacij:n }); }
+      catch(err){ UI.routeWarm = { err:true, msg:'Prenos ni uspel: ' + String((err && err.message) || err) }; }
+      rerender(); break; }
+    case 'routeExport': {
+      if (!isAdmin()) break;
+      const o = ROUTE.exportShared(), tot = o.pts.length * (o.pts.length - 1);
+      if (!tot || o.missing >= tot){ toast('Ni cestnih podatkov za izvoz. Najprej klikni »Predpripravi vse relacije«.'); break; }
+      const u = URL.createObjectURL(new Blob([JSON.stringify(o)], { type:'application/json' })); const l = document.createElement('a'); l.href = u; l.download = 'razdalje.json'; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 1000);
+      audit('razdalje.izvoz', { tock:o.pts.length, manjka:o.missing }); toast(o.missing ? `Prenesena je datoteka razdalje.json (manjka ${o.missing} relacij). Naloži jo v mapo s config.js.` : 'Prenesena je datoteka razdalje.json. Naloži jo v isto mapo kot config.js.'); break; }
+    case 'routeClear': if (!isAdmin()) break; ROUTE.clear(); UI.routeTest = null; UI.routeWarm = null; UI.maps = {}; rerender(); toast('Predpomnilnik cestnih podatkov izbrisan'); break;
+    case 'tripMap': {
+      const key = el.dataset.trip;
+      if (UI.maps[key]){ delete UI.maps[key]; rerender(); break; }
+      let hit = null; computePlan(UI.dDate).crews.forEach(c => c.trips.forEach(t => { if (tripKey(c, t) === key) hit = t; }));
+      if (!hit) break;
+      if (!ROUTE.enabled()){ UI.maps[key] = 'err:cestni podatki so izklopljeni'; rerender(); break; }
+      UI.maps[key] = 'load'; rerender();
+      try { await ROUTE.path(tripWaypoints(hit)); if (UI.maps[key]) UI.maps[key] = 'ok'; } catch(err){ if (UI.maps[key]) UI.maps[key] = 'err:' + String((err && err.message) || err).slice(0, 80); }
+      if (UI.maps[key]) rerender();
+      break; }
     case 'clearAddr': store.del('kp.addr'); loadAddr(); rerender(); toast('Uvoženi naslovi izbrisani'); break;
     case 'clearLearned': S.addrBook = []; save(); rerender(); toast('Naučeni naslovi izbrisani'); break;
     case 'delUser': { const u = USERS.find(x => x.id === el.dataset.id); USERS = USERS.filter(x => x.id !== el.dataset.id); S.staff.forEach(s => { if (s.userId === el.dataset.id) s.userId = ''; }); saveUsers(); audit('uporabnik.izbrisan', { uporabnik:u && u.username }); save(); rerender(); break; }
@@ -419,6 +444,7 @@ async function logout(msg = ''){
   const wasFb = BACKEND === 'firebase';
   stopSync(); stopCrew(); ME = null; sess.del('kp.sess');
   $('#app').hidden = true; $('#auth').hidden = false; sgClose(); UI.modal = null; renderModal();
+  try { ROUTE.forget(); } catch(e){} UI.maps = {}; UI.routeTest = null; UI.routeWarm = null;
   S = defaultState(); normalizeState(); USERS_REMOTE = []; AUDIT.length = 0; Object.keys(EVENTS).forEach(k => delete EVENTS[k]); Object.keys(RUNS).forEach(k => delete RUNS[k]);
   if (wasFb){ try { await DB.shutdown(); } catch(e){} try { sessionStorage.setItem('kp.msg', msg); } catch(e){} location.reload(); return; }
   renderAuth('login', msg);
@@ -485,6 +511,7 @@ async function seedDemo(pw){
 async function boot(){
   applyTheme();
   S = defaultState(); normalizeState(); loadAddr(); loadSharedAddr(); fillLogos();
+  ROUTE.onUpdate = () => { if (ME) scheduleRender(); }; ROUTE.init();     // cestni podatki: splošni predpomnilnik + razdalje.json; osveži prikaz, ko prispejo novi podatki
   let msg = ''; try { msg = sessionStorage.getItem('kp.msg') || ''; sessionStorage.removeItem('kp.msg'); } catch(e){}
   if (BACKEND === 'firebase'){
     $('#auth').hidden = false; renderAuth('login', 'Povezujem …');

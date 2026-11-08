@@ -203,6 +203,23 @@ textarea{resize:vertical;min-height:70px}
 .warnlist li::marker{color:var(--warn)}
 details.warnbox{background:var(--warn-soft);color:var(--warn);border-radius:12px;padding:10px 14px}
 details.warnbox summary{cursor:pointer;font-weight:600}
+/* cestni podatki, predlogi, zemljevid poti, ETA */
+.routebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:8px 12px;font-size:13px;color:var(--ink-2)}
+.routebar .rt{flex:1 1 260px;min-width:0}
+.sugg{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.sugg li{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;line-height:1.4}
+.sugg li .chip{flex:none;margin-top:1px}
+.eta{display:inline-flex;gap:4px;align-items:center;font:500 12px var(--font-mono);color:var(--ink-2)}
+.eta.bad{color:var(--bad)} .eta.ok{color:var(--ok)} .eta.warn{color:var(--warn)}
+.rmap{border:1px solid var(--line);border-radius:12px;background:var(--surface-2);padding:6px;margin:4px 0 2px}
+.rmap svg{display:block;width:100%;height:auto;max-height:340px}
+.rmap .rl{fill:none;stroke:var(--info);stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round}
+.rmap .rl.est{stroke:var(--ink-3);stroke-dasharray:6 5}
+.rmap .rp{fill:var(--surface);stroke:var(--accent);stroke-width:2}
+.rmap .rp.do{fill:var(--accent)}
+.rmap .rp.base{fill:var(--ink);stroke:var(--ink)}
+.rmap text{font:600 11px var(--font-mono);fill:var(--ink);paint-order:stroke;stroke:var(--surface-2);stroke-width:3px}
+.rmap .rleg{font-size:12px;color:var(--ink-2);margin:4px 4px 0}
 
 /* ---------- Suggestions ---------- */
 #suggest{position:fixed;z-index:50;background:var(--surface);border:1px solid var(--line-2);border-radius:11px;box-shadow:0 12px 32px rgba(13,26,44,.22);padding:4px;max-height:300px;overflow:auto;min-width:240px}

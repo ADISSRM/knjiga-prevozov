@@ -30,6 +30,8 @@ function publishState(date){
 }
 async function publishDay(date){
   if (!can('publish')) return { ok:false, msg:'Nimaš pravice za objavo.' };
+  // pred objavo počakaj na cestne podatke (prvi izračun jih samo zahteva), da so objavljeni časi izračunani po dejanskih cestah
+  computePlan(date); try { await ROUTE.settle(); } catch(e){}
   const plan = computePlan(date), at = new Date().toISOString();
   const runs = [], noAccount = new Set(), ridesAssigned = new Set();
   for (const c of plan.crews){
@@ -43,10 +45,10 @@ async function publishDay(date){
         const hit = rideById(date, r.id); if (!hit) return;
         const rr = hit.r, p = patientById(rr.patientId), n = p ? (p.naloge || []).find(x => x.id === rr.nalogId) : null;
         rides[r.id] = { nr:hit.nr, name:rr.name, time:rr.time, from:rr.from, to:rr.to, phone:rr.phone, mode:rr.mode, note:rr.note || '', dia:rr.dia || '', color:p && p.color >= 0 ? p.color : -1,
-          nalog:n ? { v:NALOG_VRSTE[n.vrsta].l, st:n.stevilka } : null, pickT:fmtT(plan.assign[r.id].t), kind:t.kind };
+          nalog:n ? { v:NALOG_VRSTE[n.vrsta].l, st:n.stevilka } : null, pickT:fmtT(plan.assign[r.id].t), dropT:(t.ev && (t.ev.nEst || t.ev.nWait) ? '~' : '') + fmtT(plan.assign[r.id].dropT), kind:t.kind };
         ridesAssigned.add(r.id);
       });
-      trips.push({ id:t.id, kind:t.kind, anchor:t.anchor.label || '', depart:fmtT(t.depart), stops:t.stopsAbs.map(s => ({ t:fmtT(s.t), type:s.type, label:s.type === 'do' && t.kind === 'to' ? (t.anchor.label || '') : (s.pt.label || ''), rideIds:(s.people || []).filter(Boolean).map(r => r.id) })) });
+      trips.push({ id:t.id, kind:t.kind, anchor:tripTitle(t) || t.anchor.label || '', depart:fmtT(t.depart), est:!!(t.ev && t.ev.nEst), stops:t.stopsAbs.map(s => ({ t:fmtT(s.t), type:s.type, label:s.pt.label || (s.type === 'do' && t.kind === 'to' ? (t.anchor.label || '') : ''), rideIds:(s.people || []).filter(Boolean).map(r => r.id) })) });
     });
     runs.push({ key, vehId:c.id, vehName:c.vehicle.name, uids, names:members.map(m => m.name), rides, trips, depart:fmtT(c.firstDepart), rideIds:Object.keys(rides) });
   }

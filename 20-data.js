@@ -40,6 +40,19 @@ const POIS = [
 ];
 const BASE_POI = POIS.find(p => p.n === 'ZD Brežice');
 
+/* Večja mesta izven Občine Brežice (središče mesta, PRIBLIŽNO). Naslov v teh mestih se usmerja do središča mesta;
+   za točen cilj uporabi ustanovo (npr. UKC Ljubljana) ali uvozi naslove. Besedilo naslova se NIKAMOR ne pošilja. */
+const TOWNS = [
+  { n:'Ljubljana', lat:46.0511, lon:14.5051 }, { n:'Novo mesto', lat:45.8044, lon:15.1689 }, { n:'Krško', lat:45.9592, lon:15.4922 },
+  { n:'Brestanica', lat:45.9690, lon:15.4660 }, { n:'Sevnica', lat:46.0097, lon:15.3014 }, { n:'Kostanjevica na Krki', lat:45.8433, lon:15.4439 },
+  { n:'Šentjernej', lat:45.8433, lon:15.3375 }, { n:'Trebnje', lat:45.9067, lon:15.0089 }, { n:'Radeče', lat:46.0658, lon:15.1814 },
+  { n:'Zidani Most', lat:46.0833, lon:15.1667 }, { n:'Laško', lat:46.1544, lon:15.2347 }, { n:'Celje', lat:46.2300, lon:15.2600 },
+  { n:'Velenje', lat:46.3597, lon:15.1100 }, { n:'Maribor', lat:46.5547, lon:15.6459 }, { n:'Ptuj', lat:46.4200, lon:15.8700 },
+  { n:'Murska Sobota', lat:46.6625, lon:16.1664 }, { n:'Kranj', lat:46.2389, lon:14.3556 }, { n:'Koper', lat:45.5481, lon:13.7302 },
+  { n:'Metlika', lat:45.6475, lon:15.3139 }, { n:'Črnomelj', lat:45.5708, lon:15.1894 }, { n:'Zagreb', lat:45.8150, lon:15.9819 },
+  { n:'Samobor', lat:45.8014, lon:15.7106 }, { n:'Jastrebarsko', lat:45.6700, lon:15.6500 }, { n:'Krapina', lat:46.1608, lon:15.8797 }
+];
+
 const DIA_GROUPS = ['D1','D2','SaD4','D3'];
 const DOW_LONG = ['nedelja','ponedeljek','torek','sreda','četrtek','petek','sobota'];
 const DOW_SHORT = ['ned','pon','tor','sre','čet','pet','sob'];
@@ -84,6 +97,9 @@ function defaultState(){
     settings:{
       speed:45, speedHw:85, lim:{ naselje:50, izven:90, hitra:110, avtocesta:130 }, eff:85, road:1.3, pickMin:4, dropMin:3, buffer:15, window:60, detour:25, maxRide:120,
       shift:'06:00', idleMin:30, slots:35, waitTol:10,
+      routing:{ on:true, factor:1 },   // cestni podatki (OSRM); faktor = množitelj trajanja vožnje (1 = podatki OSRM)
+      optimize:true, destMin:12, maxDests:3, waitMax:90,   // optimizacija razporeda, »sorodni cilji« (največ min med cilji), največ ciljev v eni vožnji, opozorilo za čakanje
+
       dia:{
         D1:{ start:'06:30', end:'10:30', days:[1,3,5] },
         D2:{ start:'11:00', end:'15:00', days:[1,3,5] },
