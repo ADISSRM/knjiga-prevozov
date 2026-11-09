@@ -25,18 +25,41 @@ const BREZICE_STREETS = ['Cesta prvih borcev','Trg izgnancev','Cesta bratov Mila
 
 /* Ustanove (cilji prevozov). Koordinate približne. */
 const POIS = [
-  { n:'SB Brežice', al:['sb brezice','bolnisnica brezice','splosna bolnisnica brezice','sb brez'], lat:45.903, lon:15.590, sub:'Splošna bolnišnica Brežice', home:true },
-  { n:'SB Brežice – dializa', al:['dializa','dializni center','sb brezice dializa'], lat:45.903, lon:15.590, sub:'Dializni center', home:true },
-  { n:'ZD Brežice', al:['zd brezice','zdravstveni dom brezice','rp brezice','resevalna postaja'], lat:45.905, lon:15.589, sub:'Zdravstveni dom Brežice', home:true },
-  { n:'ZD Krško', al:['zd krsko','zdravstveni dom krsko'], lat:45.959, lon:15.492, sub:'Zdravstveni dom Krško' },
-  { n:'SB Novo mesto', al:['sb novo mesto','bolnisnica novo mesto','sb nm'], lat:45.803, lon:15.170, sub:'Splošna bolnišnica Novo mesto' },
-  { n:'SB Celje', al:['sb celje','bolnisnica celje'], lat:46.237, lon:15.265, sub:'Splošna bolnišnica Celje' },
-  { n:'UKC Ljubljana', al:['ukc ljubljana','ukc lj','ukcl','klinicni center','kc ljubljana'], lat:46.054, lon:14.525, sub:'Univerzitetni klinični center' },
-  { n:'Onkološki inštitut Ljubljana', al:['onkoloski institut','oi ljubljana','onkologija'], lat:46.064, lon:14.521, sub:'Zaloška cesta, Ljubljana' },
-  { n:'URI Soča Ljubljana', al:['uri soca','soca','rehabilitacija'], lat:46.062, lon:14.513, sub:'Linhartova, Ljubljana' },
-  { n:'UKC Maribor', al:['ukc maribor','kc maribor'], lat:46.560, lon:15.635, sub:'Univerzitetni klinični center Maribor' },
-  { n:'Klinika Golnik', al:['golnik','bolnisnica golnik'], lat:46.349, lon:14.338, sub:'Univerzitetna klinika Golnik' },
-  { n:'KBC Zagreb', al:['zagreb','kbc zagreb'], lat:45.820, lon:15.990, sub:'Hrvaška' }
+  { n:'SB Brežice', al:['sb brezice','bolnisnica brezice','splosna bolnisnica brezice','sb brez'], lat:45.903, lon:15.590, sub:'Splošna bolnišnica Brežice', home:true, extra:3, gq:'Splošna bolnišnica Brežice, Brežice' },
+  { n:'SB Brežice – dializa', al:['dializa','dializni center','sb brezice dializa'], lat:45.903, lon:15.590, sub:'Dializni center', home:true, extra:3, gq:'Splošna bolnišnica Brežice, Brežice' },
+  { n:'ZD Brežice', al:['zd brezice','zdravstveni dom brezice','rp brezice','resevalna postaja'], lat:45.905, lon:15.589, sub:'Zdravstveni dom Brežice', home:true, extra:2, gq:'Zdravstveni dom Brežice, Brežice' },
+  { n:'ZD Krško', al:['zd krsko','zdravstveni dom krsko'], lat:45.959, lon:15.492, sub:'Zdravstveni dom Krško', extra:2, gq:'Zdravstveni dom Krško, Krško' },
+  { n:'SB Novo mesto', al:['sb novo mesto','bolnisnica novo mesto','sb nm'], lat:45.803, lon:15.170, sub:'Splošna bolnišnica Novo mesto', extra:5, gq:'Splošna bolnišnica Novo mesto, Novo mesto' },
+  { n:'SB Celje', al:['sb celje','bolnisnica celje'], lat:46.237, lon:15.265, sub:'Splošna bolnišnica Celje', extra:5, gq:'Splošna bolnišnica Celje, Celje' },
+  { n:'UKC Ljubljana', al:['ukc ljubljana','ukc lj','ukcl','klinicni center','kc ljubljana'], lat:46.054, lon:14.525, sub:'Univerzitetni klinični center', extra:10, gq:'UKC Ljubljana, Zaloška cesta 2, Ljubljana' },
+  { n:'Onkološki inštitut Ljubljana', al:['onkoloski institut','oi ljubljana','onkologija'], lat:46.064, lon:14.521, sub:'Zaloška cesta, Ljubljana', extra:5, gq:'Onkološki inštitut Ljubljana, Zaloška cesta 2, Ljubljana' },
+  { n:'URI Soča Ljubljana', al:['uri soca','soca','rehabilitacija'], lat:46.062, lon:14.513, sub:'Linhartova, Ljubljana', extra:5, gq:'URI Soča, Linhartova cesta 51, Ljubljana' },
+  { n:'UKC Maribor', al:['ukc maribor','kc maribor'], lat:46.560, lon:15.635, sub:'Univerzitetni klinični center Maribor', extra:10, gq:'UKC Maribor, Ljubljanska ulica 5, Maribor' },
+  { n:'Klinika Golnik', al:['golnik','bolnisnica golnik'], lat:46.349, lon:14.338, sub:'Univerzitetna klinika Golnik', extra:5, gq:'Univerzitetna klinika Golnik, Golnik 36, Golnik' },
+  { n:'KBC Zagreb', al:['zagreb','kbc zagreb'], lat:45.820, lon:15.990, sub:'Hrvaška', extra:10, gq:'KBC Zagreb, Kišpatićeva 12, Zagreb, Hrvaška' }
+];
+/* Klinike in ambulante v bolnišnicah (začetni predlog; seznam v Nastavitve → Ustanove in klinike je mogoče dopolniti in popraviti).
+   stay = tipično trajanje pregleda (min), ko reševalec počaka; naslov je predlog in ga preveri (Google ga uporabi za natančen izračun km). */
+const CLINIC_SEED = [
+  { p:'UKC Ljubljana', n:'Očesna klinika', al:['ocesna','ocna','oci'], addr:'Grablovičeva ulica 46, Ljubljana', stay:45 },
+  { p:'UKC Ljubljana', n:'Kardiološka ambulanta', al:['kardiologija','kardioloska amb','kardio','kardioloska'], addr:'Zaloška cesta 7, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Interna klinika', al:['interna'], addr:'Zaloška cesta 7, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Nefrološka ambulanta', al:['nefrologija','nefroloska'], addr:'Zaloška cesta 7, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Kirurška klinika', al:['kirurgija','kirurska'], addr:'Zaloška cesta 7, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Travmatološka klinika', al:['travmatologija','travma'], addr:'Zaloška cesta 7, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Nevrološka klinika', al:['nevrologija','nevroloska'], addr:'Zaloška cesta 2, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'ORL klinika', al:['orl','otorinolaringologija'], addr:'Zaloška cesta 2, Ljubljana', stay:45 },
+  { p:'UKC Ljubljana', n:'Dermatovenerološka klinika', al:['dermatologija','derma'], addr:'Gradišče 4, Ljubljana', stay:45 },
+  { p:'UKC Ljubljana', n:'Pediatrična klinika', al:['pediatrija','pediatricna'], addr:'Bohoričeva ulica 20, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Ginekološka klinika', al:['ginekologija','ginekoloska'], addr:'Šlajmerjeva ulica 3, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Klinika za infekcijske bolezni', al:['infekcijska','infekcije'], addr:'Japljeva ulica 2, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Urgentni center', al:['uc','urgenca'], addr:'Zaloška cesta 2, Ljubljana', stay:0 },
+  { p:'SB Celje', n:'Očesni oddelek', al:['oci','ocesna'], addr:'', stay:45 },
+  { p:'SB Celje', n:'Kardiološka ambulanta', al:['kardiologija','kardio'], addr:'', stay:60 },
+  { p:'SB Novo mesto', n:'Očesna ambulanta', al:['oci','ocesna'], addr:'', stay:45 },
+  { p:'SB Novo mesto', n:'Kardiološka ambulanta', al:['kardiologija','kardio'], addr:'', stay:60 },
+  { p:'UKC Maribor', n:'Kardiološka ambulanta', al:['kardiologija','kardio'], addr:'', stay:60 },
+  { p:'UKC Maribor', n:'Očesna klinika', al:['oci','ocesna'], addr:'', stay:45 }
 ];
 const BASE_POI = POIS.find(p => p.n === 'ZD Brežice');
 
@@ -53,7 +76,9 @@ const TOWNS = [
   { n:'Samobor', lat:45.8014, lon:15.7106 }, { n:'Jastrebarsko', lat:45.6700, lon:15.6500 }, { n:'Krapina', lat:46.1608, lon:15.8797 }
 ];
 
-const DIA_GROUPS = ['D1','D2','SaD4','D3'];
+/* Dializa: dopoldanska in popoldanska (čas v Nastavitve → Dializa). Stare skupine (D1, D2, SaD4, D3) se pri nalaganju pretvorijo. */
+const DIA_TERMS = { dop:'Dopoldanska', pop:'Popoldanska' };
+const diaTermOf = v => (v === 'dop' || v === 'pop') ? v : (v === 'D2' || v === 'SaD4') ? 'pop' : v ? 'dop' : '';
 const DOW_LONG = ['nedelja','ponedeljek','torek','sreda','četrtek','petek','sobota'];
 const DOW_SHORT = ['ned','pon','tor','sre','čet','pet','sob'];
 const MONTHS = ['januar','februar','marec','april','maj','junij','julij','avgust','september','oktober','november','december'];
@@ -100,12 +125,10 @@ function defaultState(){
       routing:{ on:true, factor:1 },   // cestni podatki (OSRM); faktor = množitelj trajanja vožnje (1 = podatki OSRM)
       optimize:true, destMin:12, maxDests:3, waitMax:90,   // optimizacija razporeda, »sorodni cilji« (največ min med cilji), največ ciljev v eni vožnji, opozorilo za čakanje
 
-      dia:{
-        D1:{ start:'06:30', end:'10:30', days:[1,3,5] },
-        D2:{ start:'11:00', end:'15:00', days:[1,3,5] },
-        SaD4:{ start:'15:30', end:'19:30', days:[1,3,5] },
-        D3:{ start:'06:30', end:'10:30', days:[2,4,6] }
-      }
+      pickLeze:10, dropLeze:8, pickUtila:8, dropUtila:6,   // čas nalaganja in odpuščanja pri leže in utila pacientu (min)
+      stayDef:45, extraDef:5,                               // privzet čas pregleda, ko reševalec počaka; privzeta pot od vhoda do ambulante
+      diaT:{ dop:{ start:'06:30', end:'10:30' }, pop:{ start:'11:30', end:'15:30' } },   // dializa: dopoldanska in popoldanska
+      google:{ on:true, auto:true, traffic:false }          // natančni km prek Google Maps (ključ v config.js ali v tej napravi)
     },
     /* Prilagodljiva pravila: "običajno" velja, "prilagoditev" se uporabi samo, ko je potrebna (ali ko dispečer tako izbere). */
     rules:{
@@ -120,6 +143,7 @@ function defaultState(){
       { id:'c1', name:'C1 rdeči', tip:'sanitetno', ns:'oboje', sede:2, leze:0, utila:0, skupaj:2, sedeMax:2, lezeMax:0, utilaMax:0, skupajMax:2, aktiv:true },
       { id:'ost', name:'OSTALO', tip:'ostalo', ns:'oboje', sede:0, leze:0, utila:0, skupaj:0, sedeMax:0, lezeMax:0, utilaMax:0, skupajMax:0, aktiv:true }
     ],
+    places:CLINIC_SEED.map((c, i) => ({ id:'k' + i, parent:c.p, n:c.n, al:c.al, addr:c.addr, lat:null, lon:null, stay:c.stay, extra:null })),
     staff:[], patients:[], duty:{}, vehOff:{}, rides:{}, crewBook:{}, notices:[], dayNote:{}, dayRules:{}, published:{}, nadure:{}, audit:[], diaPatients:[], addrBook:[], coordOv:{}, extraSlots:{}
   };
 }

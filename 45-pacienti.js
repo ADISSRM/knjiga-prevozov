@@ -4,7 +4,7 @@
    Veljavnost se računa samodejno, en mesec pred iztekom se prikaže opozorilo.
    Privzete veljavnosti so predlog: pri vsakem nalogu preveri datum na papirnatem/elektronskem nalogu.
    ===================================================================== */
-const blankPatient = (extra = {}) => ({ id:uid(), name:'', addr:'', phone:'', mode:'sede', dia:'', color:-1, zzzs:'', note:'', naloge:[], demo:false, created:new Date().toISOString(), ...extra });
+const blankPatient = (extra = {}) => ({ id:uid(), name:'', addr:'', phone:'', mode:'sede', dt:null, color:-1, zzzs:'', note:'', naloge:[], demo:false, created:new Date().toISOString(), ...extra });
 const blankNalog = (vrsta = 'letna', from = todayStr()) => ({ id:uid(), vrsta, stevilka:'', narocnik:'', izvajalec:'Reševalna postaja Brežice (ZD Brežice)', zdravnik:'', zdravnikVrsta:'osebni', razlog:'', od:'', do:'', mode:'sede',
   veljaOd:from, veljaDo:defaultValidTo(vrsta, from), dnevi:'', opombe:'', preklican:false, porabljen:'', auto:true, created:new Date().toISOString() });
 const patientById = id => S.patients.find(p => p.id === id) || null;
@@ -126,7 +126,7 @@ function rideVariants(date, r, nr){
     `Ura: ${r.time || '–'}`,
     `Od: ${r.from || '–'}`,
     `Do: ${r.to || '–'}`,
-    `Način prevoza: ${MODES[r.mode] || r.mode}${r.dia ? ' · dializa ' + r.dia : ''}`,
+    `Način prevoza: ${MODES[r.mode] || r.mode}${r.dia ? ' · dializa (' + (DIA_TERMS[diaTermOf(r.dia)] || '').toLowerCase() + ')' : ''}`,
     n ? `Nalog: ${NALOG_VRSTE[n.vrsta].l}, št. ${n.stevilka || '–'}, velja do ${fmtDMY(n.veljaDo)}` : '',
     r.note ? `Opomba: ${r.note}` : ''
   ].filter(Boolean).join('\n');
@@ -141,12 +141,11 @@ function applyPatientToRide(date, rideId, pid, opts = {}){
   r.patientId = p.id; r.name = p.name;
   if (!r.phone || opts.overwrite) r.phone = p.phone;
   if (!opts.keepMode) r.mode = nl ? nl.mode || p.mode : p.mode;
-  if (p.dia && !r.dia) r.dia = p.dia;
   r.nalogId = nl ? nl.id : '';
   const homeFrom = nl && nl.od && !/^SB |UKC|ZD /i.test(nl.od) ? nl.od : p.addr;
   if (!r.from.trim()) r.from = homeFrom || p.addr;
   if (!r.to.trim()) r.to = nl && nl.do ? nl.do : '';
-  save(); return true;
+  save(); KM.schedule(date, rideId); return true;
 }
 function patientSuggestions(raw){
   const q = norm(raw); if (q.length < 2) return [];
@@ -159,7 +158,7 @@ function savePatientFromRide(date, rideId){
   const hit = rideById(date, rideId); if (!hit) return null;
   const r = hit.r; if (!r.name.trim()) return null;
   let p = S.patients.find(x => norm(x.name) === norm(r.name));
-  if (!p){ p = blankPatient({ name:r.name.trim(), addr:rideDir(r) === 'from' ? r.to : r.from, phone:r.phone, mode:r.mode, dia:r.dia || '', color:nextColor() }); S.patients.push(p); audit('pacient.dodan', { id:p.id, kdo:initials(p.name) }); }
+  if (!p){ p = blankPatient({ name:r.name.trim(), addr:rideDir(r) === 'from' ? r.to : r.from, phone:r.phone, mode:r.mode, color:nextColor() }); S.patients.push(p); audit('pacient.dodan', { id:p.id, kdo:initials(p.name) }); }
   r.patientId = p.id; save(); return p;
 }
 function removePatient(id){

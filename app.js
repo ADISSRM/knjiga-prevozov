@@ -25,18 +25,41 @@ const BREZICE_STREETS = ['Cesta prvih borcev','Trg izgnancev','Cesta bratov Mila
 
 /* Ustanove (cilji prevozov). Koordinate približne. */
 const POIS = [
-  { n:'SB Brežice', al:['sb brezice','bolnisnica brezice','splosna bolnisnica brezice','sb brez'], lat:45.903, lon:15.590, sub:'Splošna bolnišnica Brežice', home:true },
-  { n:'SB Brežice – dializa', al:['dializa','dializni center','sb brezice dializa'], lat:45.903, lon:15.590, sub:'Dializni center', home:true },
-  { n:'ZD Brežice', al:['zd brezice','zdravstveni dom brezice','rp brezice','resevalna postaja'], lat:45.905, lon:15.589, sub:'Zdravstveni dom Brežice', home:true },
-  { n:'ZD Krško', al:['zd krsko','zdravstveni dom krsko'], lat:45.959, lon:15.492, sub:'Zdravstveni dom Krško' },
-  { n:'SB Novo mesto', al:['sb novo mesto','bolnisnica novo mesto','sb nm'], lat:45.803, lon:15.170, sub:'Splošna bolnišnica Novo mesto' },
-  { n:'SB Celje', al:['sb celje','bolnisnica celje'], lat:46.237, lon:15.265, sub:'Splošna bolnišnica Celje' },
-  { n:'UKC Ljubljana', al:['ukc ljubljana','ukc lj','ukcl','klinicni center','kc ljubljana'], lat:46.054, lon:14.525, sub:'Univerzitetni klinični center' },
-  { n:'Onkološki inštitut Ljubljana', al:['onkoloski institut','oi ljubljana','onkologija'], lat:46.064, lon:14.521, sub:'Zaloška cesta, Ljubljana' },
-  { n:'URI Soča Ljubljana', al:['uri soca','soca','rehabilitacija'], lat:46.062, lon:14.513, sub:'Linhartova, Ljubljana' },
-  { n:'UKC Maribor', al:['ukc maribor','kc maribor'], lat:46.560, lon:15.635, sub:'Univerzitetni klinični center Maribor' },
-  { n:'Klinika Golnik', al:['golnik','bolnisnica golnik'], lat:46.349, lon:14.338, sub:'Univerzitetna klinika Golnik' },
-  { n:'KBC Zagreb', al:['zagreb','kbc zagreb'], lat:45.820, lon:15.990, sub:'Hrvaška' }
+  { n:'SB Brežice', al:['sb brezice','bolnisnica brezice','splosna bolnisnica brezice','sb brez'], lat:45.903, lon:15.590, sub:'Splošna bolnišnica Brežice', home:true, extra:3, gq:'Splošna bolnišnica Brežice, Brežice' },
+  { n:'SB Brežice – dializa', al:['dializa','dializni center','sb brezice dializa'], lat:45.903, lon:15.590, sub:'Dializni center', home:true, extra:3, gq:'Splošna bolnišnica Brežice, Brežice' },
+  { n:'ZD Brežice', al:['zd brezice','zdravstveni dom brezice','rp brezice','resevalna postaja'], lat:45.905, lon:15.589, sub:'Zdravstveni dom Brežice', home:true, extra:2, gq:'Zdravstveni dom Brežice, Brežice' },
+  { n:'ZD Krško', al:['zd krsko','zdravstveni dom krsko'], lat:45.959, lon:15.492, sub:'Zdravstveni dom Krško', extra:2, gq:'Zdravstveni dom Krško, Krško' },
+  { n:'SB Novo mesto', al:['sb novo mesto','bolnisnica novo mesto','sb nm'], lat:45.803, lon:15.170, sub:'Splošna bolnišnica Novo mesto', extra:5, gq:'Splošna bolnišnica Novo mesto, Novo mesto' },
+  { n:'SB Celje', al:['sb celje','bolnisnica celje'], lat:46.237, lon:15.265, sub:'Splošna bolnišnica Celje', extra:5, gq:'Splošna bolnišnica Celje, Celje' },
+  { n:'UKC Ljubljana', al:['ukc ljubljana','ukc lj','ukcl','klinicni center','kc ljubljana'], lat:46.054, lon:14.525, sub:'Univerzitetni klinični center', extra:10, gq:'UKC Ljubljana, Zaloška cesta 2, Ljubljana' },
+  { n:'Onkološki inštitut Ljubljana', al:['onkoloski institut','oi ljubljana','onkologija'], lat:46.064, lon:14.521, sub:'Zaloška cesta, Ljubljana', extra:5, gq:'Onkološki inštitut Ljubljana, Zaloška cesta 2, Ljubljana' },
+  { n:'URI Soča Ljubljana', al:['uri soca','soca','rehabilitacija'], lat:46.062, lon:14.513, sub:'Linhartova, Ljubljana', extra:5, gq:'URI Soča, Linhartova cesta 51, Ljubljana' },
+  { n:'UKC Maribor', al:['ukc maribor','kc maribor'], lat:46.560, lon:15.635, sub:'Univerzitetni klinični center Maribor', extra:10, gq:'UKC Maribor, Ljubljanska ulica 5, Maribor' },
+  { n:'Klinika Golnik', al:['golnik','bolnisnica golnik'], lat:46.349, lon:14.338, sub:'Univerzitetna klinika Golnik', extra:5, gq:'Univerzitetna klinika Golnik, Golnik 36, Golnik' },
+  { n:'KBC Zagreb', al:['zagreb','kbc zagreb'], lat:45.820, lon:15.990, sub:'Hrvaška', extra:10, gq:'KBC Zagreb, Kišpatićeva 12, Zagreb, Hrvaška' }
+];
+/* Klinike in ambulante v bolnišnicah (začetni predlog; seznam v Nastavitve → Ustanove in klinike je mogoče dopolniti in popraviti).
+   stay = tipično trajanje pregleda (min), ko reševalec počaka; naslov je predlog in ga preveri (Google ga uporabi za natančen izračun km). */
+const CLINIC_SEED = [
+  { p:'UKC Ljubljana', n:'Očesna klinika', al:['ocesna','ocna','oci'], addr:'Grablovičeva ulica 46, Ljubljana', stay:45 },
+  { p:'UKC Ljubljana', n:'Kardiološka ambulanta', al:['kardiologija','kardioloska amb','kardio','kardioloska'], addr:'Zaloška cesta 7, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Interna klinika', al:['interna'], addr:'Zaloška cesta 7, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Nefrološka ambulanta', al:['nefrologija','nefroloska'], addr:'Zaloška cesta 7, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Kirurška klinika', al:['kirurgija','kirurska'], addr:'Zaloška cesta 7, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Travmatološka klinika', al:['travmatologija','travma'], addr:'Zaloška cesta 7, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Nevrološka klinika', al:['nevrologija','nevroloska'], addr:'Zaloška cesta 2, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'ORL klinika', al:['orl','otorinolaringologija'], addr:'Zaloška cesta 2, Ljubljana', stay:45 },
+  { p:'UKC Ljubljana', n:'Dermatovenerološka klinika', al:['dermatologija','derma'], addr:'Gradišče 4, Ljubljana', stay:45 },
+  { p:'UKC Ljubljana', n:'Pediatrična klinika', al:['pediatrija','pediatricna'], addr:'Bohoričeva ulica 20, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Ginekološka klinika', al:['ginekologija','ginekoloska'], addr:'Šlajmerjeva ulica 3, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Klinika za infekcijske bolezni', al:['infekcijska','infekcije'], addr:'Japljeva ulica 2, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Urgentni center', al:['uc','urgenca'], addr:'Zaloška cesta 2, Ljubljana', stay:0 },
+  { p:'SB Celje', n:'Očesni oddelek', al:['oci','ocesna'], addr:'', stay:45 },
+  { p:'SB Celje', n:'Kardiološka ambulanta', al:['kardiologija','kardio'], addr:'', stay:60 },
+  { p:'SB Novo mesto', n:'Očesna ambulanta', al:['oci','ocesna'], addr:'', stay:45 },
+  { p:'SB Novo mesto', n:'Kardiološka ambulanta', al:['kardiologija','kardio'], addr:'', stay:60 },
+  { p:'UKC Maribor', n:'Kardiološka ambulanta', al:['kardiologija','kardio'], addr:'', stay:60 },
+  { p:'UKC Maribor', n:'Očesna klinika', al:['oci','ocesna'], addr:'', stay:45 }
 ];
 const BASE_POI = POIS.find(p => p.n === 'ZD Brežice');
 
@@ -53,7 +76,9 @@ const TOWNS = [
   { n:'Samobor', lat:45.8014, lon:15.7106 }, { n:'Jastrebarsko', lat:45.6700, lon:15.6500 }, { n:'Krapina', lat:46.1608, lon:15.8797 }
 ];
 
-const DIA_GROUPS = ['D1','D2','SaD4','D3'];
+/* Dializa: dopoldanska in popoldanska (čas v Nastavitve → Dializa). Stare skupine (D1, D2, SaD4, D3) se pri nalaganju pretvorijo. */
+const DIA_TERMS = { dop:'Dopoldanska', pop:'Popoldanska' };
+const diaTermOf = v => (v === 'dop' || v === 'pop') ? v : (v === 'D2' || v === 'SaD4') ? 'pop' : v ? 'dop' : '';
 const DOW_LONG = ['nedelja','ponedeljek','torek','sreda','četrtek','petek','sobota'];
 const DOW_SHORT = ['ned','pon','tor','sre','čet','pet','sob'];
 const MONTHS = ['januar','februar','marec','april','maj','junij','julij','avgust','september','oktober','november','december'];
@@ -100,12 +125,10 @@ function defaultState(){
       routing:{ on:true, factor:1 },   // cestni podatki (OSRM); faktor = množitelj trajanja vožnje (1 = podatki OSRM)
       optimize:true, destMin:12, maxDests:3, waitMax:90,   // optimizacija razporeda, »sorodni cilji« (največ min med cilji), največ ciljev v eni vožnji, opozorilo za čakanje
 
-      dia:{
-        D1:{ start:'06:30', end:'10:30', days:[1,3,5] },
-        D2:{ start:'11:00', end:'15:00', days:[1,3,5] },
-        SaD4:{ start:'15:30', end:'19:30', days:[1,3,5] },
-        D3:{ start:'06:30', end:'10:30', days:[2,4,6] }
-      }
+      pickLeze:10, dropLeze:8, pickUtila:8, dropUtila:6,   // čas nalaganja in odpuščanja pri leže in utila pacientu (min)
+      stayDef:45, extraDef:5,                               // privzet čas pregleda, ko reševalec počaka; privzeta pot od vhoda do ambulante
+      diaT:{ dop:{ start:'06:30', end:'10:30' }, pop:{ start:'11:30', end:'15:30' } },   // dializa: dopoldanska in popoldanska
+      google:{ on:true, auto:true, traffic:false }          // natančni km prek Google Maps (ključ v config.js ali v tej napravi)
     },
     /* Prilagodljiva pravila: "običajno" velja, "prilagoditev" se uporabi samo, ko je potrebna (ali ko dispečer tako izbere). */
     rules:{
@@ -120,6 +143,7 @@ function defaultState(){
       { id:'c1', name:'C1 rdeči', tip:'sanitetno', ns:'oboje', sede:2, leze:0, utila:0, skupaj:2, sedeMax:2, lezeMax:0, utilaMax:0, skupajMax:2, aktiv:true },
       { id:'ost', name:'OSTALO', tip:'ostalo', ns:'oboje', sede:0, leze:0, utila:0, skupaj:0, sedeMax:0, lezeMax:0, utilaMax:0, skupajMax:0, aktiv:true }
     ],
+    places:CLINIC_SEED.map((c, i) => ({ id:'k' + i, parent:c.p, n:c.n, al:c.al, addr:c.addr, lat:null, lon:null, stay:c.stay, extra:null })),
     staff:[], patients:[], duty:{}, vehOff:{}, rides:{}, crewBook:{}, notices:[], dayNote:{}, dayRules:{}, published:{}, nadure:{}, audit:[], diaPatients:[], addrBook:[], coordOv:{}, extraSlots:{}
   };
 }
@@ -170,7 +194,8 @@ function holiday(s){
 }
 /* Vikend in prazniki: pripravljenost (2 zaposlena) */
 const isStandby = s => { const w = dow(s); return w === 0 || w === 6 || !!holiday(s); };
-const diaGroupsFor = (s, S) => DIA_GROUPS.filter(g => (S.settings.dia[g].days || []).includes(dow(s)));
+/* Dializa: termini (dopoldanska / popoldanska), v katerih ta dan vozi vsaj en pacient iz registra dialize */
+const diaTermsFor = s => Object.keys(DIA_TERMS).filter(t => S.patients.some(p => p.dt && p.dt.t === t && (p.dt.d || []).includes(dow(s))));
 
 /* ---------- Čas ---------- */
 const toMin = t => { if (!t || !/^\d{1,2}:\d{2}$/.test(t)) return null; const [h,m] = t.split(':').map(Number); return h*60+m; };
@@ -274,10 +299,57 @@ const TOWN_IDX = TOWNS.map(s => ({ ...s, nn:norm(s.n), re:new RegExp('(^|[^a-z0-
 const BASE_POINT = { lat:BASE_POI.lat, lon:BASE_POI.lon };
 function settlementPoint(s){ const o = S.coordOv[s.n]; return o ? { lat:o[0], lon:o[1] } : { lat:s.lat, lon:s.lon }; }
 
+/* ---------- Ustanove, klinike in lastne ustanove (S.places) ----------
+   Klinika je cilj »UKC Ljubljana – Očesna klinika«: enaka točka kot bolnišnica (ali lastna koordinata), svoj ključ, čas pregleda (stay)
+   in pot od vhoda do ambulante (extra). Ujemanje: najdaljše ujemajoče ime (bolnišnica + klinika) ima prednost pred samo bolnišnico. */
+const sepNorm = t => norm(t).replace(/[–—\-,\/.()]+/g, ' ').replace(/\s+/g, ' ').trim();
+let PL = { rev:-1, S:null, all:[], match:[] };
+function placeIndex(){
+  if (PL.rev === rev && PL.S === S) return PL;
+  const num = v => (v != null && v !== '' && isFinite(+v)) ? +v : null;
+  const parents = new Map(POIS.map(p => [p.n, p]));
+  const all = [];
+  ((S && S.places) || []).filter(x => !x.parent && x.n).forEach(x => {   // lastne ustanove
+    const la = num(x.lat), lo = num(x.lon);
+    const p = { n:x.n, al:[norm(x.n), ...(x.al || []).map(norm)], lat:la ?? BASE_POI.lat, lon:lo ?? BASE_POI.lon, sub:x.addr || 'ustanova', extra:num(x.extra), stay:num(x.stay), gq:x.addr ? x.n + ', ' + x.addr : x.n, custom:true, noCoord:la == null || lo == null, fixed:la != null && lo != null, id:x.id };
+    parents.set(p.n, p); all.push(p);
+  });
+  const clinics = [];
+  ((S && S.places) || []).filter(x => x.parent && x.n).forEach(x => {
+    const par = parents.get(x.parent); if (!par) return;
+    const la = num(x.lat), lo = num(x.lon);
+    clinics.push({ n:par.n + ' – ' + x.n, short:x.n, al:(x.al || []).map(norm), parent:par.n, parentAl:[norm(par.n), ...(par.al || [])], clinic:true,
+      lat:la ?? par.lat, lon:lo ?? par.lon, sub:x.addr || par.sub, extra:num(x.extra) ?? par.extra ?? null, stay:num(x.stay), gq:[x.n, x.addr || par.gq || par.n].join(', '),
+      noCoord:la == null && !!par.noCoord, fixed:la != null && lo != null, id:x.id });
+  });
+  const match = [], seen = new Map();
+  clinics.forEach(c => { const b = sepNorm(c.short); seen.set(b, (seen.get(b) || 0) + 1); });
+  clinics.forEach(c => {
+    const names = [sepNorm(c.short), ...c.al.map(sepNorm)];
+    c.parentAl.forEach(pa => names.filter(Boolean).forEach(cn => match.push({ s:sepNorm(pa) + ' ' + cn, poi:c })));
+    const b = sepNorm(c.short); if (b.length >= 10 && seen.get(b) === 1) match.push({ s:b, poi:c });
+  });
+  all.push(...clinics);
+  PL = { rev, S, all, match, customs:all.filter(p => p.custom) };
+  return PL;
+}
+const poiPoint = p => ({ kind:p.noCoord ? 'neznano' : 'poi', poi:p, key:'poi:' + p.n, lat:p.lat, lon:p.lon, label:p.n });
+/* Čas čakanja na pregled (min) in pot od vhoda do ambulante za cilj */
+const poiExtra = g => (g && g.poi) ? (g.poi.extra != null ? g.poi.extra : (S.settings.extraDef ?? 5)) : 0;
+const poiStay = g => (g && g.poi && g.poi.stay != null) ? g.poi.stay : (S.settings.stayDef ?? 45);
+
 function geo(text){
   const t = norm(text);
   if (!t) return { kind:'prazno', key:'', lat:BASE_POINT.lat, lon:BASE_POINT.lon, label:'' };
-  // 1) ustanove
+  // 1) klinike (»UKC Ljubljana – Očesna klinika«) in lastne ustanove
+  const pi = placeIndex();
+  if (pi.all.length){
+    const tn = sepNorm(text); let hit = null;
+    for (const m of pi.match) if ((tn === m.s || tn.startsWith(m.s + ' ')) && (!hit || m.s.length > hit.s.length)) hit = m;
+    if (hit) return poiPoint(hit.poi);
+    for (const p of pi.customs){ const nn = [sepNorm(p.n), ...p.al.map(sepNorm)]; if (nn.some(a => a && (tn === a || tn.startsWith(a + ' ')))) return poiPoint(p); }
+  }
+  // 1b) ustanove
   for (const p of POIS){
     const names = [norm(p.n), ...p.al];
     if (names.some(a => t === a || t.startsWith(a + ' ') || t.startsWith(a + ',') || (a.length > 7 && t.includes(a))))
@@ -327,6 +399,7 @@ function suggestions(kind, raw){
     return out.slice(0, 8);
   }
   POIS.forEach(p => { const sc = Math.min(scoreOf(p.n), ...p.al.map(scoreOf)); if (sc < 9) push(p.n, p.sub, p.n, sc - (kind==='to'?0.5:0)); });
+  placeIndex().all.forEach(p => { const sc = Math.min(scoreOf(p.n), scoreOf(p.short || p.n), ...(p.al || []).map(scoreOf)); if (sc < 9) push(p.n, p.clinic ? 'klinika · ' + (p.sub || '') : p.sub, p.n, sc - (kind==='to'?0.7:0)); });
   S.addrBook.forEach(a => { const sc = scoreOf(a.t); if (sc < 9) push(a.t, 'že vpisan naslov', a.t, sc - 0.2); });
   if (ADDR.list.length){
     let c = 0;
@@ -515,20 +588,35 @@ function normalizeState(){
     ['sede','leze','utila','skupaj'].forEach(k => { v[k + 'Max'] = Math.max(+v[k] || 0, v[k + 'Max'] == null ? (+v[k] || 0) : +v[k + 'Max']); });
   });
   S.patients = S.patients || [];
+  if (S.settings.dia){   // stare dializne skupine → dopoldanska / popoldanska
+    const d = S.settings.dia, T = S.settings.diaT = S.settings.diaT || {};
+    if (d.D1 && d.D1.start) T.dop = { start:d.D1.start, end:d.D1.end };
+    if (d.D2 && d.D2.start) T.pop = { start:d.D2.start, end:d.D2.end };
+    delete S.settings.dia;
+  }
+  S.settings.google = Object.assign({ on:true, auto:true, traffic:false }, S.settings.google || {});
+  S.places = Array.isArray(S.places) ? S.places : defaultState().places;
   if (S.diaPatients && S.diaPatients.length){
-    S.diaPatients.forEach(dp => { if (!S.patients.some(p => norm(p.name) === norm(dp.name))) S.patients.push(blankPatient({ name:dp.name, addr:dp.from, phone:dp.phone, mode:dp.mode, dia:dp.group, demo:dp.demo })); });
+    S.diaPatients.forEach(dp => { if (!S.patients.some(p => norm(p.name) === norm(dp.name))) S.patients.push(migratePatient(blankPatient({ name:dp.name, addr:dp.from, phone:dp.phone, mode:dp.mode, dia:dp.group, demo:dp.demo }))); });
     S.diaPatients = [];
   }
+  S.patients.forEach(migratePatient);
+}
+/* Stara skupina dialize (D1, D2, SaD4, D3) → termin dialize pacienta { t:'dop'|'pop', d:[dnevi v tednu] } */
+function migratePatient(p){
+  if (p.dia !== undefined){ if (p.dia && !p.dt) p.dt = { t:diaTermOf(p.dia), d:p.dia === 'D3' ? [2, 4, 6] : [1, 3, 5] }; delete p.dia; }
+  if (p.dt === undefined) p.dt = null;
+  return p;
 }
 function cfgDoc(){
-  return J({ v:2, settings:S.settings, rules:S.rules, vehicles:S.vehicles, staff:S.staff, notices:S.notices, addrBook:S.addrBook,
+  return J({ v:2, settings:S.settings, rules:S.rules, vehicles:S.vehicles, staff:S.staff, notices:S.notices, addrBook:S.addrBook, places:S.places,
     coordOv:Object.entries(S.coordOv || {}).map(([n, c]) => ({ n, lat:c[0], lon:c[1] })) });
 }
 function applyCfg(d){
   const def = defaultState();
   S.settings = mergeDefaults(d.settings || {}, def.settings);
   S.rules = mergeDefaults(d.rules || {}, def.rules);
-  S.vehicles = d.vehicles || def.vehicles; S.staff = d.staff || []; S.notices = d.notices || []; S.addrBook = d.addrBook || [];
+  S.vehicles = d.vehicles || def.vehicles; S.staff = d.staff || []; S.notices = d.notices || []; S.addrBook = d.addrBook || []; S.places = d.places || def.places;
   S.coordOv = {}; (d.coordOv || []).forEach(o => { S.coordOv[o.n] = [o.lat, o.lon]; });
   normalizeState();
 }
@@ -600,7 +688,7 @@ function onPatients(changes, meta){
     const path = 'patients/' + c.id, i = S.patients.findIndex(p => p.id === c.id);
     if (!c.data){ if (i >= 0) S.patients.splice(i, 1); delete SY.snap[path]; return; }
     const merged = mergeRemote(path, c.data, i >= 0 ? J(S.patients[i]) : {});
-    const p = { ...blankPatient(), ...merged, id:c.id };
+    const p = migratePatient({ ...blankPatient(), ...merged, id:c.id });
     if (i >= 0) S.patients[i] = p; else S.patients.push(p);
   });
   if (meta && meta.initial) SY.patReady = true;
@@ -899,6 +987,249 @@ const ROUTE = (() => {
 })();
 
 /* =====================================================================
+   NATANČNA KILOMETRINA: Google Maps Platform (Routes API, računanje poti OD → DO)
+   Za vsak prevoz se razdalja OD → DO izračuna z Googlom (cestna razdalja po najboljši poti za osebni avto, kot v Google Zemljevidih).
+   Google vrne tudi natančne koordinate obeh naslovov; planer jih uporabi namesto središča naselja (točnejši čas vožnje, ETA, združevanje).
+   Dogovor o podatkih:
+   - Google dobi SAMO besedilo naslova OD in DO (npr. »Dobova 25« in »UKC Ljubljana«). Ne dobi imena pacienta, telefona, naloga ali ure.
+   - Rezultat (km, vir, koordinati) se shrani v vpis prevoza (knjiga = poslovna evidenca). Predpomnilnik poti je samo v pomnilniku.
+   - Brez ključa ali izklopljeno: aplikacija računa po cestah OpenStreetMap (OSRM), brez tega pa oceni. Vir je pri vsakem km označen.
+   Ključ API (HTTP referrer omejitev!) je v config.js (google.key) ali samo na tej napravi (Nastavitve → Izračun).
+   ===================================================================== */
+const GOOGLE = (() => {
+  const GC = (window.KP_CONFIG && window.KP_CONFIG.google) || {};
+  const ENDPOINT = 'https://routes.googleapis.com/directions/v2:computeRoutes';
+  const MASK_TWO = 'routes.distanceMeters,routes.duration,routes.legs.startLocation,routes.legs.endLocation';
+  const MASK_MULTI = 'routes.distanceMeters,routes.duration,routes.legs.distanceMeters,routes.legs.duration,routes.legs.startLocation,routes.legs.endLocation';
+  const cache = new Map();        // 'od>do' (poizvedbi) -> rezultat
+  const inflight = new Map();
+  const wait = [];
+  let active = 0, coolUntil = 0;
+  const R = { status:'idle', err:'', lastOk:0, calls:0, errors:0, version:0, concurrency:2, minGap:120, onUpdate:null, fetch:(u, o) => fetch(u, o) };
+
+  const keyVal = () => (store.get('kp.gkey') || GC.key || '').trim();
+  const configured = () => /^[A-Za-z0-9_\-]{20,}$/.test(keyVal());
+  const gs = () => (typeof S !== 'undefined' && S && S.settings && S.settings.google) || { on:true, auto:true, traffic:false };
+  const enabled = () => configured() && gs().on !== false;
+  const auto = () => enabled() && gs().auto !== false && Date.now() >= coolUntil;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  /* Besedilo naslova → poizvedba za Google. Ustanova/klinika (brez hišne številke): polno ime in naslov; sicer vpisan naslov + država. */
+  const FOREIGN = /(sloveni|hrva|croat|avstri|austri|ital|madzar|hungar)/i;
+  const HR_TOWNS = ['Zagreb', 'Samobor', 'Jastrebarsko', 'Krapina'];
+  function queryOf(text){
+    const t = String(text || '').replace(/\s+/g, ' ').trim(); if (!t) return '';
+    let g = null; try { g = geo(t); } catch(e){ g = null; }
+    if (g && g.kind === 'poi' && g.poi && g.poi.gq && !/\d/.test(t)) return g.poi.gq;
+    if (g && g.kind === 'neznano' && g.poi && g.poi.gq && !/\d/.test(t)) return g.poi.gq;
+    if (FOREIGN.test(t)) return t;
+    return t + ((g && g.kind === 'mesto' && HR_TOWNS.includes(g.label)) ? ', Hrvaška' : ', Slovenija');
+  }
+  const wp = q => (typeof q === 'string' ? { address:q } : { location:{ latLng:{ latitude:q.lat, longitude:q.lon } } });
+  const ll = o => (o && o.latLng && isFinite(o.latLng.latitude) && isFinite(o.latLng.longitude)) ? [+o.latLng.latitude, +o.latLng.longitude] : null;
+  const secs = d => { const m = /^(\d+(?:\.\d+)?)s$/.exec(String(d || '')); return m ? +m[1] : null; };
+
+  function setStatus(st, err){ R.status = st; R.err = err || ''; if (R.onUpdate){ try { R.onUpdate('status'); } catch(e){} } }
+  function explain(status, httpStatus, msg){
+    const m = String(msg || '');
+    if (httpStatus === 403 || /PERMISSION_DENIED|API_KEY|referer|not authorized|has not been used|disabled/i.test(status + m)){
+      if (/referer|referrer/i.test(m)) return 'Ključ ni dovoljen za ta naslov strani (omejitev HTTP referrer). Dodaj naslov strani v omejitve ključa.';
+      if (/has not been used|disabled|not enabled/i.test(m)) return 'Routes API ni vklopljen v projektu (Google Cloud → APIs → Routes API → Enable).';
+      return 'Google je zavrnil ključ (preveri ključ, omejitve in da je vklopljen Routes API in obračun).';
+    }
+    if (httpStatus === 400 && /API key|API_KEY/i.test(m)) return 'Ključ API ni veljaven.';
+    if (httpStatus === 400) return 'Google ne razume naslova ali zahtevka' + (m ? ' (' + m.slice(0, 120) + ')' : '') + '.';
+    if (httpStatus === 404 || status === 'NOT_FOUND') return 'Google ne najde enega od naslovov.';
+    if (httpStatus === 429 || status === 'RESOURCE_EXHAUSTED') return 'Presežena kvota ali preveč zahtevkov (Google). Poskusi pozneje.';
+    return 'Napaka Google (' + (httpStatus || 'brez povezave') + ')' + (m ? ': ' + m.slice(0, 120) : '') + '.';
+  }
+  const AUTH_ERR = e => e && (e.http === 403 || (e.http === 400 && /API key/i.test(e.message || '')));
+
+  async function post(body, mask, tries = 2){
+    const key = keyVal(); if (!configured()) throw Object.assign(new Error('Ključ Google ni nastavljen.'), { code:'nokey' });
+    let last = null;
+    for (let i = 0; i <= tries; i++){
+      if (i) await sleep(600 * i);
+      let r;
+      R.calls++;
+      try {
+        r = await R.fetch(ENDPOINT, { method:'POST', headers:{ 'Content-Type':'application/json', 'X-Goog-Api-Key':key, 'X-Goog-FieldMask':mask }, body:JSON.stringify(body), credentials:'omit', cache:'no-store', referrerPolicy:'strict-origin-when-cross-origin' });   // Referer (samo izvor strani) je potreben za omejitev ključa; ostalih povezav to ne spremeni
+      } catch(e){ last = Object.assign(new Error('Brez povezave z Google (' + (e && e.message || 'napaka') + ').'), { code:'net' }); continue; }
+      let data = null; try { data = await r.json(); } catch(e){ data = null; }
+      if (r.status >= 200 && r.status < 300) return data || {};
+      const er = (data && data.error) || {};
+      last = Object.assign(new Error(explain(er.status, r.status, er.message)), { http:r.status, gstatus:er.status || '', code:'http' });
+      if (r.status === 429 || r.status >= 500) continue;
+      break;
+    }
+    throw last || new Error('Napaka Google.');
+  }
+
+  /* Izvajanje po vrsti (največ 2 hkrati), da nas ne zaustavi kvota in da je poraba predvidljiva. */
+  function run(job){
+    return new Promise((res, rej) => { wait.push({ job, res, rej }); pump(); });
+  }
+  async function pump(){
+    while (active < R.concurrency && wait.length){
+      const w = wait.shift(); active++;
+      (async () => {
+        try { const v = await w.job(); w.res(v); }
+        catch(e){ w.rej(e); }
+        finally { active--; if (R.minGap) await sleep(R.minGap); pump(); }
+      })();
+    }
+  }
+
+  /* Razdalja in čas OD → DO (vozni, brez prometa razen če je vklopljeno). Vrne { km, min, f:[lat,lon], t:[lat,lon], q:{f,t} } */
+  function ride(fromText, toText, o = {}){
+    const qf = queryOf(fromText), qt = queryOf(toText);
+    if (!qf || !qt) return Promise.reject(Object.assign(new Error('Manjka naslov OD ali DO.'), { code:'empty' }));
+    if (!enabled()) return Promise.reject(Object.assign(new Error('Google ni vklopljen.'), { code:'off' }));
+    const traffic = !!gs().traffic && !!o.departIso;
+    const k = qf + '>' + qt + (traffic ? '@' + o.departIso.slice(0, 13) : '');
+    if (!o.fresh && cache.has(k)) return Promise.resolve(cache.get(k));
+    if (inflight.has(k)) return inflight.get(k);
+    const p = run(async () => {
+      const body = { origin:wp(qf), destination:wp(qt), travelMode:'DRIVE', routingPreference:traffic ? 'TRAFFIC_AWARE' : 'TRAFFIC_UNAWARE', languageCode:'sl-SI', regionCode:'SI', units:'METRIC' };
+      if (traffic) body.departureTime = o.departIso;
+      const t0 = Date.now();
+      const d = await post(body, MASK_TWO);
+      const rt = d && d.routes && d.routes[0];
+      if (!rt || !isFinite(rt.distanceMeters)) throw Object.assign(new Error('Google ne najde poti med naslovoma.'), { code:'noroute' });
+      const lg = (rt.legs && rt.legs[0]) || {};
+      const out = { km:rt.distanceMeters / 1000, min:(secs(rt.duration) || 0) / 60, f:ll(lg.startLocation), t:ll(lg.endLocation), q:{ f:qf, t:qt }, ms:Date.now() - t0, at:new Date().toISOString() };
+      cache.set(k, out); R.lastOk = Date.now(); R.version++; setStatus('ok');
+      return out;
+    }).catch(e => { R.errors++; setStatus('error', e.message); if (AUTH_ERR(e)) coolUntil = Date.now() + 120000; throw e; })
+      .finally(() => inflight.delete(k));
+    inflight.set(k, p);
+    return p;
+  }
+
+  /* Vožnja z več postanki (npr. postaja → pacient 1 → pacient 2 → cilj → postaja): skupni km in km po odsekih. points: [{q}|{lat,lon}] */
+  async function multi(points){
+    if (!enabled()) throw Object.assign(new Error('Google ni vklopljen.'), { code:'off' });
+    const wps = points.map(p => wp(p.q ? p.q : p));
+    if (wps.length < 2) throw new Error('Premalo točk.');
+    const k = 'M:' + JSON.stringify(wps);
+    if (cache.has(k)) return cache.get(k);
+    return run(async () => {
+      const body = { origin:wps[0], destination:wps[wps.length - 1], intermediates:wps.slice(1, -1), travelMode:'DRIVE', routingPreference:'TRAFFIC_UNAWARE', languageCode:'sl-SI', regionCode:'SI', units:'METRIC' };
+      const d = await post(body, MASK_MULTI), rt = d && d.routes && d.routes[0];
+      if (!rt) throw Object.assign(new Error('Google ne najde poti.'), { code:'noroute' });
+      const out = { km:rt.distanceMeters / 1000, min:(secs(rt.duration) || 0) / 60, legs:(rt.legs || []).map(l => ({ km:(l.distanceMeters || 0) / 1000, min:(secs(l.duration) || 0) / 60 })) };
+      cache.set(k, out); R.lastOk = Date.now(); setStatus('ok'); return out;
+    }).catch(e => { setStatus('error', e.message); throw e; });
+  }
+
+  async function test(){
+    if (!configured()) return { ok:false, msg:'Ključ Google ni nastavljen (config.js → google.key ali vpiši v polje spodaj).' };
+    const t0 = Date.now();
+    try {
+      const r = await ride('Splošna bolnišnica Brežice, Brežice', 'UKC Ljubljana, Zaloška cesta 2, Ljubljana', { fresh:true });
+      const ok = r.km > 80 && r.km < 160;
+      return { ok, km:r.km, min:r.min, ms:Date.now() - t0, msg:ok ? 'Povezava z Googlom deluje.' : 'Google je vrnil nenavadno razdaljo (' + r.km.toFixed(1) + ' km). Preveri naslove.' };
+    } catch(e){ return { ok:false, msg:e.message, code:e.code }; }
+  }
+  function clear(){ cache.clear(); inflight.clear(); R.version++; coolUntil = 0; setStatus('idle'); }
+  function forget(){ clear(); wait.length = 0; }
+  const info = () => ({ configured:configured(), on:enabled(), auto:auto(), traffic:!!gs().traffic, status:R.status, err:R.err, calls:R.calls, errors:R.errors, cached:cache.size, queued:wait.length + active, lastOk:R.lastOk, cooling:Math.max(0, coolUntil - Date.now()), keyTail:keyVal() ? '…' + keyVal().slice(-4) : '' });
+  Object.assign(R, { configured, enabled, auto, queryOf, ride, multi, test, clear, forget, info, ENDPOINT });
+  return R;
+})();
+
+/* =====================================================================
+   KILOMETRINA PREVOZA (vpis v knjigi): km OD → DO, vir, zastarelost, samodejni izračun
+   Polja prevoza: km (OD → DO), kmBack (DO → OD, samo ko reševalec počaka na pregled), kmSrc ('google' | 'rocno'), kk (besedilo OD>DO ob izračunu),
+   gf / gt (koordinate OD in DO po Googlu), kmAt (čas izračuna).
+   ===================================================================== */
+const KM = (() => {
+  const timers = new Map();
+  const r1 = x => Math.round(x * 10) / 10;
+  const fmtKm = x => (x == null || !isFinite(x)) ? '–' : (Math.round(x * 10) / 10).toFixed(1).replace('.', ',');
+  const fresh = r => r.km != null && (r.kmSrc === 'rocno' || r.kk === rideKk(r));
+  const needBack = r => +r.stay > 0 && r.kmBack == null && r.kmSrc !== 'rocno';          // čakanje je bilo vklopljeno po izračunu: manjka pot nazaj
+  const done = r => fresh(r) && (r.kmSrc === 'rocno' || (r.gf && r.gt)) && !needBack(r);
+  const SRC = { google:'Google', rocno:'ročno', osrm:'ceste OSM', ocena:'ocena' };
+  /* Km prevoza za prikaz: shranjeno (Google ali ročno) ali sproti iz cestnih podatkov (OSM) oziroma ocena. */
+  function info(r){
+    const stay = +r.stay > 0;
+    if (r.from && r.to && fresh(r)){
+      const back = stay ? (r.kmBack != null ? r.kmBack : r.km) : 0;
+      return { km:r.km, back, total:r.km + back, src:r.kmSrc || 'google', exact:true, backExact:!stay || r.kmBack != null };
+    }
+    if (!(r.from || '').trim() || !(r.to || '').trim()) return { km:null, back:0, total:null, src:'', exact:false };
+    const L = makeLeg(S.settings), l = L(ridePt(r, 'from'), ridePt(r, 'to')), src = l.real ? 'osrm' : 'ocena';
+    return { km:l.km, back:stay ? l.km : 0, total:l.km * (stay ? 2 : 1), src, exact:false, backExact:false };
+  }
+  /* Izračun z Googlom za en prevoz (OD → DO in, če počaka, DO → OD). Rezultat se zavrže, če se je besedilo medtem spremenilo. */
+  async function ensure(date, id, o = {}){
+    const hit = rideById(date, id); if (!hit) return null;
+    const r0 = hit.r; if (!isFilled(r0) || r0.odpovedano || !(r0.from || '').trim() || !(r0.to || '').trim()) return null;
+    if (!GOOGLE.enabled()) return null;
+    if (!o.force && done(r0)) return null;
+    const kk0 = rideKk(r0), departIso = r0.time ? new Date(`${date}T${r0.time}:00`).toISOString() : '';
+    let a, b = null;
+    try {
+      a = await GOOGLE.ride(r0.from, r0.to, { fresh:!!o.force, departIso });
+      if (+r0.stay > 0) b = await GOOGLE.ride(r0.to, r0.from, { fresh:!!o.force, departIso });
+    } catch(e){ if (o.silent !== false && e.code !== 'off') note(id, e.message); return null; }
+    const cur = rideById(date, id); if (!cur) return null;
+    const r = cur.r; if (rideKk(r) !== kk0) return null;   // naslov se je medtem spremenil
+    r.km = r1(a.km); r.kmBack = b ? r1(b.km) : null; r.kmSrc = 'google'; r.kk = kk0; r.gf = a.f; r.gt = a.t; r.kmAt = a.at;
+    save(); if (KM.onUpdate) KM.onUpdate(date, id);
+    return r;
+  }
+  const noted = new Map();
+  function note(id, msg){ const t = Date.now(); if (noted.get('m') === msg && t - (noted.get('t') || 0) < 60000) return; noted.set('m', msg); noted.set('t', t); if (typeof toast === 'function') toast('Kilometrina: ' + msg); }
+  function schedule(date, id){
+    if (!GOOGLE.auto()) return;
+    const k = date + '|' + id; clearTimeout(timers.get(k));
+    timers.set(k, setTimeout(() => { timers.delete(k); ensure(date, id); }, 900));
+  }
+  /* Vsi prevozi dneva brez svežega km (samodejno ob odprtju dneva ali na gumb) */
+  function day(date, o = {}){
+    const todo = filledRides(date).filter(({ r }) => !r.odpovedano && (o.force || !done(r))).map(({ r }) => r.id);
+    return Promise.all(todo.map(id => ensure(date, id, { force:!!o.force, silent:false }))).then(() => todo.length);
+  }
+  function setManual(date, id, val){
+    const hit = rideById(date, id); if (!hit) return;
+    const r = hit.r, v = parseFloat(String(val).replace(',', '.'));
+    if (!isFinite(v) || v < 0){ r.km = null; r.kmBack = null; r.kmSrc = ''; r.kk = ''; }
+    else { r.km = r1(v); r.kmSrc = 'rocno'; r.kk = rideKk(r); r.kmAt = new Date().toISOString(); }
+    save();
+  }
+  /* Poročilo za mesec: prevozi z km in viri; seštevki po dnevih in vozilih */
+  function month(y, m){
+    const n = daysInMonth(y, m), rows = [], days = [], veh = {};
+    let tot = 0, ex = 0, miss = 0;
+    for (let d = 1; d <= n; d++){
+      const date = `${y}-${pad(m + 1)}-${pad(d)}`, list = filledRides(date).filter(({ r }) => !r.odpovedano);
+      if (!list.length) continue;
+      const plan = computePlan(date); let dt = 0;
+      list.forEach(({ r, nr }) => {
+        const i = info(r), a = plan.assign[r.id];
+        const vehName = a ? a.veh : '';
+        rows.push({ date, nr, r, i, veh:vehName });
+        if (i.total != null){ tot += i.total; dt += i.total; if (i.exact) ex += i.total; if (vehName){ veh[vehName] = (veh[vehName] || 0) + i.total; } } else miss++;
+      });
+      days.push({ date, km:dt, n:list.length, vehKm:plan.totals.km });
+    }
+    return { rows, days, veh, total:tot, exact:ex, missing:miss };
+  }
+  const csvCell = v => { const s = String(v ?? ''); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  function csv(y, m, withNames = true){
+    const rep = month(y, m);
+    const head = ['datum', 'št.', 'ura', ...(withNames ? ['pacient'] : []), 'od', 'do', 'način', 'km OD→DO', 'km nazaj', 'km skupaj', 'vir', 'vozilo'];
+    const lines = [head.join(';')].concat(rep.rows.map(x => [x.date, x.nr, x.r.time, ...(withNames ? [x.r.name] : []), x.r.from, x.r.to, MODES[x.r.mode] || x.r.mode,
+      x.i.km == null ? '' : fmtKm(x.i.km), x.i.back ? fmtKm(x.i.back) : '', x.i.total == null ? '' : fmtKm(x.i.total), SRC[x.i.src] || '', x.veh].map(csvCell).join(';')));
+    lines.push(['', '', '', ...(withNames ? [''] : []), '', '', 'SKUPAJ', '', '', fmtKm(rep.total), '', ''].join(';'));
+    return '﻿' + lines.join('\r\n');
+  }
+  return { onUpdate:null, fresh, info, ensure, schedule, day, setManual, month, csv, fmtKm, SRC, r1 };
+})();
+
+/* =====================================================================
    RAZPORED: dnevne knjige, dializa, parjenje voznikov in vozil, združevanje in vrstni red prevozov
    Razdalje in časi vožnje: PRAVI CESTNI PODATKI (OpenStreetMap / OSRM, glej 38-routing.js). Samo če jih ni (strežnik se nalaga ali ni
    dosegljiv, naslov brez koordinat), je vožnja OCENA: zračna razdalja × faktor ceste, hitrosti po ZPrCP. Ocenjene relacije so vedno označene.
@@ -908,7 +1239,7 @@ const ROUTE = (() => {
 const PLAN_CACHE = new Map();
 
 /* ---------- Knjiga: polja ---------- */
-const blankRide = () => ({ id:uid(), name:'', time:'', from:'', to:'', phone:'', mode:'sede', dia:'', diaKey:'', done:false, doneBy:'', doneAt:'', pin:'', demo:false,
+const blankRide = () => ({ id:uid(), name:'', time:'', from:'', to:'', phone:'', mode:'sede', dia:'', diaKey:'', stay:0, km:null, kmBack:null, kmSrc:'', kk:'', gf:null, gt:null, kmAt:'', done:false, doneBy:'', doneAt:'', pin:'', demo:false,
   patientId:'', nalogId:'', note:'', exc:false, odpovedano:false, prevStatus:'', status:'nova', times:{}, statusBy:'', runKey:'' });
 const isFilled = r => !!((r.name||'').trim() || (r.from||'').trim() || (r.to||'').trim());
 function ensureDay(date){
@@ -919,15 +1250,26 @@ function ensureDay(date){
 function addSlots(date, n){ const a = ensureDay(date); for (let i = 0; i < n; i++) a.push(blankRide()); save(); }
 function filledRides(date){ return ensureDay(date).map((r,i) => ({ r, nr:i+1 })).filter(x => isFilled(x.r)); }
 function rideById(date, id){ const a = ensureDay(date); const i = a.findIndex(r => r.id === id); return i < 0 ? null : { r:a[i], nr:i+1 }; }
+const rideKk = r => norm(r.from) + '>' + norm(r.to);
+/* Točka vožnje: ustanova/klinika ali naselje. Če je Google za ta naslov že vrnil natančne koordinate (r.gf / r.gt, glej 39-google.js) in se besedilo
+   od takrat ni spremenilo, se uporabijo te: hišni naslov je točka (ne središče naselja). Takšne točke se nikoli ne shranijo v trajni predpomnilnik poti. */
+function ridePt(r, side){
+  const g = geo(r[side] || ''), ll = side === 'from' ? r.gf : r.gt;
+  if (!ll || g.kind === 'prazno' || !r.kk || r.kk !== rideKk(r) || !isFinite(ll[0]) || !isFinite(ll[1])) return g;
+  if (g.kind === 'poi' && g.poi.fixed) return g;
+  if (g.kind === 'poi') return { ...g, lat:ll[0], lon:ll[1], exact:true };
+  return { ...g, kind:'addr', key:'g:' + (+ll[0]).toFixed(4) + ',' + (+ll[1]).toFixed(4), lat:ll[0], lon:ll[1], label:(r[side] || '').trim(), exact:true };
+}
 function rideDir(r){
   const f = geo(r.from), t = geo(r.to);
   if (f.kind === 'poi' && t.kind !== 'poi' && t.kind !== 'prazno') return 'from';
   return 'to';
 }
 
-/* ---------- Dializa (pacienti iz baze s skupino dialize) ---------- */
+/* ---------- Dializa: register pacientov (Nastavitve → Dializa), termin dopoldanska / popoldanska ----------
+   Za vsakega pacienta, ki ta dan dializira, se vpiše prevoz tja (ura = začetek termina) in nazaj (ura = konec termina). */
 function loadDialysis(date){
-  const groups = diaGroupsFor(date, S); if (!groups.length) return 0;
+  const terms = diaTermsFor(date); if (!terms.length) return 0;
   const a = ensureDay(date); let added = 0;
   const place = obj => {
     let i = a.findIndex(r => !isFilled(r));
@@ -935,10 +1277,10 @@ function loadDialysis(date){
     Object.assign(a[i], blankRide(), obj); added++;
   };
   for (const p of S.patients){
-    if (!p.dia || !groups.includes(p.dia)) continue;
-    const g = S.settings.dia[p.dia];
+    const dt = p.dt; if (!dt || !terms.includes(dt.t) || !(dt.d || []).includes(dow(date))) continue;
+    const g = (S.settings.diaT || {})[dt.t]; if (!g) continue;
     const nl = activeNalog(p, date);
-    const base = { name:p.name, phone:p.phone, mode:p.mode, dia:p.dia, demo:!!p.demo, patientId:p.id, nalogId:nl ? nl.id : '' };
+    const base = { name:p.name, phone:p.phone, mode:p.mode, dia:dt.t, demo:!!p.demo, patientId:p.id, nalogId:nl ? nl.id : '' };
     const k1 = p.id + ':tja', k2 = p.id + ':nazaj';
     if (!a.some(r => r.diaKey === k1)) place({ ...base, time:g.start, from:p.addr, to:'SB Brežice – dializa', diaKey:k1 });
     if (!a.some(r => r.diaKey === k2)) place({ ...base, time:g.end, from:'SB Brežice – dializa', to:p.addr, diaKey:k2 });
@@ -1102,6 +1444,12 @@ function visitOrders(groups, from, leg){
   while (left.length){ let bi = 0; left.forEach((g, i) => { if (cur && leg(cur, g.pt).min < leg(cur, left[bi].pt).min) bi = i; }); const g = left.splice(bi, 1)[0]; seq.push(g); cur = g.pt; }
   return [seq];
 }
+/* Čas nalaganja / odpuščanja glede na način prevoza (leže in utila potrebujejo več časa kot sede) */
+const loadOf = (r, cfg, side) => { const k = side === 'pick' ? 'pick' : 'drop', m = r.mode; const v = m === 'leze' ? cfg[k + 'Leze'] : m === 'utila' ? cfg[k + 'Utila'] : cfg[k + 'Min']; return (v != null && isFinite(v)) ? +v : +cfg[k + 'Min']; };
+const loadSum = (rides, cfg, side) => rides.reduce((x, r) => x + loadOf(r, cfg, side), 0);
+/* Konec vožnje: pri vožnji s čakanjem na pregled (stay) je vrnitev šele, ko je pregled končan (ura pregleda + trajanje + pot od vhoda) */
+function retStartOf(ev, start){ return Math.max(start + ev.outDur, ev.readyAbs != null ? ev.readyAbs : -1e9, ev.readyRel != null ? start + ev.readyRel : -1e9); }
+const tripEnd = (ev, start) => ev.ret ? retStartOf(ev, start) + ev.ret.dur : start + ev.dur;
 const legCount = (l, c) => { if (l.real) c.real++; else if (!l.local){ c.est++; if (l.wait) c.wait++; } };
 
 /* ---------- Ocena poti ene vožnje ----------
@@ -1112,9 +1460,10 @@ function evalTo(order, dest, cfg, leg){
   for (const r of order){
     if (prev){ const l = leg(prev, r.from); t += l.min; km += l.km; legCount(l, cnt); }
     stops.push({ type:'pu', off:t, pt:r.from, rideId:r.id });
-    t += cfg.pickMin; ride[r.id] = t; prev = r.from;
+    t += loadOf(r, cfg, 'pick'); ride[r.id] = t; prev = r.from;
   }
   const groups = uniqBy(order, r => r.to), ptOf = g => (dest && g.pt.key === dest.key ? dest : g.pt);
+  const ret = order.filter(r => r.stay > 0);
   let best = null;
   for (const seq of visitOrders(groups, prev, leg)){
     let tt = t, kk = km, pv = prev; const dstops = [], arrAt = {}, c2 = { ...cnt };
@@ -1122,15 +1471,31 @@ function evalTo(order, dest, cfg, leg){
       const pt = ptOf(g), l = leg(pv, pt); tt += l.min; kk += l.km; legCount(l, c2);
       dstops.push({ type:'do', off:tt, pt, rideIds:g.rides.map(r => r.id) });
       g.rides.forEach(r => { arrAt[r.id] = tt; });
-      tt += cfg.dropMin * g.rides.length; pv = pt;
+      tt += loadSum(g.rides, cfg, 'drop'); pv = pt;
     }
     let maxRide = 0; const rideMin = {};
     order.forEach(r => { rideMin[r.id] = arrAt[r.id] - ride[r.id]; if (rideMin[r.id] > maxRide) maxRide = rideMin[r.id]; });
-    let dl = null, early = 0;                                   // dl = najmanjša rezerva do ure preiskave (brez varnostne rezerve)
-    order.forEach(r => { if (r.time != null){ const d = r.time - arrAt[r.id]; if (dl == null || d < dl) dl = d; } });
-    if (seq.length > 1 && dl != null) order.forEach(r => { if (r.time != null) early += (r.time - arrAt[r.id]) - dl; });   // pacienti, ki bi čakali na cilju
-    const ev = { order, stops:stops.concat(dstops), arr:dstops[0].off, dur:tt, km:kk, maxRide, rideMin, arrAt, dl, visit:seq.map(ptOf), lastPt:pv, nReal:c2.real, nEst:c2.est, nWait:c2.wait,
-      score:tt + (maxRide > cfg.maxRide ? 1000 : 0) + (seq.length > 1 ? early * 0.3 : 0) };
+    let dl = null, early = 0;                                   // dl = najmanjša rezerva do ure preiskave (brez varnostne rezerve); pot od vhoda do ambulante (extra) je všteta
+    order.forEach(r => { if (r.time != null){ const d = r.time - arrAt[r.id] - (r.extra || 0); if (dl == null || d < dl) dl = d; } });
+    if (seq.length > 1 && dl != null) order.forEach(r => { if (r.time != null) early += (r.time - arrAt[r.id] - (r.extra || 0)) - dl; });   // pacienti, ki bi čakali na cilju
+    const ev = { order, stops:dstops.length ? stops.concat(dstops) : stops, arr:dstops[0].off, dur:tt, outDur:tt, km:kk, maxRide, rideMin, arrAt, dl, visit:seq.map(ptOf), lastPt:pv, nReal:c2.real, nEst:c2.est, nWait:c2.wait, ret:null, readyAbs:null, readyRel:null, waitNom:0 };
+    /* Čakanje na pregled: po izstopu reševalec počaka do konca pregleda, nato pacienta odpelje nazaj na izhodišče (vožnja nazaj je všteta). */
+    if (ret.length && seq.length === 1){
+      const T0 = dl != null ? dl - cfg.buffer : null;           // nominalni začetek vožnje (prihod točno z rezervo pred pregledom)
+      let nomMax = 0;
+      ret.forEach(r => {
+        if (r.time != null){ const abs = r.time + r.stay + (r.extra || 0); ev.readyAbs = ev.readyAbs == null ? abs : Math.max(ev.readyAbs, abs); nomMax = Math.max(nomMax, abs - (T0 ?? 0)); }
+        else { const rel = arrAt[r.id] + loadOf(r, cfg, 'drop') + (r.extra || 0) + r.stay; ev.readyRel = ev.readyRel == null ? rel : Math.max(ev.readyRel, rel); nomMax = Math.max(nomMax, rel); }
+      });
+      const back = ret.map(r => r.vret || (r.vret = { id:r.id, nr:r.nr, name:r.name, mode:r.mode, from:r.to, to:r.from, time:null, extra:0, stay:0, kind:'from', pid:r.pid }));
+      const er = evalFrom(back, pv, cfg, leg);
+      ev.ret = { stops:er.stops, dur:er.dur, km:er.km, rideMin:er.rideMin, maxRide:er.maxRide, visit:er.visit, lastPt:er.lastPt };
+      ev.waitNom = Math.max(0, nomMax - tt);
+      ev.dur = tt + ev.waitNom + er.dur; ev.km = kk + er.km; ev.lastPt = er.lastPt;
+      ev.nReal = c2.real + er.nReal; ev.nEst = c2.est + er.nEst; ev.nWait = c2.wait + er.nWait;
+      if (er.maxRide > maxRide) ev.maxRide = er.maxRide;
+    }
+    ev.score = ev.dur + (ev.maxRide > cfg.maxRide ? 1000 : 0) + (seq.length > 1 ? early * 0.3 : 0);
     if (!best || ev.score < best.score) best = ev;
   }
   return best;
@@ -1145,7 +1510,7 @@ function evalFrom(order, origin, cfg, leg){
       if (prev){ const l = leg(prev, pt); t += l.min; km += l.km; legCount(l, cnt); }
       stops.push({ type:'pu', off:t, pt, rideIds:g.rides.map(r => r.id) });
       g.rides.forEach(r => { pickOff[r.id] = t; });
-      t += cfg.pickMin * g.rides.length;
+      t += loadSum(g.rides, cfg, 'pick');
       g.rides.forEach(r => { boarded[r.id] = t; });
       prev = pt;
     }
@@ -1154,11 +1519,11 @@ function evalFrom(order, origin, cfg, leg){
       const l = leg(prev, r.to); t += l.min; km += l.km; legCount(l, cnt);
       stops.push({ type:'do', off:t, pt:r.to, rideId:r.id });
       rideMin[r.id] = t - boarded[r.id]; if (rideMin[r.id] > maxRide) maxRide = rideMin[r.id];
-      t += cfg.dropMin; prev = r.to;
+      t += loadOf(r, cfg, 'drop'); prev = r.to;
     }
     let rd = null;                                              // najzgodnejši začetek vožnje, da noben pacient ne čaka
     order.forEach(r => { if (r.time != null){ const d = r.time - pickOff[r.id]; if (rd == null || d > rd) rd = d; } });
-    const ev = { order, stops, arr:0, dur:t, km, maxRide, rideMin, pickOff, rd, visit:seq.map(ptOf), lastPt:prev, nReal:cnt.real, nEst:cnt.est, nWait:cnt.wait,
+    const ev = { order, stops, arr:0, dur:t, outDur:t, km, maxRide, rideMin, pickOff, rd, ret:null, readyAbs:null, readyRel:null, visit:seq.map(ptOf), lastPt:prev, nReal:cnt.real, nEst:cnt.est, nWait:cnt.wait,
       score:t + (maxRide > cfg.maxRide ? 1000 : 0) + (seq.length > 1 && rd != null ? rd : 0) };
     if (!best || ev.score < best.score) best = ev;
   }
@@ -1210,7 +1575,11 @@ function variantList(date){
   v.push({ id:'sorodni cilji + primerna vozila', cluster:true, fit:0.6 });
   v.push({ id:'primerna vozila', fit:0.6 });
   v.push({ id:'sorodni cilji, najdaljše prve', cluster:true, order:'dur' });
-  for (let k = 1; k <= 6; k++) v.push({ id:'iskanje ' + k, cluster:true, fit:0.3, jit:40, seed:seedOf(date, k) });
+  v.push({ id:'najdaljše prve + polnjenje vrzeli', gaps:true, cluster:true, order:'dur' });
+  v.push({ id:'polnjenje vrzeli', gaps:true });
+  v.push({ id:'polnjenje vrzeli + sorodni cilji', gaps:true, cluster:true });
+  v.push({ id:'polnjenje vrzeli + sorodni cilji + primerna vozila', gaps:true, cluster:true, fit:0.6 });
+  for (let k = 1; k <= 6; k++) v.push({ id:'iskanje ' + k, gaps:true, cluster:true, fit:0.3, jit:40, seed:seedOf(date, k) });
   for (let k = 7; k <= 9; k++) v.push({ id:'iskanje ' + k, jit:40, seed:seedOf(date, k) });
   return v;
 }
@@ -1249,16 +1618,17 @@ function computePlan(date){
 function planLevel(date, level, opts = {}){
   const cfgS = S.settings, cfgB = cfgFor(1), leg = makeLeg(cfgS);
   const rng = opts.seed ? mulberry(opts.seed) : null;
-  const plan = { date, level, opts, crews:[], unassigned:[], warnings:[], bends:[], conflicts:[], assign:{}, totals:{ rides:0, km:0, min:0, late:0, lateMin:0, wait:0, overtime:0, vehicles:0, estLegs:0, waitLegs:0, realLegs:0, waste:0, stretcherUse:0 }, pairing:null, standby:isStandby(date), pending:[] };
+  const plan = { date, level, opts, crews:[], unassigned:[], warnings:[], bends:[], conflicts:[], assign:{}, totals:{ rides:0, km:0, min:0, late:0, lateMin:0, wait:0, overtime:0, vehicles:0, estLegs:0, waitLegs:0, realLegs:0, waste:0, stretcherUse:0, stayWait:0 }, pairing:null, standby:isStandby(date), pending:[] };
 
   // 1) vožnje, ki jih je treba opraviti
   const rides = [];
   ensureDay(date).forEach((r, i) => {
     if (!isFilled(r) || r.done || r.odpovedano || r.status === 'preklicana') return;
-    const f = geo(r.from), t = geo(r.to);
+    const f = ridePt(r, 'from'), t = ridePt(r, 'to'), kind0 = rideDir(r);
     const lock = LIVE_LOCK.includes(r.status) && r.runKey && r.runKey.startsWith(date + '_') ? r.runKey.slice(date.length + 1) : '';
     rides.push({ id:r.id, nr:i+1, name:(r.name || '').trim() || '(brez imena)', mode:r.mode || 'sede', phone:r.phone || '', time:toMin(r.time), timeTxt:r.time || '',
-      from:f, to:t, fromTxt:r.from || '', toTxt:r.to || '', kind:rideDir(r), pin:r.pin || lock, locked:!r.pin && !!lock, exc:!!r.exc, force:!!(r.exc || r.pin), pid:r.patientId || '', dia:r.dia || '' });
+      from:f, to:t, fromTxt:r.from || '', toTxt:r.to || '', kind:kind0, pin:r.pin || lock, locked:!r.pin && !!lock, exc:!!r.exc, force:!!(r.exc || r.pin), pid:r.patientId || '', dia:r.dia ? diaTermOf(r.dia) : '',
+      stay:kind0 === 'to' ? Math.max(0, +r.stay || 0) : 0, extra:kind0 === 'to' ? poiExtra(t) : 0 });
     if (f.kind === 'prazno' || t.kind === 'prazno') plan.warnings.push({ level:'warn', nr:i+1, text:`Prevoz ${i+1}: manjka naslov (${f.kind === 'prazno' ? 'od' : 'do'}). Razdalja je ocenjena iz centra Brežic.` });
   });
   plan.totals.rides = rides.length;
@@ -1294,6 +1664,7 @@ function planLevel(date, level, opts = {}){
       const cf = st ? cfgB : cfgS;
       for (const t of trips){
         if (t.kind !== r.kind || t.pin !== r.pin) continue;
+        if ((r.stay > 0 || t.rides.some(x => x.stay > 0)) && !t.pts.some(p => p.key === anchor.key)) continue;   // čakanje na pregled: samo isti cilj (reševalec se vrne po pacienta)
         if (!t.pts.some(p => p.key === anchor.key)){
           if (!opts.cluster || t.pts.length >= maxDests || !t.pts.every(p => similar(p, anchor))) continue;
         }
@@ -1315,7 +1686,7 @@ function planLevel(date, level, opts = {}){
   trips.forEach(t => { t.ev = bestExact(t.kind, t.ev.order, t.anchor, t.lvl ? cfgB : cfgS, leg); });
 
   // 4) ključni časi vožnje
-  const qkey = t => (opts.order === 'dur' ? -t.ev.dur : (t.need ?? 1e6)) + (rng ? (rng() - 0.5) * opts.jit : 0);
+  const qkey = t => (opts.order === 'dur' ? -t.ev.dur : (t.need ?? 1e6)) + (rng ? (rng() - 0.5) * opts.jit : 0) + (opts.gaps && t.rides.some(r => r.dia) ? -1e5 : 0);   // dializni prevozi imajo fiksne ure: najprej njih
   const prep = t => {
     t.ref = refOf(t);
     t.counts = countModes(t.rides);
@@ -1338,6 +1709,17 @@ function planLevel(date, level, opts = {}){
   // 5) razdelitev vožnj med posadke
   const queue = trips.slice().sort((a,b) => a.qk - b.qk);
   const crewFor = pin => crews.filter(c => !pin || c.id === pin);
+  /* Mesta v dnevu posadke, kamor se lahko vstavi vožnja. Osnovni razpored: samo na konec (kot prej). Napredni: tudi v vrzeli med vožnjami
+     (npr. dializna posadka po koncu dializnih voženj, ali med prevozom tja in nazaj). */
+  const slotsOf = c => {
+    if (!opts.gaps) return [{ i:c.trips.length, free:c.free, pos:c.pos, next:null }];
+    const out = []; let free = c.shift, pos = baseG;
+    for (let i = 0; i <= c.trips.length; i++){
+      out.push({ i, free, pos, next:c.trips[i] || null });
+      if (c.trips[i]){ free = c.trips[i].end; pos = c.trips[i].last; }
+    }
+    return out;
+  };
   let guard = 0;
   while (queue.length && guard++ < 800){
     const t = queue.shift();
@@ -1348,29 +1730,44 @@ function planLevel(date, level, opts = {}){
       plan.warnings.push({ level:lockedN.length ? 'bad' : 'info', text:lockedN.length ? `Prevoz ${lockedN.join(', ')} je že v teku pri vozilu, ki ni več v razporedu; izbrano je drugo vozilo. Posadki sporoči spremembo.` : `Pripeto vozilo za prevoz ${t.rides.map(r => r.nr).join(', ')} ni na voljo; izbrano je drugo vozilo.` });
     }
     const stages = (level === 1 || t.force || t.lvl) ? [0, 1] : [0];
+    const isDia = t.rides.some(r => r.dia);
     let best = null, capOk = false, shiftBlocked = false, lezNoTeam = false, shiftNeed = null, shiftCrew = null;
     for (const st of stages){
       for (const c of pool){
         if (t.counts.leze > 0 && c.solo){ lezNoTeam = true; continue; }   // leže: 2 reševalca za nošenje
         if (!fits(t.counts, c.vehicle, st)) continue;
         capOk = true;
-        const d = leg(c.pos, t.first), arrive = c.free + d.min;
         const latest = st ? t.latestB : t.latestS;
-        let start = arrive, late = 0;
-        if (t.kind === 'to' && latest != null){ start = Math.max(arrive, latest); late = Math.max(0, arrive - latest); }
-        else if (t.kind === 'from' && t.rdy != null){ start = Math.max(arrive, t.rdy); late = Math.max(0, arrive - t.rdy - cfgS.waitTol); }
-        const endAbs = start + t.ev.dur + leg(t.last, baseG).min;
-        if (c.end != null){ const okOt = Math.max(c.ot, st ? (S.rules.overtimeMax || 0) : 0); if (endAbs > c.end + okOt){ shiftBlocked = true; const need = Math.ceil(endAbs - (c.end + okOt)); if (shiftNeed == null || need < shiftNeed){ shiftNeed = need; shiftCrew = c; } continue; } }
-        const idle = start - arrive;
-        let cost = late * 20 + d.min + idle * 0.05 + c.trips.length * 0.5 + (st ? 25 : 0);
-        if (c.vehicle.fn === 'dializa') cost += t.rides.some(r => r.dia) ? -15 : 45;   // dializno vozilo za druge prevoze samo po potrebi
-        if (t.sbReturn){ if (c.team === 'NN') cost -= 20; else if (hasNN) cost += 15; }
-        if (opts.fit){   // primerno vozilo: ne zasedaj večjega vozila, kot je treba, in ne vozila z nosili, če jih ta dan potrebuje leže pacient
-          const cap = capOf(c.vehicle, st), n = t.counts.sede + t.counts.leze + t.counts.utila;
-          cost += opts.fit * Math.max(0, cap.skupaj - n);
-          if (hasLeze && !t.counts.leze && c.vehicle.leze > 0) cost += 8;
+        for (const sl of slotsOf(c)){
+          const d = leg(sl.pos, t.first), arrive = sl.free + d.min;
+          let start = arrive, late = 0;
+          if (t.kind === 'to' && latest != null){ start = Math.max(arrive, latest); late = Math.max(0, arrive - latest); }
+          else if (t.kind === 'from' && t.rdy != null){ start = Math.max(arrive, t.rdy); late = Math.max(0, arrive - t.rdy - cfgS.waitTol); }
+          const endT = tripEnd(t.ev, start);
+          let detour = 0;
+          if (sl.next){   // vstavljanje v vrzel med dvema vožnjama: do naslednje mora biti dovolj časa (naslednja vožnja se ne premakne)
+            const ln = leg(t.last, sl.next.first);
+            if (endT + ln.min > sl.next.start + 1e-6) continue;
+            detour = Math.max(0, ln.min - leg(sl.pos, sl.next.first).min);
+          } else {
+            const endAbs = endT + leg(t.last, baseG).min;
+            if (c.end != null){ const okOt = Math.max(c.ot, st ? (S.rules.overtimeMax || 0) : 0); if (endAbs > c.end + okOt){ shiftBlocked = true; const need = Math.ceil(endAbs - (c.end + okOt)); if (shiftNeed == null || need < shiftNeed){ shiftNeed = need; shiftCrew = c; } continue; } }
+          }
+          const idle = start - arrive;
+          let cost = late * 20 + d.min + detour + idle * 0.05 + c.trips.length * 0.5 + (st ? 25 : 0);
+          if (c.vehicle.fn === 'dializa'){
+            if (!opts.gaps) cost += isDia ? -15 : 45;   // osnovni razpored: dializno vozilo za druge prevoze samo po potrebi
+            else if (isDia) cost -= 30;
+            else cost += c.trips.some(x => x.dia) ? (sl.next && sl.next.dia ? 12 : 0) : 6;   // po koncu dializnih voženj je posadka prosta za sede prevoze; med njimi le, če je vrzel dovolj velika
+          }
+          if (t.sbReturn){ if (c.team === 'NN') cost -= 20; else if (hasNN) cost += 15; }
+          if (opts.fit){   // primerno vozilo: ne zasedaj večjega vozila, kot je treba, in ne vozila z nosili, če jih ta dan potrebuje leže pacient
+            const cap = capOf(c.vehicle, st), n = t.counts.sede + t.counts.leze + t.counts.utila;
+            cost += opts.fit * Math.max(0, cap.skupaj - n);
+            if (hasLeze && !t.counts.leze && c.vehicle.leze > 0) cost += 8;
+          }
+          if (!best || cost < best.cost) best = { c, d, arrive, start, late, cost, st, latest, sl };
         }
-        if (!best || cost < best.cost) best = { c, d, arrive, start, late, cost, st, latest };
       }
     }
     if (!best && lezNoTeam) plan.warnings.push({ level:'bad', text:`Prevoz ${t.rides.map(r => r.nr).join(', ')}: pacient leže potrebuje 2 reševalca (voznik + spremljevalec) in vozilo z nosili.` });
@@ -1387,12 +1784,13 @@ function planLevel(date, level, opts = {}){
       }
       continue;
     }
-    const { c, d, start, late } = best;
-    const trip = { id:t.id, kind:t.kind, rides:t.ev.order, ev:t.ev, anchor:t.anchor, dests:t.ev.visit, start, depart:start - d.min, deadKm:d.km, from:c.pos, late:Math.round(late), counts:t.counts, ref:t.ref, sbReturn:t.sbReturn, pin:t.pin,
+    const { c, d, start, late, sl } = best;
+    const trip = { id:t.id, kind:t.kind, rides:t.ev.order, ev:t.ev, anchor:t.anchor, dests:t.ev.visit, start, depart:start - d.min, deadKm:d.km, from:sl.pos, first:t.first, last:t.last, dia:isDia, late:Math.round(late), counts:t.counts, ref:t.ref, sbReturn:t.sbReturn, pin:t.pin,
       wait: t.kind === 'from' && t.rdy != null ? Math.max(0, Math.round(best.arrive - t.rdy)) : 0, stage:best.st, forced:t.force,
       latestDepart: best.latest != null ? best.latest - d.min : null, shiftLimited: t.kind === 'to' && best.latest != null && c.trips.length === 0 && late > 0 };
-    trip.end = start + t.ev.dur;
-    c.trips.push(trip); c.free = trip.end; c.pos = t.last; c.km += d.km + t.ev.km; c.busy += d.min + t.ev.dur;
+    trip.end = tripEnd(t.ev, start);
+    c.trips.splice(sl.i, 0, trip);
+    if (!opts.gaps){ c.free = trip.end; c.pos = t.last; }
   }
 
   // 6) izhod: časi postankov, ETA, skupne vrednosti
@@ -1400,21 +1798,27 @@ function planLevel(date, level, opts = {}){
   const countLeg = (a, b) => { const k = a.key + '>' + b.key; if (seen.has(k)) return; seen.add(k); legCount(leg(a, b), cntAll); };
   for (const c of crews){
     c.trips.sort((a,b) => a.start - b.start);
+    /* verižen izračun: odhod, prazne vožnje (km), zasedenost; vožnje s čakanjem na pregled imajo konec šele po vrnitvi */
+    c.km = 0; c.busy = 0; let prevPt = baseG;
+    for (const t of c.trips){
+      const ev = t.ev;
+      if (ev.ret){ t.retStart = retStartOf(ev, t.start); t.waitMin = Math.max(0, Math.round(t.retStart - (t.start + ev.outDur))); t.end = t.retStart + ev.ret.dur; }
+      const dd = leg(prevPt, t.first); t.from = prevPt; t.deadKm = dd.km; t.depart = t.start - dd.min;
+      c.km += dd.km + ev.km; c.busy += dd.min + (t.end - t.start); prevPt = t.last;
+    }
+    c.pos = prevPt;
     const back = leg(c.pos, baseG); if (c.trips.length) c.km += back.km;
     c.rideNrs = [];
     for (const t of c.trips){
-      t.stopsAbs = t.ev.stops.map(s => {
-        const o = { ...s, t: t.start + s.off };
-        const ids = s.rideIds || [s.rideId]; o.people = ids.map(id => t.rides.find(r => r.id === id));
-        return o;
-      });
+      const mk = (s, base, isRet) => { const o = { ...s, t:base + s.off, ret:isRet }; const ids = s.rideIds || [s.rideId]; o.people = ids.map(id => t.rides.find(r => r.id === id)); return o; };
+      t.stopsAbs = t.ev.stops.map(s => mk(s, t.start, false)).concat(t.ev.ret ? t.ev.ret.stops.map(s => mk(s, t.retStart, true)) : []);
       t.arrive = t.kind === 'to' ? t.start + t.ev.arr : null;
       // ETA za vsakega pacienta: pobiranje, prihod na cilj, rezerva do ure preiskave oziroma čakanje na odvoz
       t.info = {};
-      t.stopsAbs.forEach(s => { (s.rideIds || [s.rideId]).forEach(id => { const o = t.info[id] || (t.info[id] = {}); if (s.type === 'pu') o.pickT = s.t; else o.dropT = s.t; }); });
+      t.stopsAbs.forEach(s => { (s.rideIds || [s.rideId]).forEach(id => { const o = t.info[id] || (t.info[id] = {}); if (s.ret){ if (s.type === 'pu') o.retPickT = s.t; else o.retDropT = s.t; } else if (s.type === 'pu') o.pickT = s.t; else o.dropT = s.t; }); });
       t.rides.forEach(r => {
         const o = t.info[r.id];
-        if (t.kind === 'to' && r.time != null) o.slack = Math.round(r.time - o.dropT);
+        if (t.kind === 'to' && r.time != null) o.slack = Math.round(r.time - o.dropT - (r.extra || 0));
         if (t.kind === 'from' && r.time != null) o.wait = Math.max(0, Math.round(o.pickT - r.time));
       });
       const sl = t.rides.map(r => t.info[r.id].slack).filter(x => x != null);
@@ -1425,7 +1829,7 @@ function planLevel(date, level, opts = {}){
         const pu = t.stopsAbs.find(s => s.type === 'pu' && (s.rideId === r.id || (s.rideIds && s.rideIds.includes(r.id))));
         const inf = t.info[r.id];
         plan.assign[r.id] = { crewId:c.id, veh:c.vehicle.name, t:pu ? pu.t : t.start, order:i+1, trip:t.id, late:t.late, rideMin:Math.round(t.ev.rideMin[r.id] || 0),
-          pickT:inf.pickT, dropT:inf.dropT, slack:inf.slack ?? null, wait:inf.wait ?? 0, kind:t.kind };
+          pickT:inf.pickT, dropT:inf.dropT, retPickT:inf.retPickT ?? null, retT:inf.retDropT ?? null, stay:r.stay || 0, slack:inf.slack ?? null, wait:inf.wait ?? 0, kind:t.kind };
       });
       if (t.late > 0){
         const nrs = t.rides.map(r => r.nr).join(', ');
@@ -1434,6 +1838,8 @@ function planLevel(date, level, opts = {}){
           : `${c.vehicle.name}: prevoz ${nrs} bo zamudil približno ${t.late} min. Dodaj vozilo ali prerazporedi.`;
         plan.warnings.push({ level:'bad', text:txt });
       }
+      if (t.ev.ret && t.waitMin > 0) plan.warnings.push({ level:'info', text:`${c.vehicle.name}: prevoz ${t.rides.map(r => r.nr).join(', ')} počaka na pregled približno ${fmtDur(t.waitMin)} (do ${fmtT(t.retStart)}), nato pacienta odpelje nazaj.` });
+      plan.totals.stayWait += t.waitMin || 0;
       plan.totals.late += t.late > 0 ? t.rides.length : 0;
       plan.totals.lateMin += t.late > 0 ? t.late * t.rides.length : 0;
       plan.totals.wait += t.wait || 0;
@@ -1574,7 +1980,7 @@ function tripWaypoints(t){
   const pts = [t.from, ...t.stopsAbs.map(s => s.pt)];
   return pts.filter((p, i) => !i || p.key !== pts[i - 1].key);
 }
-const stopDwell = s => (s.type === 'pu' ? S.settings.pickMin : S.settings.dropMin) * (((s.people || []).filter(Boolean).length) || 1);
+const stopDwell = s => { const pp = (s.people || []).filter(Boolean); return pp.length ? loadSum(pp, S.settings, s.type === 'pu' ? 'pick' : 'drop') : (s.type === 'pu' ? S.settings.pickMin : S.settings.dropMin); };
 /* ETA glede na dejanski potek: iz časa, ko je posadka sporočila korak (na poti, v vozilu …), naprej po razporedu po cestnih podatkih */
 function liveEta(date, r){
   if (!r || !['na_poti', 'na_kraju', 'v_vozilu'].includes(r.status)) return null;
@@ -1586,7 +1992,7 @@ function liveEta(date, r){
   const iPu = st.findIndex(s => s.type === 'pu' && has(s, r.id)), iDo = st.findIndex(s => s.type === 'do' && has(s, r.id));
   if (iPu < 0 || iDo < 0) return null;
   if (r.status === 'na_poti' && tm('na_poti') != null) return { t:tm('na_poti') + leg(iPu ? st[iPu - 1].pt : t.from, st[iPu].pt).min, what:'prihod k pacientu' };
-  if (r.status === 'na_kraju' && tm('na_kraju') != null) return { t:tm('na_kraju') + S.settings.pickMin * (((st[iPu].people || []).filter(Boolean).length) || 1), what:'odhod s pacientom' };
+  if (r.status === 'na_kraju' && tm('na_kraju') != null) return { t:tm('na_kraju') + stopDwell(st[iPu]), what:'odhod s pacientom' };
   if (r.status === 'v_vozilu' && tm('v_vozilu') != null){
     let x = tm('v_vozilu');
     for (let k = iPu + 1; k <= iDo; k++){ x += leg(st[k - 1].pt, st[k].pt).min; if (k < iDo) x += stopDwell(st[k]); }
@@ -1681,7 +2087,7 @@ function planText(date){
    Veljavnost se računa samodejno, en mesec pred iztekom se prikaže opozorilo.
    Privzete veljavnosti so predlog: pri vsakem nalogu preveri datum na papirnatem/elektronskem nalogu.
    ===================================================================== */
-const blankPatient = (extra = {}) => ({ id:uid(), name:'', addr:'', phone:'', mode:'sede', dia:'', color:-1, zzzs:'', note:'', naloge:[], demo:false, created:new Date().toISOString(), ...extra });
+const blankPatient = (extra = {}) => ({ id:uid(), name:'', addr:'', phone:'', mode:'sede', dt:null, color:-1, zzzs:'', note:'', naloge:[], demo:false, created:new Date().toISOString(), ...extra });
 const blankNalog = (vrsta = 'letna', from = todayStr()) => ({ id:uid(), vrsta, stevilka:'', narocnik:'', izvajalec:'Reševalna postaja Brežice (ZD Brežice)', zdravnik:'', zdravnikVrsta:'osebni', razlog:'', od:'', do:'', mode:'sede',
   veljaOd:from, veljaDo:defaultValidTo(vrsta, from), dnevi:'', opombe:'', preklican:false, porabljen:'', auto:true, created:new Date().toISOString() });
 const patientById = id => S.patients.find(p => p.id === id) || null;
@@ -1803,7 +2209,7 @@ function rideVariants(date, r, nr){
     `Ura: ${r.time || '–'}`,
     `Od: ${r.from || '–'}`,
     `Do: ${r.to || '–'}`,
-    `Način prevoza: ${MODES[r.mode] || r.mode}${r.dia ? ' · dializa ' + r.dia : ''}`,
+    `Način prevoza: ${MODES[r.mode] || r.mode}${r.dia ? ' · dializa (' + (DIA_TERMS[diaTermOf(r.dia)] || '').toLowerCase() + ')' : ''}`,
     n ? `Nalog: ${NALOG_VRSTE[n.vrsta].l}, št. ${n.stevilka || '–'}, velja do ${fmtDMY(n.veljaDo)}` : '',
     r.note ? `Opomba: ${r.note}` : ''
   ].filter(Boolean).join('\n');
@@ -1818,12 +2224,11 @@ function applyPatientToRide(date, rideId, pid, opts = {}){
   r.patientId = p.id; r.name = p.name;
   if (!r.phone || opts.overwrite) r.phone = p.phone;
   if (!opts.keepMode) r.mode = nl ? nl.mode || p.mode : p.mode;
-  if (p.dia && !r.dia) r.dia = p.dia;
   r.nalogId = nl ? nl.id : '';
   const homeFrom = nl && nl.od && !/^SB |UKC|ZD /i.test(nl.od) ? nl.od : p.addr;
   if (!r.from.trim()) r.from = homeFrom || p.addr;
   if (!r.to.trim()) r.to = nl && nl.do ? nl.do : '';
-  save(); return true;
+  save(); KM.schedule(date, rideId); return true;
 }
 function patientSuggestions(raw){
   const q = norm(raw); if (q.length < 2) return [];
@@ -1836,7 +2241,7 @@ function savePatientFromRide(date, rideId){
   const hit = rideById(date, rideId); if (!hit) return null;
   const r = hit.r; if (!r.name.trim()) return null;
   let p = S.patients.find(x => norm(x.name) === norm(r.name));
-  if (!p){ p = blankPatient({ name:r.name.trim(), addr:rideDir(r) === 'from' ? r.to : r.from, phone:r.phone, mode:r.mode, dia:r.dia || '', color:nextColor() }); S.patients.push(p); audit('pacient.dodan', { id:p.id, kdo:initials(p.name) }); }
+  if (!p){ p = blankPatient({ name:r.name.trim(), addr:rideDir(r) === 'from' ? r.to : r.from, phone:r.phone, mode:r.mode, color:nextColor() }); S.patients.push(p); audit('pacient.dodan', { id:p.id, kdo:initials(p.name) }); }
   r.patientId = p.id; save(); return p;
 }
 function removePatient(id){
@@ -1851,7 +2256,7 @@ function logPatientOpen(id){ const t = Date.now(); if (lastOpened[id] && t - las
 /* =====================================================================
    ZASLONI
    ===================================================================== */
-const UI = { view:'knjiga', month:null, date:null, dDate:null, lDate:null, cDate:null, filter:'vsi', q:'', setTab:'vozila', bookRev:'', pid:'', nid:'', pf:'vsi', pq:'', modal:null, stale:false, selfTest:null, maps:{}, routeBusy:'' };
+const UI = { view:'knjiga', month:null, date:null, dDate:null, lDate:null, cDate:null, filter:'vsi', q:'', setTab:'vozila', bookRev:'', pid:'', nid:'', pf:'vsi', pq:'', modal:null, stale:false, selfTest:null, maps:{}, routeBusy:'', sect:{}, openRide:'', kmRep:false, gTest:null, kmTried:{} };
 const IC = {
   book:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 5.5v16M9 8h6M9 12h6"/></svg>',
   day:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
@@ -1893,13 +2298,13 @@ const TITLES = {
   zivo:['Živo stanje', 'Posadke sporočajo korake prevoza. Tukaj vidiš status in čase.'],
   pacienti:['Pacienti in nalogi', 'Baza pacientov z nalogi za prevoz. Opozorilo: letni nalog 30 dni, mesečni 7 dni pred iztekom.'],
   posebnosti:['Posebnosti', 'Okvare vozil, servisi in drugo, kar vpliva na razpored.'],
-  nastavitve:['Nastavitve', 'Vozila, zaposleni, pravila, dializa, uporabniki, varnost in podatki.'],
+  nastavitve:['Nastavitve', 'Vozila, zaposleni, dializa, klinike, izračun, uporabniki in podatki.'],
   moji:['Moji prevozi', '']
 };
 
 /* ---------- Logotipi: datoteka iz mape logos/, ali naložen v Nastavitve → Logotipi; sicer samo besedilo ---------- */
 const LOGOS = { zd:{ label:'ZD Brežice', file:'logos/zd-brezice.png' }, nmp:{ label:'NMP', file:'logos/nmp.png' } };
-const logoSrc = k => store.get('kp.logo.' + k) || (BACKEND === 'firebase' || location.protocol.startsWith('http') && !/claude|sandbox/.test(location.host) ? LOGOS[k].file : '');
+const logoSrc = k => store.get('kp.logo.' + k) || LOGOS[k].file;   // če datoteke ni, se prikaže besedilo (glej poslušalec napake spodaj)
 const logoItem = k => { const src = logoSrc(k), l = LOGOS[k]; return `<span class="logoitem" data-logo="${k}">${src ? `<img src="${esc(src)}" alt="${esc(l.label)}" height="30">` : ''}<span class="lf" ${src ? 'hidden' : ''}>${esc(l.label)}</span></span>`; };
 const logoBar = cls => `<div class="logobar ${cls || ''}">${logoItem('zd')}<i></i>${logoItem('nmp')}</div>`;
 document.addEventListener('error', e => { const t = e.target; if (t && t.tagName === 'IMG' && t.closest && t.closest('.logoitem')){ t.hidden = true; const f = t.nextElementSibling; if (f) f.hidden = false; } }, true);
@@ -1924,7 +2329,38 @@ function setHeader(){
 const demoBanner = () => hasDemo() ? `<div class="banner"><span>${IC.info}</span><div><b>Prikazani so primeri.</b> Pacienti in zaposleni so izmišljeni. Odstrani jih v Nastavitve → Podatki, ko začneš z resničnimi vpisi.</div></div>` : '';
 const hasDemo = () => Object.values(S.rides).some(a => a.some(r => r.demo)) || S.staff.some(s => s.demo) || S.patients.some(p => p.demo);
 
+/* ---------- Kilometrina: oznaka in polje ---------- */
+const KM_SRC_L = { google:'Google Zemljevidi', rocno:'ročni vnos', osrm:'ocena po cestah (OSM)', ocena:'ocena po zračni razdalji' };
+function kmChipHTML(r){
+  if (!isFilled(r) || r.odpovedano) return '<span class="kmchip" data-role="kmchip" hidden></span>';
+  const i = KM.info(r); if (i.total == null) return '<span class="kmchip" data-role="kmchip" hidden></span>';
+  const ex = i.exact && i.backExact, tip = `${KM_SRC_L[i.src] || ''}: ${KM.fmtKm(i.km)} km` + (i.back ? ` + nazaj ${KM.fmtKm(i.back)} km` : '');
+  return `<span class="kmchip src-${i.src} ${ex ? 'ex' : 'est'}" data-role="kmchip" title="${esc(tip)}">${ex ? '' : '~'}${KM.fmtKm(i.total)} km</span>`;
+}
+function kmBoxHTML(r){
+  if (!(r.from || '').trim() || !(r.to || '').trim()) return '<span class="hint">Vpiši OD in DO: kilometrina se izračuna sama.</span>';
+  const i = KM.info(r), gi = GOOGLE.info(), tilde = x => x ? '' : '~';
+  const parts = [`<b class="kmv">${tilde(i.exact)}${KM.fmtKm(i.km)} km</b>`];
+  if (i.back) parts.push(`nazaj ${tilde(i.backExact)}${KM.fmtKm(i.back)} km`, `skupaj <b>${tilde(i.exact && i.backExact)}${KM.fmtKm(i.total)} km</b>`);
+  const can = GOOGLE.enabled();
+  return `<span class="srcbadge src-${i.src}">${KM_SRC_L[i.src] || ''}</span><span class="kmtxt">${parts.join(' · ')}</span>
+    <input type="text" inputmode="decimal" class="kmin" data-km="manual" placeholder="ročno" aria-label="Ročni vnos kilometrov OD → DO" value="${r.kmSrc === 'rocno' && r.km != null ? KM.fmtKm(r.km) : ''}">
+    ${can ? '<button type="button" class="btn sm" data-act="kmRecalc">Izračunaj z Googlom</button>' : `<span class="hint">${gi.configured ? 'Google je izklopljen.' : 'Natančen izračun: vnesi ključ Google (Nastavitve → Izračun).'}</span>`}`;
+}
+
 /* ---------- Mesečna knjiga ---------- */
+function kmReportHTML(y, m){
+  const rep = KM.month(y, m), share = rep.total ? Math.round(rep.exact / rep.total * 100) : 0;
+  const vehRows = Object.entries(rep.veh).sort((a, b) => b[1] - a[1]).map(([v, k]) => `<tr><td>${esc(v)}</td><td class="num">${KM.fmtKm(k)} km</td></tr>`).join('');
+  const dayRows = rep.days.map(d => `<tr><td>${fmtShort(d.date)}</td><td class="num">${d.n}</td><td class="num">${KM.fmtKm(d.km)} km</td></tr>`).join('');
+  return `<section class="card card-pad stack kmrep" id="kmReport">
+    <div class="card-head" style="margin:0"><h3>Kilometrina · ${MONTHS[m]} ${y}</h3>
+      <div class="row" style="gap:6px"><button type="button" class="btn sm" data-act="kmMonth" ${GOOGLE.enabled() ? '' : 'disabled title="Najprej vnesi ključ Google (Nastavitve → Izračun)"'}>Izračunaj manjkajoče z Googlom</button><button type="button" class="btn sm" data-act="kmCsv" data-names="0">Prenesi CSV</button><button type="button" class="btn sm" data-act="kmCsv" data-names="1">CSV z imeni pacientov</button></div></div>
+    <div class="sumline"><span><b class="mono">${KM.fmtKm(rep.total)}</b> km skupaj</span><span><b class="mono">${share} %</b> natančno (Google ali ročno)</span><span><b class="mono">${rep.missing}</b> prevozov brez km</span></div>
+    ${rep.rows.length ? `<div class="two"><div class="tablewrap"><table><thead><tr><th>Dan</th><th class="num">Prevozov</th><th class="num">Km</th></tr></thead><tbody>${dayRows}</tbody></table></div>
+      <div class="tablewrap"><table><thead><tr><th>Vozilo</th><th class="num">Km</th></tr></thead><tbody>${vehRows || '<tr><td colspan="2" class="muted">Vozila se pokažejo po razporeditvi.</td></tr>'}</tbody></table></div></div>` : '<div class="empty-state">V tem mesecu še ni prevozov.</div>'}
+    <p class="hint" style="margin:0">Kilometrina prevoza = razdalja OD → DO po najboljši poti (Google Zemljevidi, osebni avto). Pri čakanju na pregled je prišteta tudi pot nazaj. Vožnja reševalca do pacienta in nazaj na postajo ni všteta. Oznaka ~ pomeni oceno (brez Googla).</p></section>`;
+}
 function renderMonth(){
   const { y, m } = UI.month, n = daysInMonth(y, m), today = todayStr();
   let tr = 0, td = 0, dd = 0, tcn = 0; const cards = [];
@@ -1932,18 +2368,16 @@ function renderMonth(){
     const date = `${y}-${pad(m+1)}-${pad(d)}`;
     const all = (S.rides[date] || []).filter(isFilled), filled = all.filter(r => !r.odpovedano), canc = all.length - filled.length, done = filled.filter(r => r.done).length;
     tcn += canc; tr += filled.length; td += done; if (filled.length) dd++;
-    const hol = holiday(date), wk = isStandby(date), groups = diaGroupsFor(date, S);
-    const book = S.crewBook[date] || {};
+    const hol = holiday(date), wk = isStandby(date);
     const oc = (S.crewBook[date] || {}).ost || { text:'', manual:false };
-    const rows = `<div class="crew-row"><label>Opomba</label><input type="text" data-crew="${date}|ost" value="${esc(oc.text)}" placeholder="kaj je narobe / opomba" aria-label="Ostalo, ${fmtShort(date)}"></div>`;
     cards.push(`<article class="day ${date === today ? 'today' : ''} ${wk ? 'wk' : ''} ${date < today ? 'past' : ''}">
       <button type="button" class="day-head" data-act="openDay" data-date="${date}">
         <span class="dnum tnum">${pad(d)}</span>
         <span class="dtxt"><span class="dname">${DOW_LONG[dow(date)]}</span>
-          <span class="dmeta">${date === today ? '<span class="chip accent">danes</span>' : ''}${hol ? `<span class="chip warn" title="${esc(hol)}">praznik</span>` : ''}${wk ? '<span class="chip info">pripravljenost</span>' : ''}${groups.map(g => `<span class="chip mono" title="Dializa">${g}</span>`).join('')}</span></span>
+          <span class="dmeta">${date === today ? '<span class="chip accent">danes</span>' : ''}${hol ? `<span class="chip warn" title="${esc(hol)}">praznik</span>` : ''}${wk && !hol ? '<span class="chip info">pripravljenost</span>' : ''}</span></span>
         <span class="dcount"><b>${filled.length}</b>${filled.length ? `${done}/${filled.length} ✓` : 'prevozov'}${canc ? `<span class="chip bad">${canc} odpov.</span>` : ''}</span>
       </button>
-      <div class="crew"><h4>Ostalo</h4>${rows}</div></article>`);
+      <div class="crew"><div class="crew-row"><label>Opomba</label><input type="text" data-crew="${date}|ost" value="${esc(oc.text)}" placeholder="kaj je narobe / opomba" aria-label="Ostalo, ${fmtShort(date)}"></div></div></article>`);
   }
   $('#view').innerHTML = `
     ${demoBanner()}${alertsBanner()}
@@ -1952,18 +2386,16 @@ function renderMonth(){
       <h2>${MONTHS[m]} ${y}</h2>
       <button type="button" class="btn" data-act="monthNext" aria-label="Naslednji mesec">${IC.right}</button>
       <button type="button" class="btn" data-act="monthToday">Danes</button>
-      <button type="button" class="btn" data-act="printMonth">Natisni mesec</button>
-      <div class="stats" style="margin-left:auto">
-        <div class="stat"><b>${tr}</b><span>prevozov v mesecu</span></div>
-        <div class="stat"><b>${td}</b><span>opravljenih</span></div>
-        <div class="stat"><b>${dd}</b><span>dni z vpisi</span></div>
-        <div class="stat"><b>${tcn}</b><span>odpovedanih</span></div>
-      </div>
+      <span class="sumline"><span><b class="mono">${tr}</b> prevozov</span><span><b class="mono">${td}</b> opravljenih</span>${tcn ? `<span><b class="mono">${tcn}</b> odpovedanih</span>` : ''}</span>
+      <span class="sp" style="margin-left:auto"></span>
+      <button type="button" class="btn ${UI.kmRep ? 'primary' : ''}" data-act="kmReport" aria-pressed="${UI.kmRep}">Kilometrina</button>
+      <button type="button" class="btn" data-act="printMonth">Natisni</button>
     </div>
+    ${UI.kmRep ? kmReportHTML(y, m) : ''}
     <div class="days">${cards.join('')}</div>`;
 }
 
-/* ---------- Dnevna knjiga (35 polj) ---------- */
+/* ---------- Dnevna knjiga: vrstice prevozov, ena odprta za urejanje ---------- */
 function modeSeg(mode){
   return `<div class="seg" role="group" aria-label="Način prevoza">${Object.entries(MODES).map(([k, v]) => `<button type="button" data-mode="${k}" data-act="mode" aria-pressed="${mode === k}">${v}</button>`).join('')}</div>`;
 }
@@ -1979,58 +2411,79 @@ function pinfoHTML(date, r){
   if ((r.name || '').trim()) return `<div class="pinfo none"><span class="hint">Pacient ni v bazi.</span><button type="button" class="btn sm" data-act="savePat">${IC.plus} Shrani v bazo</button></div>`;
   return '';
 }
+function assignText(a){ return a ? esc(a.veh) + ' · ' + fmtT(a.t) : ''; }
+function sumRowHTML(r, nr, a, open){
+  const dir = rideDir(r), showSt = r.status && r.status !== 'nova';
+  return `<button type="button" class="rrow" data-act="openRide" aria-expanded="${open}" aria-label="Prevoz ${nr}: ${esc(r.name || 'brez imena')}">
+    <span class="nr">${nr}</span><span class="rtm" data-role="rtime">${esc(r.time || '–')}</span>
+    <span class="rbody"><span class="rname" data-role="rname">${esc(r.name || '(brez imena)')}</span><span class="rroute" data-role="rroute">${esc(r.from)}${r.to ? ' → ' + esc(r.to) : ''}</span></span>
+    <span class="rtags" data-role="rtags">${rowTags(r, dir)}${showSt ? stChip(r.status) : ''}${r.odpovedano ? '<span class="chip bad">odpovedano</span>' : ''}${r.demo ? '<span class="chip warn">PRIMER</span>' : ''}</span>
+    ${kmChipHTML(r)}
+    <span class="assign ${a && a.late > 0 ? 'late' : ''}" data-role="assign" ${a ? '' : 'hidden'}>${assignText(a)}</span>
+    <span class="rcheck" aria-hidden="true">${r.done ? IC.check : ''}</span></button>`;
+}
+function rowTags(r, dir){
+  return `${r.mode !== 'sede' ? `<span class="rtag m-${r.mode}">${MODES[r.mode]}</span>` : ''}${dir === 'from' ? '<span class="rtag">odvoz</span>' : ''}${+r.stay > 0 && dir === 'to' ? `<span class="rtag">čaka ${+r.stay} min</span>` : ''}${r.dia ? `<span class="rtag">dializa</span>` : ''}`;
+}
+/* Čakanje na pregled: prikaže se samo pri prevozu TJA na ustanovo/kliniko. */
+function stayInfo(r, a){
+  const g = geo(r.to || ''), on = +r.stay > 0;
+  const show = rideDir(r) === 'to' && (g.kind === 'poi' || on);
+  return { show, on, def:poiStay(g) || S.settings.stayDef || 45, text:on ? (a && a.retPickT != null ? `Pobere nazaj ob ${fmtT(a.retPickT)} (pregled ${+r.stay} min + pot do ambulante).` : `Po pregledu (${+r.stay} min) pobere pacienta nazaj.`) : 'Brez čakanja: prevoz nazaj se vpiše posebej.' };
+}
+function stayRowHTML(r, a){
+  const s = stayInfo(r, a);
+  return `<div class="field full stayrow" data-role="stay" ${s.show ? '' : 'hidden'}><label class="check" title="Pacient ima pregled, reševalec počaka in ga odpelje nazaj"><input type="checkbox" data-f="stayOn" ${s.on ? 'checked' : ''}> Reševalec počaka na pregled</label>
+    <span class="staymin" data-role="stayMin" ${s.on ? '' : 'hidden'}><input type="number" data-f="stay" min="5" max="480" step="5" value="${s.on ? +r.stay : s.def}" aria-label="Trajanje pregleda v minutah"> <span class="dim">min</span></span>
+    <span class="hint" data-role="stayInfo">${esc(s.text)}</span></div>`;
+}
 function boxHTML(date, r, nr, plan){
-  const filled = isFilled(r), dir = filled ? rideDir(r) : '';
-  const a = plan.assign[r.id];
+  const filled = isFilled(r), a = plan.assign[r.id], open = UI.openRide === r.id;
   const g = r.from.trim() ? geo(r.from) : null;
   const pc = pcClass(r.patientId);
   const ptc = r.patientId ? patientById(r.patientId) : null, nlc = ptc ? ((ptc.naloge || []).find(n => n.id === r.nalogId) || activeNalog(ptc, date)) : null;
   const nt = ptc ? 'nt-' + (nlc ? nlc.vrsta : 'none') : '';
-  const showSt = r.status && r.status !== 'nova';
-  return `<article class="box ${pc} ${nt} ${filled ? '' : 'empty'} ${r.done ? 'done' : ''} ${r.odpovedano ? 'cancelled' : ''}" data-ride="${r.id}" data-date="${date}" data-nr="${nr}">
-    <div class="bhead"><span class="nr">${nr}</span>
-      <span class="chip ${dir === 'from' ? 'ok' : 'info'}" data-role="dir" ${filled ? '' : 'hidden'}>${dir === 'from' ? 'ODVOZ' : 'TJA'}</span>
-      ${r.dia ? `<span class="chip mono">${esc(r.dia)}</span>` : ''}
-      ${r.demo ? '<span class="chip warn">PRIMER</span>' : ''}
-      ${r.odpovedano ? '<span class="chip bad cancel-chip">ODPOVEDANO</span>' : ''}
-      ${showSt ? stChip(r.status) : ''}
-      <span class="sp"></span>
-      <span class="assign ${a && a.late > 0 ? 'late' : ''}" data-role="assign" ${a ? '' : 'hidden'}>${a ? esc(a.veh) + ' · ' + fmtT(a.t) : ''}</span>
-      ${filled ? `<button type="button" class="icon-btn" data-act="rideView" title="Predogled za kopiranje" aria-label="Predogled za kopiranje">${IC.eye}</button>` : ''}
-      <button type="button" class="icon-btn" data-act="clearRide" title="Počisti polje ${nr}" aria-label="Počisti polje ${nr}">${IC.x}</button>
-    </div>
+  const editor = !open ? '' : `<div class="editor">
     <div class="bgrid">
       <div class="field"><label for="n-${r.id}">Ime in priimek</label><input id="n-${r.id}" type="text" data-f="name" data-suggest="patient" value="${esc(r.name)}" autocomplete="off" placeholder="išči v bazi pacientov"></div>
       <div class="field"><label for="t-${r.id}" title="Ura preiskave. Pri odvozu iz ustanove: ura, ko je pacient pripravljen.">Ura</label><input id="t-${r.id}" type="time" data-f="time" value="${esc(r.time)}"></div>
       <div class="field full"><span class="lbl">Način prevoza</span>${modeSeg(r.mode)}</div>
-      <div class="field full"><label for="f-${r.id}">Od (naslov hiše)</label><input id="f-${r.id}" type="text" data-f="from" data-suggest="from" class="${g && g.kind === 'neznano' ? 'warnfield' : ''}" value="${esc(r.from)}" autocomplete="off" placeholder="npr. Dobova 25"></div>
-      <div class="field full"><label for="o-${r.id}">Do (kam)</label><input id="o-${r.id}" type="text" data-f="to" data-suggest="to" value="${esc(r.to)}" autocomplete="off" placeholder="npr. UKC Ljubljana"></div>
-      <div class="field"><label for="p-${r.id}">Telefon / kontakt</label><input id="p-${r.id}" type="tel" data-f="phone" value="${esc(r.phone)}" autocomplete="off"></div>
-      <div class="field"><label for="d-${r.id}">Dializa</label><select id="d-${r.id}" data-f="dia"><option value="">–</option>${DIA_GROUPS.map(x => `<option ${r.dia === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
-      <div class="field full"><label for="x-${r.id}">Opomba (npr. voziček, kisik, spremljevalec)</label><input id="x-${r.id}" type="text" data-f="note" value="${esc(r.note || '')}" autocomplete="off"></div>
+      <div class="field full"><label for="f-${r.id}">Od</label><input id="f-${r.id}" type="text" data-f="from" data-suggest="from" class="${g && g.kind === 'neznano' ? 'warnfield' : ''}" value="${esc(r.from)}" autocomplete="off" placeholder="npr. Dobova 25"></div>
+      <div class="field full"><label for="o-${r.id}">Do</label><input id="o-${r.id}" type="text" data-f="to" data-suggest="to" value="${esc(r.to)}" autocomplete="off" placeholder="npr. UKC Ljubljana – Očesna klinika"></div>
+      ${stayRowHTML(r, a)}
+      <div class="field full kmrow" data-role="km">${kmBoxHTML(r)}</div>
+      <div class="field"><label for="p-${r.id}">Telefon</label><input id="p-${r.id}" type="tel" data-f="phone" value="${esc(r.phone)}" autocomplete="off"></div>
+      <div class="field"><label for="x-${r.id}" title="npr. voziček, kisik, spremljevalec">Opomba</label><input id="x-${r.id}" type="text" data-f="note" value="${esc(r.note || '')}" autocomplete="off"></div>
     </div>
     ${pinfoHTML(date, r)}
-    ${showSt && r.times && Object.keys(r.times).length ? `<div class="row" style="gap:4px">${timesChips(r)}</div>` : ''}
+    ${r.status && r.status !== 'nova' && r.times && Object.keys(r.times).length ? `<div class="row" style="gap:4px">${timesChips(r)}</div>` : ''}
     <div class="donerow">
       <label class="check"><input type="checkbox" data-f="done" ${r.done ? 'checked' : ''}> Opravljeno</label>
-      <label class="check cancel-check" title="Prevoz je odpovedan: označen je rdeče in ni v razporedu"><input type="checkbox" data-f="odpovedano" ${r.odpovedano ? 'checked' : ''}> Odpovedano</label>
-      <label class="check" title="Dovoli, da se za ta prevoz pravila prilagodijo (npr. več pacientov v vozilu, daljša pot)"><input type="checkbox" data-f="exc" ${r.exc ? 'checked' : ''}> Izjema pravil</label>
       <div class="field whodid"><input type="text" data-f="doneBy" list="staffList" value="${esc(r.doneBy)}" placeholder="Kdo je naredil odvoz" aria-label="Kdo je naredil odvoz" autocomplete="off"></div>
-    </div>
-  </article>`;
+      <span class="sp"></span>
+      <details class="menu"><summary class="btn sm ghost">Več</summary><div class="menupop">
+        <label class="check" title="Prevoz je odpovedan: označen je rdeče in ni v razporedu"><input type="checkbox" data-f="odpovedano" ${r.odpovedano ? 'checked' : ''}> Odpovedano</label>
+        <label class="check" title="Dovoli, da se za ta prevoz pravila prilagodijo (npr. več pacientov v vozilu, daljša pot)"><input type="checkbox" data-f="exc" ${r.exc ? 'checked' : ''}> Izjema pravil</label>
+        ${filled ? `<button type="button" class="btn sm" data-act="rideView">${IC.eye} Predogled za kopiranje</button>` : ''}
+        <button type="button" class="btn sm danger" data-act="clearRide" title="Počisti polje ${nr}">Počisti prevoz</button></div></details>
+      <button type="button" class="btn sm" data-act="closeRide">Zapri</button>
+    </div></div>`;
+  return `<article class="box ${pc} ${nt} ${open ? 'open' : ''} ${r.done ? 'done' : ''} ${r.odpovedano ? 'cancelled' : ''}" data-ride="${r.id}" data-date="${date}" data-nr="${nr}">${sumRowHTML(r, nr, a, open)}${editor}</article>`;
 }
 function refreshStaffList(date){
   const names = new Set([...(S.duty[date] || []).map(d => d.name), ...S.staff.map(s => s.name)]);
   $('#staffList').innerHTML = [...names].map(n => `<option value="${esc(n)}"></option>`).join('');
 }
+const kmSum = date => { let t = 0, all = true, any = false; filledRides(date).forEach(({ r }) => { if (r.odpovedano) return; const i = KM.info(r); if (i.total == null) return; any = true; t += i.total; if (!(i.exact && i.backExact)) all = false; }); return { t, all, any }; };
 function renderDay(){
   const date = UI.date, today = todayStr(), a = ensureDay(date), plan = computePlan(date);
   refreshStaffList(date);
-  const filled = a.filter(isFilled).length, done = a.filter(r => isFilled(r) && r.done).length, groups = diaGroupsFor(date, S);
+  const list = filledRides(date), filled = list.length, done = list.filter(x => x.r.done).length, terms = diaTermsFor(date);
   const blocked = S.vehicles.filter(v => v.tip !== 'ostalo' && vehBlocked(date, v.id));
-  const warns = dayWarnings(date);
+  const warns = dayWarnings(date), ks = kmSum(date);
+  const openR = rideById(date, UI.openRide), openEmpty = openR && !isFilled(openR.r) ? openR : null;
+  const tools = filled >= 6 || UI.q || UI.filter !== 'vsi';
   $('#view').innerHTML = `
-    ${demoBanner()}
     <div class="daybar">
       <div class="row">
         <button type="button" class="btn" data-act="dayPrev" aria-label="Prejšnji dan">${IC.left}</button>
@@ -2039,48 +2492,81 @@ function renderDay(){
         <button type="button" class="btn ${date === today ? 'primary' : ''}" data-act="dayToday">Danes</button>
         <button type="button" class="btn ${date === addDays(today,1) ? 'primary' : ''}" data-act="dayTomorrow">Jutri</button>
       </div>
-      <div class="row">${groups.map(g => `<span class="chip mono" title="Dializa ta dan">${IC.kidney.replace('<svg','<svg width="13" height="13"')}${g}</span>`).join('')}
-        <span class="chip" id="fillcount"><span class="mono">${filled}</span>/${a.length} polj</span><span class="chip ok" id="donecount"><span class="mono">${done}</span> opravljenih</span></div>
+      <div class="row">
+        <button type="button" class="btn primary" data-act="gotoDisp" data-date="${date}">${IC.route} Razpored</button>
+        <details class="menu right"><summary class="btn" aria-label="Več možnosti">Več</summary><div class="menupop">
+          ${terms.length ? `<button type="button" class="btn sm" data-act="loadDia">${IC.kidney.replace('<svg', '<svg width="14" height="14"')} Naloži dializne paciente</button>` : ''}
+          <button type="button" class="btn sm" data-act="kmDay" ${GOOGLE.enabled() ? '' : 'disabled title="Najprej vnesi ključ Google (Nastavitve → Izračun)"'}>Preračunaj kilometrino z Googlom</button></div></details>
+      </div>
     </div>
+    <div class="sumline" id="daySum"><span><b class="mono">${filled}</b> ${filled === 1 ? 'prevoz' : 'prevozov'}</span><span><b class="mono">${done}</b> opravljenih</span>${ks.any ? `<span title="${ks.all ? 'Vse razdalje so natančne (Google ali ročno)' : 'Del razdalj je ocena (~)'}"><b class="mono">${ks.all ? '' : '~'}${KM.fmtKm(ks.t)}</b> km</span>` : ''}${terms.map(t => `<span class="chip">${IC.kidney.replace('<svg', '<svg width="12" height="12"')} dializa ${t === 'dop' ? 'dopoldne' : 'popoldne'}</span>`).join('')}${warns.length ? `<details class="warnbox inline"><summary>${warns.length} opozoril</summary><ul class="warnlist">${warns.slice(0, 40).map(w => `<li>${esc(w.text)}</li>`).join('')}</ul></details>` : ''}</div>
     ${blocked.length ? `<div class="banner bad"><span>${IC.alert}</span><div>${blocked.map(v => `<b>${esc(v.name)}</b>: ${esc(vehBlocked(date, v.id).tip)}${vehBlocked(date, v.id).note ? ' (' + esc(vehBlocked(date, v.id).note) + ')' : ''}`).join(' · ')}. Vozilo ni v razporedu.</div></div>` : ''}
     ${S.dayNote[date] ? `<div class="banner warn"><span>${IC.info}</span><div><b>Opomba dneva:</b> ${esc(S.dayNote[date])}</div></div>` : ''}
-    <div class="toolbar">
-      <div class="seg inline" role="group" aria-label="Filter">${[['vsi','Vsa polja'],['zasedena','Zasedena'],['cakajo','Čakajo'],['opravljeni','Opravljeni']].map(([k, l]) => `<button type="button" data-act="filter" data-k="${k}" aria-pressed="${UI.filter === k}">${l}</button>`).join('')}</div>
-      <input type="search" id="rideSearch" placeholder="Išči po imenu ali naslovu" value="${esc(UI.q)}" aria-label="Išči">
-      ${groups.length ? `<button type="button" class="btn" data-act="loadDia">${IC.kidney.replace('<svg','<svg width="16" height="16"')} Naloži dializne paciente</button>` : ''}
-      <button type="button" class="btn" data-act="addSlots">${IC.plus} 5 polj več</button>
-      <button type="button" class="btn" data-act="gotoDisp" data-date="${date}">${IC.route} Razpored</button>
-    </div>
-    ${warns.length ? `<details class="warnbox"><summary>${warns.length} opozoril za ta dan</summary><ul class="warnlist">${warns.slice(0,40).map(w => `<li>${esc(w.text)}</li>`).join('')}</ul></details>` : ''}
-    <div class="boxes" id="boxes">${a.map((r, i) => boxHTML(date, r, i + 1, plan)).join('')}</div>`;
+    ${tools ? `<div class="toolbar"><div class="seg inline" role="group" aria-label="Filter">${[['vsi', 'Vsi'], ['cakajo', 'Čakajo'], ['opravljeni', 'Opravljeni']].map(([k, l]) => `<button type="button" data-act="filter" data-k="${k}" aria-pressed="${UI.filter === k}">${l}</button>`).join('')}</div>
+      <input type="search" id="rideSearch" placeholder="Išči po imenu ali naslovu" value="${esc(UI.q)}" aria-label="Išči"></div>` : ''}
+    <div class="boxes" id="boxes">${list.map(({ r, nr }) => boxHTML(date, r, nr, plan)).join('')}${openEmpty ? boxHTML(date, openEmpty.r, openEmpty.nr, plan) : ''}</div>
+    ${list.length || openEmpty ? '' : '<div class="empty-state">Za ta dan še ni vpisanih prevozov.</div>'}
+    <div class="row" style="margin-top:12px"><button type="button" class="btn ${list.length ? '' : 'primary'}" data-act="newRide">${IC.plus} Nov prevoz</button></div>`;
   applyFilter();
+  kmAuto(date);
 }
 function applyFilter(){
   const q = norm(UI.q);
   $$('#boxes .box').forEach(el => {
-    const r = rideById(el.dataset.date, el.dataset.ride); if (!r) return;
-    const f = isFilled(r.r);
-    let show = true;
-    if (UI.filter === 'zasedena') show = f; else if (UI.filter === 'cakajo') show = f && !r.r.done; else if (UI.filter === 'opravljeni') show = f && r.r.done;
-    if (show && q) show = norm([r.r.name, r.r.from, r.r.to, r.r.phone].join(' ')).includes(q);
-    el.hidden = !show;
+    const hit = rideById(el.dataset.date, el.dataset.ride); if (!hit) return;
+    const r = hit.r; let show = true;
+    if (UI.filter === 'cakajo') show = !r.done; else if (UI.filter === 'opravljeni') show = !!r.done;
+    if (show && q) show = norm([r.name, r.from, r.to, r.phone].join(' ')).includes(q);
+    el.hidden = !show && UI.openRide !== r.id;
   });
 }
 function updateDayCounts(){
-  const a = ensureDay(UI.date), f = a.filter(isFilled).length, d = a.filter(r => isFilled(r) && r.done).length;
-  const fc = $('#fillcount'), dc = $('#donecount');
-  if (fc) fc.innerHTML = `<span class="mono">${f}</span>/${a.length} polj`;
-  if (dc) dc.innerHTML = `<span class="mono">${d}</span> opravljenih`;
+  const date = UI.date, list = filledRides(date), el = $('#daySum'); if (!el) return;
+  const f = list.length, d = list.filter(x => x.r.done).length, ks = kmSum(date), spans = $$(':scope > span:not(.chip)', el);
+  if (spans[0]) spans[0].innerHTML = `<b class="mono">${f}</b> ${f === 1 ? 'prevoz' : 'prevozov'}`;
+  if (spans[1]) spans[1].innerHTML = `<b class="mono">${d}</b> opravljenih`;
+  let kmEl = spans[2];
+  if (ks.any){ if (!kmEl){ kmEl = document.createElement('span'); spans[1].after(kmEl); } kmEl.title = ks.all ? 'Vse razdalje so natančne (Google ali ročno)' : 'Del razdalj je ocena (~)'; kmEl.innerHTML = `<b class="mono">${ks.all ? '' : '~'}${KM.fmtKm(ks.t)}</b> km`; }
+  else if (kmEl) kmEl.remove();
+}
+/* Lahka osvežitev vrstice med tipkanjem (ne zamenja polj, da fokus ostane) */
+function refreshKm(el){
+  const hit = rideById(el.dataset.date, el.dataset.ride); if (!hit) return;
+  const r = hit.r, chip = $('[data-role=kmchip]', el);
+  if (chip){ const tmp = document.createElement('div'); tmp.innerHTML = kmChipHTML(r); chip.replaceWith(tmp.firstElementChild); }
+  const kb = $('[data-role=km]', el); if (kb && !kb.contains(document.activeElement)) kb.innerHTML = kmBoxHTML(r);
+  updateDayCounts();
+}
+function refreshStay(el, a){
+  const hit = rideById(el.dataset.date, el.dataset.ride); if (!hit) return;
+  const r = hit.r, sr = $('[data-role=stay]', el); if (!sr) return;
+  const s = stayInfo(r, a);
+  sr.hidden = !s.show; const cb = $('[data-f=stayOn]', sr), mi = $('[data-f=stay]', sr), mw = $('[data-role=stayMin]', sr), tx = $('[data-role=stayInfo]', sr);
+  if (cb) cb.checked = s.on; if (mw) mw.hidden = !s.on; if (mi && document.activeElement !== mi) mi.value = s.on ? +r.stay : s.def; if (tx) tx.textContent = s.text;
+}
+function refreshAssign(el){
+  const date = el.dataset.date, hit = rideById(date, el.dataset.ride); if (!hit) return;
+  const plan = computePlan(date), a = plan.assign[hit.r.id], b = $('[data-role=assign]', el);
+  if (b){ b.hidden = !a; b.className = 'assign ' + (a && a.late > 0 ? 'late' : ''); b.innerHTML = assignText(a); }
+  refreshStay(el, a);
 }
 function refreshBox(el){
   const date = el.dataset.date, hit = rideById(date, el.dataset.ride); if (!hit) return;
-  const r = hit.r, filled = isFilled(r);
-  el.classList.toggle('empty', !filled); el.classList.toggle('done', !!r.done);
-  const dir = $('[data-role=dir]', el);
-  if (dir){ dir.hidden = !filled; const d = filled ? rideDir(r) : 'to'; dir.textContent = d === 'from' ? 'ODVOZ' : 'TJA'; dir.className = 'chip ' + (d === 'from' ? 'ok' : 'info'); dir.dataset.role = 'dir'; }
+  const r = hit.r;
+  el.classList.toggle('done', !!r.done); el.classList.toggle('cancelled', !!r.odpovedano);
+  const set = (sel, txt) => { const n = $(sel, el); if (n) n.textContent = txt; };
+  set('[data-role=rname]', r.name || '(brez imena)'); set('[data-role=rtime]', r.time || '–'); set('[data-role=rroute]', `${r.from}${r.to ? ' → ' + r.to : ''}`);
+  const tg = $('[data-role=rtags]', el); if (tg){ const showSt = r.status && r.status !== 'nova'; tg.innerHTML = rowTags(r, rideDir(r)) + (showSt ? stChip(r.status) : '') + (r.odpovedano ? '<span class="chip bad">odpovedano</span>' : '') + (r.demo ? '<span class="chip warn">PRIMER</span>' : ''); }
+  const chk = $('.rcheck', el); if (chk) chk.innerHTML = r.done ? IC.check : '';
   const fi = $('[data-f=from]', el); if (fi){ const g = r.from.trim() ? geo(r.from) : null; fi.classList.toggle('warnfield', !!g && g.kind === 'neznano'); }
   $$('.seg [data-mode]', el).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === r.mode)));
-  updateDayCounts();
+  refreshStay(el, null); refreshKm(el);
+}
+/* Samodejni izračun kilometrine za današnji in bližnje dneve (enkrat na sejo in dan; pozneje ob spremembi naslova) */
+function kmAuto(date){
+  if (!GOOGLE.auto() || UI.kmTried[date]) return;
+  const t = todayStr(); if (date < addDays(t, -1) || date > addDays(t, 14)) return;
+  UI.kmTried[date] = 1; KM.day(date).catch(() => {});
 }
 
 /* ---------- Dispečer ---------- */
@@ -2089,33 +2575,36 @@ function dutyHTML(date){
   const onNames = new Set(duty.map(d => d.name));
   const chips = S.staff.map(s => `<button type="button" class="chip toggle" data-act="toggleStaff" data-id="${s.id}" aria-pressed="${onNames.has(s.name)}">${esc(s.name)}${s.team === 'NN' ? ' · NN' : ''}</button>`).join('');
   const otOpts = [[0, 'Nadure: brez'], [30, 'Nadure do 30 min'], [60, 'Nadure do 1 h'], [120, 'Nadure do 2 h'], [180, 'Nadure do 3 h'], [240, 'Nadure do 4 h']];
-  const items = duty.map((d, i) => { const st = staffOfDuty(d); return `<div class="duty-item" data-di="${i}">
-      <div class="dn">${esc(d.name)} ${st && st.userId ? '<span class="chip ok" title="Ima račun in vidi razpored v aplikaciji">račun</span>' : '<span class="chip warn" title="Brez računa ne vidi razporeda v aplikaciji. Poveži v Nastavitve → Zaposleni.">brez računa</span>'}</div><button type="button" class="icon-btn" data-act="rmDuty" data-i="${i}" aria-label="Odstrani ${esc(d.name)}">${IC.x}</button>
+  const items = duty.map((d, i) => { const st = staffOfDuty(d), vn = d.vehicleId && vehById(d.vehicleId), sum = ['Izmena' + (d.from ? ' ' + d.from + (d.to ? '–' + d.to : '') : ''), vn ? vn.name : '', +d.ot ? 'nadure' : ''].filter(Boolean).join(' · '); return `<div class="duty-item" data-di="${i}">
+      <div class="dn">${esc(d.name)}</div><button type="button" class="icon-btn" data-act="rmDuty" data-i="${i}" aria-label="Odstrani ${esc(d.name)}">${IC.x}</button>
       <div class="dsel">
         <select data-duty="team" aria-label="Ekipa"><option value="redna" ${d.team==='redna'?'selected':''}>Redna ekipa</option><option value="NN" ${d.team==='NN'?'selected':''}>NN ekipa</option><option value="pripravljenost" ${d.team==='pripravljenost'?'selected':''}>Pripravljenost</option></select>
         <select data-duty="role" aria-label="Vloga"><option value="voznik" ${!['spremljevalec','student','dijak'].includes(d.role)?'selected':''}>Voznik</option><option value="spremljevalec" ${d.role==='spremljevalec'?'selected':''}>Spremljevalec</option><option value="student" ${d.role==='student'?'selected':''}>Študent</option><option value="dijak" ${d.role==='dijak'?'selected':''}>Dijak</option></select>
+      </div>
+      <details class="more"><summary>${esc(sum)}</summary><div class="dsel">
         <label class="mini">Začetek izmene<input type="time" data-duty="from" value="${esc(d.from||'')}" title="Prazno = izmena ni omejena"></label>
         <label class="mini">Konec izmene<input type="time" data-duty="to" value="${esc(d.to||'')}" title="Prazno = začetek + ${S.rules.shiftHours} h (če je vpisan začetek)"></label>
         <select data-duty="vehicleId" aria-label="Vozilo"><option value="">Vozilo: samodejno</option>${avail.map(v => `<option value="${v.id}" ${d.vehicleId===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select>
         <select data-duty="ot" aria-label="Nadure">${otOpts.map(([v, l]) => `<option value="${v}" ${(+d.ot || 0) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-      </div></div>`; }).join('');
+      </div></details></div>`; }).join('');
   return `<div class="card card-pad stack" style="gap:12px">
     <div class="card-head" style="margin:0"><h3>Zaposleni na delu</h3><span class="chip mono">${duty.length}</span></div>
-    ${chips ? `<div class="row" style="gap:6px">${chips}</div><div class="hint">Tapni ime, da ga dodaš ali odstraniš.</div>` : '<div class="hint">Seznam zaposlenih dodaš v Nastavitve → Zaposleni ali kar spodaj.</div>'}
+    ${chips ? `<div class="row" style="gap:6px">${chips}</div>` : '<div class="hint">Seznam zaposlenih dodaš v Nastavitve → Zaposleni ali kar spodaj.</div>'}
     ${items || '<div class="empty-state" style="padding:14px">Še nihče ni vpisan za ta dan.</div>'}
     <form class="row" data-form="addDuty" style="flex-wrap:nowrap"><input type="text" name="name" placeholder="Ime novega zaposlenega" list="staffList" aria-label="Ime zaposlenega" autocomplete="off"><button class="btn primary" type="submit">Dodaj</button></form>
     <label class="check"><input type="checkbox" data-act="daySplit" ${S.dayRules[date] && S.dayRules[date].split ? 'checked' : ''}> Ekipa se razdeli na 2 voznika (vsak v svojem vozilu)</label>
-    <div class="hint">NN ekipa ima 2 reševalca: voznik in spremljevalec (samodejno). Leže pacient vedno potrebuje voznika + spremljevalca in vozilo z nosili. Študent in dijak sta dodatna pomočnika.</div>
     <div class="row"><button type="button" class="btn sm" data-act="copyDuty">${IC.copy} Kopiraj osebje od prejšnjega dne</button></div>
+    <details class="hintdet"><summary>Pravila ekip</summary><p class="hint">NN ekipa ima 2 reševalca: voznik in spremljevalec (samodejno). Leže pacient vedno potrebuje voznika + spremljevalca in vozilo z nosili. Študent in dijak sta dodatna pomočnika. Posadka dialize lahko po koncu dialize prevaža tudi sede paciente.</p></details>
   </div>`;
 }
 function vehiclesHTML(date){
-  return `<div class="card card-pad stack" style="gap:10px"><div class="card-head" style="margin:0"><h3>Vozila na voljo</h3></div>
+  const vs = S.vehicles.filter(v => v.aktiv && v.tip !== 'ostalo'), onN = vs.filter(v => !vehOff(date, v.id) && !vehBlocked(date, v.id)).length;
+  return `<details class="card card-pad sect" data-sect="veh" ${UI.sect.veh ? 'open' : ''}><summary><h3>Vozila na voljo</h3><span class="chip mono">${onN}/${vs.length}</span></summary><div class="stack" style="gap:10px;margin-top:10px">
     ${S.vehicles.filter(v => v.aktiv && v.tip !== 'ostalo').map(v => {
       const b = vehBlocked(date, v.id), off = vehOff(date, v.id);
       return `<div class="veh-item ${b || off ? 'off' : ''}"><label><input type="checkbox" data-act="vehToggle" data-id="${v.id}" ${!off && !b ? 'checked' : ''} ${b ? 'disabled' : ''}><span><span class="vn">${esc(v.name)}</span><br><span class="hint">${esc(VEH_VRSTE[v.vrsta] || '')} · ${esc(capText(v))}${v.fn === 'dializa' ? ' · primarno dializa' : ''}</span></span></label>${b ? `<span class="chip bad">${esc(b.tip)}</span>` : (v.ns === 'NN' ? '<span class="chip">NN</span>' : '')}</div>`;
     }).join('') || '<div class="hint">Vozila dodaš v Nastavitve → Vozila.</div>'}
-  </div>`;
+  </div></details>`;
 }
 /* ---------- Cestni podatki, ETA in pot na zemljevidu ---------- */
 const legKm = l => ((l.est || l.wait) ? '~' : '') + l.km.toFixed(1) + ' km';
@@ -2132,6 +2621,7 @@ function routeBar(plan){
   else if (nEst > 0){ tone = 'warn'; head = 'Cestni podatki: deloma'; text = `${nEst} relacij ni mogoče usmeriti po cesti (npr. neznan kraj), zato so ocenjene (~).`; }
   else if (tot.realLegs > 0){ head = 'Cestni podatki: v redu'; text = `Vse vožnje (${tot.realLegs} relacij) so izračunane po dejanskih cestah (OpenStreetMap${i.cached === 0 && i.shared ? ', vnaprej pripravljena datoteka razdalje.json' : host ? ', ' + esc(host) : ''}).`; }
   else { head = 'Cestni podatki: pripravljeni'; text = `Razdalje in časi se računajo po cestah (OpenStreetMap${host ? ', ' + esc(host) : ''}).`; }
+  if (tone === 'ok') return '';
   return `<div class="routebar" role="status"><span class="chip ${tone}">${head}</span><span class="rt">${text}</span>${retry ? '<button type="button" class="btn sm" data-act="routeRetry">Poskusi znova</button>' : ''}</div>`;
 }
 const SUG_LABEL = { opt:'optimizacija', merge:'združeno', shift:'izmena', veh:'vozilo', bend:'pravila', late:'zamuda', road:'ceste' };
@@ -2193,9 +2683,16 @@ function stopRow(c, t, s, L, prev){
     }
     return out.join(' ');
   };
-  const base = prev ? `<li class="legline"><span></span><i></i><span>${Math.max(1, Math.round(s.t - prev.t - (prev.type === 'pu' ? S.settings.pickMin * ((prev.people || []).length || 1) : S.settings.dropMin)))} min · ${legKm(L(prev.pt, pt))}</span></li>` : '';
+  const firstRet = !!(s.ret && prev && !prev.ret);
+  const base = firstRet ? (t.waitMin > 0 ? `<li class="legline wait"><span></span><i></i><span>čaka na pregled ~${fmtDur(t.waitMin)}</span></li>` : '')
+    : prev ? `<li class="legline"><span></span><i></i><span>${Math.max(1, Math.round(s.t - prev.t - stopDwell(prev)))} min · ${legKm(L(prev.pt, pt))}</span></li>` : '';
   let body;
-  if (personRow && ppl.length){
+  if (s.ret){   // vrnitev po pregledu: pobere nazaj na ustanovi, izstop doma
+    const who = ppl.map(r => `<span class="pdot ${pcClass(r.pid)}"></span>${esc(r.name)} <span class="chip mono">št. ${r.nr}</span>`).join('<br>');
+    body = s.type === 'pu'
+      ? `<div><div class="who">Pobere nazaj: ${esc(label || (t.anchor && t.anchor.label) || 'ustanova')}</div><div class="addr">${who}</div></div><div></div>`
+      : `<div><div class="who">Izstop doma</div><div class="addr">${ppl.map(r => `${esc(r.name)} · ${esc(r.fromTxt)}`).join('<br>')}</div></div><div></div>`;
+  } else if (personRow && ppl.length){
     const r = ppl[0];
     const rr = rideById(UI.dDate, r.id), rs = rr ? rr.r : null;
     body = `<div><div class="who"><span class="pdot ${pcClass(r.pid)}"></span>${esc(r.name)} <span class="chip mono" style="color:var(--m-${r.mode})">${esc(MODES[r.mode] || r.mode)}</span> <span class="chip mono">št. ${r.nr}</span>${rs && rs.status && rs.status !== 'nova' ? ' ' + stChip(rs.status) : ''}${rs && rs.exc ? ' <span class="chip accent">izjema</span>' : ''}</div>
@@ -2227,7 +2724,7 @@ function renderDispatch(){
       <div class="meta"><span class="chip mono">${c.rideNrs.length} prevozov</span><span class="chip mono">${c.km.toFixed(0)} km</span><span class="chip mono">${fmtDur(c.busy)}</span></div></header>
       ${c.trips.map((t, ti) => `<div class="trip"><div class="trip-head">
           <span class="chip ${t.kind === 'from' ? 'ok' : 'info'}">${t.kind === 'from' ? 'ODVOZ' : 'TJA'}</span><b>${t.kind === 'to' ? esc(tripTitle(t) || 'cilj') : 'Iz: ' + esc(tripTitle(t) || 'ustanova')}</b>
-          <span class="chip mono">${t.rides.length} pac.</span><span class="chip mono" title="${t.ev.nEst || t.ev.nWait ? 'Del poti je ocenjen (brez cestnih podatkov)' : 'Izračunano po cestah'}">${t.ev.nEst || t.ev.nWait ? '~' : ''}${t.ev.km.toFixed(0)} km</span><span class="chip mono">${t.ev.nEst || t.ev.nWait ? '~' : ''}${fmtDur(t.ev.dur)}</span>${new Set((t.dests || []).map(p => p.key)).size > 1 ? `<span class="chip info" title="Pacienti z blizu skupaj ležečimi cilji so v eni vožnji">${new Set(t.dests.map(p => p.key)).size} cilji</span>` : ''}
+          <span class="chip mono">${t.rides.length} pac.</span>${t.ev.ret ? `<span class="chip info" title="Reševalec po izstopu počaka na pregled in pacienta odpelje nazaj">počaka ~${fmtDur(t.waitMin || 0)}</span>` : ''}<span class="chip mono" title="${t.ev.nEst || t.ev.nWait ? 'Del poti je ocenjen (brez cestnih podatkov)' : 'Izračunano po cestah'}">${t.ev.nEst || t.ev.nWait ? '~' : ''}${t.ev.km.toFixed(0)} km</span><span class="chip mono">${t.ev.nEst || t.ev.nWait ? '~' : ''}${fmtDur(t.ev.dur)}</span>${new Set((t.dests || []).map(p => p.key)).size > 1 ? `<span class="chip info" title="Pacienti z blizu skupaj ležečimi cilji so v eni vožnji">${new Set(t.dests.map(p => p.key)).size} cilji</span>` : ''}
           ${t.late > 0 ? `<span class="chip bad">${t.kind === 'from' ? 'pacient čaka ~' + t.wait + ' min' : 'zamuda ~' + t.late + ' min'}</span>` : (t.kind === 'to' && t.slack != null ? `<span class="chip ok">rezerva ${t.slack} min</span>` : '')}
           ${t.sbReturn && c.team === 'NN' ? '<span class="chip">NN ekipa</span>' : ''}<button type="button" class="btn sm" data-act="tripMap" data-trip="${esc(tripKey(c, t))}" aria-expanded="${UI.maps[tripKey(c, t)] ? 'true' : 'false'}" style="margin-left:auto">${UI.maps[tripKey(c, t)] ? 'Skrij pot' : 'Pot'}</button></div>
         ${tripMapHTML(c, t)}
@@ -2240,29 +2737,29 @@ function renderDispatch(){
         <span class="nr">${nr}</span><div class="dn" style="min-width:0"><div style="overflow:hidden;text-overflow:ellipsis">${esc(r.name || '(brez imena)')} <span class="mono dim">${esc(r.time)}</span></div><div class="hint" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.from)} → ${esc(r.to)}</div></div>
         <div class="row" style="flex-wrap:nowrap;gap:8px"><label class="row" style="gap:6px;flex-wrap:nowrap;font-weight:600"><input type="checkbox" data-f="done" ${r.done ? 'checked' : ''}> Opravljeno</label><input type="text" data-f="doneBy" list="staffList" value="${esc(r.doneBy)}" placeholder="Kdo je naredil odvoz" aria-label="Kdo je naredil odvoz, prevoz ${nr}" style="${r.done ? '' : 'visibility:hidden'}"></div></div>`).join('') : '';
   refreshStaffList(date);
+  const kms = kmSum(date);
   $('#view').innerHTML = `
-    ${demoBanner()}
     <div class="row">
       <div class="seg inline" role="group" aria-label="Izbira dneva"><button type="button" data-act="dDate" data-date="${today}" aria-pressed="${date === today}">Danes · ${fmtShort(today)}</button><button type="button" data-act="dDate" data-date="${tom}" aria-pressed="${date === tom}">Jutri · ${fmtShort(tom)}</button></div>
       <input type="date" id="dispPick" value="${date}" style="width:auto" aria-label="Drug datum">
       <span class="chip ${plan.standby ? 'info' : ''}">${plan.standby ? 'Pripravljenost (vikend/praznik)' : 'Delovni dan'}</span>
-      ${diaGroupsFor(date, S).map(g => `<span class="chip mono">${g}</span>`).join('')}
+      ${diaTermsFor(date).map(t => `<span class="chip">${IC.kidney.replace('<svg', '<svg width="12" height="12"')} dializa ${t === 'dop' ? 'dopoldne' : 'popoldne'}</span>`).join('')}
     </div>
     <div class="dispatch">
       <div class="stack">
         ${dutyHTML(date)}${vehiclesHTML(date)}
-        <div class="card card-pad stack" style="gap:8px"><h3>Opomba dneva</h3><textarea id="dayNote" placeholder="npr. ob 9:00 sestanek, cesta zaprta, pacient potrebuje spremljevalca">${esc(S.dayNote[date] || '')}</textarea></div>
+        <details class="card card-pad sect" data-sect="note" ${UI.sect.note || S.dayNote[date] ? 'open' : ''}><summary><h3>Opomba dneva</h3>${S.dayNote[date] ? '<span class="chip">vpisana</span>' : ''}</summary><textarea id="dayNote" style="margin-top:10px" placeholder="npr. ob 9:00 sestanek, cesta zaprta, pacient potrebuje spremljevalca">${esc(S.dayNote[date] || '')}</textarea></details>
       </div>
       <div class="stack">
         ${rulesBar(date, plan)}${publishBar(date, plan)}${routeBar(plan)}
-        <div class="stats"><div class="stat"><b>${tot.rides}</b><span>prevozov za razporeditev</span></div><div class="stat"><b>${tot.vehicles}/${plan.crews.length}</b><span>vozil v uporabi</span></div><div class="stat"><b>${tot.km.toFixed(0)}</b><span>km skupaj (${!ROUTE.enabled() ? 'ocena' : tot.estLegs + tot.waitLegs ? 'deloma ocena' : 'po cestah'})</span></div><div class="stat"><b style="color:${tot.late ? 'var(--bad)' : 'var(--ok)'}">${tot.late}</b><span>prevozov z zamudo</span></div></div>
+        <div class="stats"><div class="stat"><b>${tot.rides}</b><span>prevozov za razporeditev</span></div>${kms.any ? `<div class="stat" title="Vsota razdalj OD → DO po prevozih (v knjigo)"><b>${kms.all ? '' : '~'}${KM.fmtKm(kms.t)}</b><span>km prevozov${kms.all ? ' (natančno)' : ' (deloma ocena)'}</span></div>` : ''}<div class="stat"><b>${tot.vehicles}/${plan.crews.length}</b><span>vozil v uporabi</span></div><div class="stat"><b>${tot.km.toFixed(0)}</b><span>km vožnje ekip (${!ROUTE.enabled() ? 'ocena' : tot.estLegs + tot.waitLegs ? 'deloma ocena' : 'po cestah'})</span></div><div class="stat"><b style="color:${tot.late ? 'var(--bad)' : 'var(--ok)'}">${tot.late}</b><span>prevozov z zamudo</span></div></div>
         ${plan.warnings.length ? `<details class="warnbox" ${plan.warnings.some(w => w.level === 'bad' || w.level === 'bend') ? 'open' : ''}><summary>${plan.warnings.length} opozoril in prilagoditev</summary><ul class="warnlist">${plan.warnings.map(w => `<li class="w-${w.level}">${w.level === 'bend' ? '<span class="chip accent">prilagojeno</span> ' : ''}${esc(w.text)}</li>`).join('')}</ul></details>` : ''}
         <div class="card card-pad">
           <div class="card-head"><h3>Razpored za ${fmtShort(date)}</h3><div class="row"><button type="button" class="btn sm" data-act="copyPlan">${IC.copy} Kopiraj kot besedilo</button></div></div>
           ${plan.crews.length || blocked.length ? `<div class="tablewrap"><table><thead><tr><th>Vozilo</th><th>Voznik</th><th>Prevozi (št. v knjigi)</th><th>Posebnosti · ure štarta</th></tr></thead><tbody>${rows}${blockedRows}</tbody></table></div>`
             : '<div class="empty-state">Vpiši zaposlene na delu in označi vozila. Razpored se sestavi sam.</div>'}
           ${unRows ? `<p style="margin:10px 0 0"><b>Nerazporejeni prevozi:</b> ${unRows}</p>` : ''}
-          <p class="hint" style="margin:10px 0 0">${ROUTE.enabled() ? 'Razdalje in časi vožnje so izračunani po dejanskih cestah (OpenStreetMap, brez prometnih zastojev' + (+S.settings.routing.factor !== 1 ? ', čas × ' + S.settings.routing.factor : '') + '); relacije brez cestnih podatkov so označene z ~ in ocenjene kot zračna razdalja × ' + S.settings.road + ' pri omejitvah ' : 'Časi so ocena: zračna razdalja × ' + S.settings.road + ', omejitve '}${S.settings.lim.naselje}/${S.settings.lim.izven}/${S.settings.lim.hitra}/${S.settings.lim.avtocesta} km/h (naselje/izven/hitra/avtocesta), dejansko ${S.settings.eff} %. Pobiranje ${S.settings.pickMin} min, izstop ${S.settings.dropMin} min na pacienta, rezerva ${S.settings.buffer} min pred preiskavo. Razpored se vpiše tudi v mesečno knjigo.</p>
+          <details class="hintdet" style="margin-top:10px"><summary>Kako se računa</summary><p class="hint" style="margin:6px 0 0">${ROUTE.enabled() ? 'Razdalje in časi vožnje so izračunani po dejanskih cestah (OpenStreetMap, brez prometnih zastojev' + (+S.settings.routing.factor !== 1 ? ', čas × ' + S.settings.routing.factor : '') + '); relacije brez cestnih podatkov so označene z ~ in ocenjene kot zračna razdalja × ' + S.settings.road + ' pri omejitvah ' : 'Časi so ocena: zračna razdalja × ' + S.settings.road + ', omejitve '}${S.settings.lim.naselje}/${S.settings.lim.izven}/${S.settings.lim.hitra}/${S.settings.lim.avtocesta} km/h (naselje/izven/hitra/avtocesta), dejansko ${S.settings.eff} %. Pobiranje ${S.settings.pickMin} min, izstop ${S.settings.dropMin} min na pacienta (leže ${S.settings.pickLeze}/${S.settings.dropLeze}, utila ${S.settings.pickUtila}/${S.settings.dropUtila}), rezerva ${S.settings.buffer} min pred preiskavo. Pri pregledu s čakanjem reševalec po izstopu počaka in pacienta odpelje nazaj. Razpored se vpiše tudi v mesečno knjigo.</p></details>
         </div>
         ${suggestHTML(plan)}
         ${cards}
@@ -2319,9 +2816,66 @@ function routingCard(){
     ${test}
     <p class="hint" style="margin:0">Predpomnilnik: ${ri.cached} relacij${ri.shared ? ', iz razdalje.json: ' + ri.shared + (ri.sharedBuilt ? ' (' + esc(String(ri.sharedBuilt).slice(0, 10)) + ')' : '') : ''}${ri.pending ? ', čaka na prenos: ' + ri.pending : ''}${host ? ' · strežnik: ' + esc(host) : ''}. V predpomnilnik gredo samo splošne točke (naselja, ustanove, mesta), nikoli hišni naslovi pacientov. Točnost: naselja so predstavljena s središčno točko, promet v živo ni upoštevan.</p></div>`;
 }
+/* ---------- Nastavitve: Google, dializa, klinike ---------- */
+function googleCard(){
+  const gi = GOOGLE.info(), G = S.settings.google || {}, t = UI.gTest;
+  const cfgKey = !!(((window.KP_CONFIG && window.KP_CONFIG.google && window.KP_CONFIG.google.key) || '').trim()), local = !!store.get('kp.gkey');
+  const tone = !gi.configured || !gi.on ? 'warn' : gi.status === 'error' ? 'bad' : gi.status === 'ok' ? 'ok' : 'info';
+  const txt = !gi.configured ? 'ključ ni vnesen' : !gi.on ? 'izklopljeno' : gi.status === 'error' ? 'napaka' : gi.status === 'ok' ? 'deluje' : 'pripravljeno';
+  const test = t ? (t.running ? '<span class="chip info">Preverjam …</span>' : `<div class="banner ${t.ok ? '' : 'warn'}"><span>${IC.info}</span><div><b>${t.ok ? 'Google deluje' : 'Preizkus ni uspel'}</b>${t.km ? ` · SB Brežice → UKC Ljubljana: ${KM.fmtKm(t.km)} km, ${Math.round(t.min)} min (${t.ms} ms)` : ''}<br>${esc(t.msg)}</div></div>`) : '';
+  const chk = (path, on, label) => `<label class="row" style="gap:8px;flex-wrap:nowrap"><input type="checkbox" data-path="${path}" data-bool="1" ${on ? 'checked' : ''}> ${label}</label>`;
+  return `<div class="card card-pad stack" style="gap:12px"><div class="card-head" style="margin:0"><h3>Natančna kilometrina (Google Zemljevidi)</h3><span class="chip ${tone}">${txt}</span></div>
+    <div class="banner"><span>${IC.info}</span><div>Kilometrina vsakega prevoza se izračuna z Googlom po najboljši cestni poti <b>OD → DO</b>, kot v Google Zemljevidih. Google dobi <b>samo besedilo naslova OD in DO</b> (brez imena, telefona in naloga). Rezultat se zapiše v knjigo z oznako vira. Naslovi pacientov so osebni podatki: pred uporabo se posvetuj s pooblaščencem za varstvo podatkov.</div></div>
+    <div class="stack" style="gap:8px">
+      ${chk('settings.google.on', G.on !== false, 'Uporabi Google za kilometrino')}
+      ${chk('settings.google.auto', G.auto !== false, 'Izračunaj samodejno, ko vpišem OD in DO (in ob odprtju dneva od včeraj do 14 dni naprej)')}
+      ${chk('settings.google.traffic', !!G.traffic, 'Upoštevaj promet pri času vožnje (dražja zahteva)')}</div>
+    <div class="field full"><label for="gkey">Ključ API ${local ? '<span class="chip ok">shranjen na tej napravi</span>' : cfgKey ? '<span class="chip ok">v config.js</span>' : ''}</label>
+      <div class="row" style="flex-wrap:nowrap"><input id="gkey" type="password" autocomplete="off" spellcheck="false" placeholder="${local ? 'vpiši novega, da zamenjaš' : 'AIza…'}"><button type="button" class="btn sm" data-act="gkeySave">Shrani</button>${local ? '<button type="button" class="btn sm danger" data-act="gkeyClear">Odstrani</button>' : ''}</div>
+      <span class="hint">Ključ vpisan tu velja samo za to napravo. Za vse naprave ga vpiši v config.js (google.key); v obeh primerih ga omeji na naslov te strani in na Routes API.</span></div>
+    <div class="row"><button type="button" class="btn sm" data-act="gTest" ${gi.configured ? '' : 'disabled'}>Preveri Google</button><span class="hint">Poskusni izračun: SB Brežice → UKC Ljubljana (en zahtevek).</span></div>
+    ${test}
+    <p class="hint" style="margin:0">V tej seji: ${gi.calls} zahtevkov, ${gi.errors} napak, ${gi.cached} poti v pomnilniku${gi.queued ? ', v čakalni vrsti ' + gi.queued : ''}.</p>
+    <details class="hintdet"><summary>Kako dobiš ključ in koliko stane</summary><p class="hint" style="margin:6px 0 0">1) V Google Cloud Console ustvari projekt in vklopi obračun. 2) Vklopi »Routes API«. 3) Ustvari ključ API in ga omeji: aplikacije → spletna mesta (HTTP referrer) z naslovom te strani (npr. https://uporabnik.github.io/*), API-ji → samo Routes API. 4) Vnesi ga zgoraj ali v config.js. Google zaračunava po zahtevku; cena in brezplačna kvota se spreminjata, zato preveri trenutni cenik za Routes API (Compute Routes). Aplikacija uporablja Google samo za natančen km vpisanih prevozov, razpored pa računa po cestah OpenStreetMap, da je zahtevkov malo (za vsak prevoz eden, pri čakanju na pregled dva). Poti se ne shranjujejo v trajni predpomnilnik; Googlova pravila o shranjevanju podatkov preveri pred uvedbo.</p></details></div>`;
+}
+function diaTab(){
+  const adm = isAdmin(), T = S.settings.diaT, byName = (a, b) => a.name.localeCompare(b.name, 'sl');
+  const dp = S.patients.filter(p => p.dt).sort(byName), free = S.patients.filter(p => !p.dt).sort(byName);
+  const tm = (t, k) => adm ? field(`settings.diaT.${t}.${k}`, T[t][k], { time:1, label:`${DIA_TERMS[t]} ${k === 'start' ? 'začetek' : 'konec'}` }) : `<b class="mono">${esc(T[t][k])}</b>`;
+  const terms = Object.keys(DIA_TERMS).map(t => `<tr><td><b>${DIA_TERMS[t]} dializa</b></td><td>${tm(t, 'start')}</td><td>${tm(t, 'end')}</td></tr>`).join('');
+  const rows = dp.map(p => `<tr data-pid="${p.id}"><td><button type="button" class="linkbtn" data-act="openPatient" data-id="${p.id}">${esc(p.name)}</button><div class="hint">${esc(p.addr || 'brez naslova')}</div></td>
+    <td><div class="seg" role="group" aria-label="Termin dialize">${Object.keys(DIA_TERMS).map(t => `<button type="button" data-act="diaTerm" data-id="${p.id}" data-t="${t}" aria-pressed="${p.dt.t === t}">${DIA_TERMS[t]}</button>`).join('')}</div></td>
+    <td><div class="row" style="gap:4px">${[1, 2, 3, 4, 5, 6, 0].map(d => `<button type="button" class="chip toggle" data-act="diaDay" data-id="${p.id}" data-d="${d}" aria-pressed="${(p.dt.d || []).includes(d)}">${DOW_SHORT[d]}</button>`).join('')}</div></td>
+    <td><button type="button" class="icon-btn" data-act="diaDel" data-id="${p.id}" aria-label="Odstrani ${esc(p.name)} iz dialize">${IC.x}</button></td></tr>`).join('');
+  return `<div class="stack"><div class="card card-pad stack"><h3>Termina dialize</h3>
+      <p class="muted" style="margin:0">Dializni bolniki imajo dopoldanski ali popoldanski termin. Prevoz tja je ob začetku termina, prevoz nazaj ob koncu. Posadka, ki pelje na dializo, lahko po koncu dialize prevaža tudi sede paciente: razpored jim jih doda v prostem času, če to ne ovira dialize.</p>
+      <div class="tablewrap"><table class="edtable"><thead><tr><th>Termin</th><th>Začetek</th><th>Konec</th></tr></thead><tbody>${terms}</tbody></table></div>
+      ${adm ? '' : '<p class="hint" style="margin:0">Ure terminov spreminja skrbnik.</p>'}</div>
+    <div class="card card-pad stack"><div class="card-head" style="margin:0"><h3>Dializni pacienti</h3><span class="chip mono">${dp.length}</span></div>
+      <form class="row" data-form="diaAdd" style="flex-wrap:nowrap"><select name="pid" aria-label="Pacient" required><option value="">Izberi pacienta iz baze …</option>${free.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
+        <select name="t" style="width:auto" aria-label="Termin">${Object.keys(DIA_TERMS).map(t => `<option value="${t}">${DIA_TERMS[t]}</option>`).join('')}</select><button class="btn primary" type="submit">Dodaj</button></form>
+      ${dp.length ? `<div class="tablewrap"><table class="edtable"><thead><tr><th>Pacient</th><th>Termin</th><th>Dnevi</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty-state">Še ni dializnih pacientov. Izberi pacienta iz baze in termin.</div>'}
+      <p class="hint" style="margin:0">Dnevni prevozi tja in nazaj se vpišejo v knjigo z gumbom »Naloži dializne paciente« (v meniju Več pri dnevu). Pacient mora biti v bazi pacientov, nalog pa se vodi tam.</p></div></div>`;
+}
+function placesTab(){
+  const parents = [...POIS.filter(p => !p.home || /^SB |UKC|UKM|OI |URI/.test(p.n)).map(p => p.n), ...S.places.filter(p => !p.parent && p.n).map(p => p.n)];
+  const pl = (i, k, v, o = {}) => `<input data-pl="${i}|${k}" type="${o.num ? 'number' : 'text'}" ${o.num ? 'min="0" step="5" inputmode="numeric"' : ''} value="${esc(v == null ? '' : v)}" ${o.ph ? `placeholder="${esc(o.ph)}"` : ''} aria-label="${esc(o.label || k)}" autocomplete="off">`;
+  const list = S.places.map((p, i) => ({ p, i })).sort((a, b) => (a.p.parent || a.p.n).localeCompare(b.p.parent || b.p.n, 'sl') || a.p.n.localeCompare(b.p.n, 'sl'));
+  const rows = list.map(({ p, i }) => `<tr><td><select data-pl="${i}|parent" aria-label="Ustanova"><option value="">(samostojna ustanova)</option>${[...new Set(parents)].filter(n => n !== p.n).map(n => `<option value="${esc(n)}" ${p.parent === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></td>
+    <td>${pl(i, 'n', p.n, { label:'Ime klinike ali ustanove', ph:'npr. Očesna klinika' })}</td><td>${pl(i, 'al', (p.al || []).join(', '), { label:'Druga imena', ph:'oči, ocesna' })}</td>
+    <td>${pl(i, 'addr', p.addr, { label:'Naslov (za Google)', ph:'ulica, kraj' })}</td>
+    <td class="coord">${pl(i, 'stay', p.stay, { num:1, label:'Čakanje na pregled v minutah', ph:'min' })}</td><td class="coord">${pl(i, 'extra', p.extra, { num:1, label:'Pot do ambulante v minutah', ph:'min' })}</td>
+    <td><details class="menu"><summary class="btn sm ghost">Točka</summary><div class="menupop"><label class="mini">Širina (lat)${pl(i, 'lat', p.lat, { label:'Širina' })}</label><label class="mini">Dolžina (lon)${pl(i, 'lon', p.lon, { label:'Dolžina' })}</label><span class="hint">Prazno = točka ustanove.</span></div></details></td>
+    <td><button type="button" class="icon-btn" data-act="delPlace" data-i="${i}" aria-label="Izbriši ${esc(p.n)}">${IC.x}</button></td></tr>`).join('');
+  return `<div class="stack"><div class="card card-pad stack"><div class="card-head" style="margin:0"><h3>Klinike, ambulante in druge ustanove</h3><div class="row" style="gap:6px"><button type="button" class="btn sm primary" data-act="addPlace" data-k="clinic">${IC.plus} Dodaj kliniko</button><button type="button" class="btn sm" data-act="addPlace" data-k="inst">${IC.plus} Dodaj ustanovo</button></div></div>
+      <div class="banner"><span>${IC.info}</span><div>Vpiši »UKC Ljubljana – Očesna klinika« ali samo »očesna klinika« in aplikacija ve, kam voziti, kako dolgo traja pregled in koliko hoje je od vhoda do ambulante. <b>Čakanje na pregled</b>: če pacient potrebuje pregled, reševalec počaka in ga odpelje nazaj; razpored to upošteva (prevoz nazaj se ne vpisuje posebej). <b>Naslov</b> se uporabi za natančen izračun kilometrov z Googlom: začetni naslovi so predlogi, preveri jih.</div></div>
+      <div class="tablewrap"><table class="edtable"><thead><tr><th>Ustanova</th><th>Klinika / ambulanta</th><th>Druga imena</th><th>Naslov</th><th>Pregled (min)</th><th>Pot do amb. (min)</th><th></th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="8" class="muted">Ni vpisov.</td></tr>'}</tbody></table></div>
+      <p class="hint" style="margin:0">Samostojna ustanova (npr. zasebna ordinacija ali zdravilišče) potrebuje naslov, po možnosti tudi točko (lat, lon); brez točke se za razpored uporabi središče Brežic, km pa vseeno izračuna Google po naslovu.</p></div></div>`;
+}
+
 const field = (path, val, opts={}) => `<input data-path="${path}" ${opts.num ? 'type="number" data-num="1" step="' + (opts.step || 1) + '"' : (opts.time ? 'type="time"' : 'type="text"')} value="${esc(val)}" ${opts.sug ? 'data-suggest="from"' : ''} ${opts.ph ? 'placeholder="' + esc(opts.ph) + '"' : ''} ${opts.label ? 'aria-label="' + esc(opts.label) + '"' : ''}>`;
 function settingsTabs(){
-  const t = [['vozila','Vozila',true],['zaposleni','Zaposleni',false],['pravila','Pravila',true],['dializa','Dializa',false],['planiranje','Izračun',true],['naslovi','Naslovi in naselja',true],['uporabniki','Uporabniki',true],['varnost','Varnost',true],['logotipi','Logotipi',true],['podatki','Podatki',false]];
+  const t = [['vozila','Vozila',true],['zaposleni','Zaposleni',false],['dializa','Dializa',false],['ustanove','Klinike',false],['planiranje','Izračun',true],['pravila','Pravila',true],['naslovi','Naslovi in naselja',true],['uporabniki','Uporabniki',true],['varnost','Varnost',true],['logotipi','Logotipi',true],['podatki','Podatki',false]];
   return `<div class="tabs" role="tablist">${t.filter(x => !x[2] || isAdmin()).map(x => `<button type="button" role="tab" data-act="setTab" data-k="${x[0]}" aria-selected="${UI.setTab === x[0]}">${x[1]}</button>`).join('')}</div>`;
 }
 const accountOptions = cur => {
@@ -2329,7 +2883,7 @@ const accountOptions = cur => {
   return `<option value="">brez računa</option>` + list.map(u => `<option value="${esc(u.id)}" ${cur === u.id ? 'selected' : ''}>${esc(u.name)} (${esc(ROLES[u.role] || u.role)})</option>`).join('');
 };
 function renderSettings(){
-  if (!isAdmin() && ['vozila','pravila','planiranje','naslovi','uporabniki','varnost','logotipi'].includes(UI.setTab)) UI.setTab = 'zaposleni';
+  if (!isAdmin() && ['vozila','pravila','planiranje','naslovi','uporabniki','varnost','logotipi'].includes(UI.setTab)) UI.setTab = 'dializa';
   let body = '';
   const T = UI.setTab;
   if (T === 'vozila'){
@@ -2356,23 +2910,18 @@ function renderSettings(){
   } else if (T === 'pravila'){
     body = rulesTab();
   } else if (T === 'dializa'){
-    const dg = DIA_GROUPS.map(g => { const c = S.settings.dia[g]; return `<tr><td><b class="mono">${g}</b></td><td>${field(`settings.dia.${g}.start`, c.start, { time:1, label:g + ' začetek' })}</td><td>${field(`settings.dia.${g}.end`, c.end, { time:1, label:g + ' konec' })}</td>
-      <td><div class="row" style="gap:10px">${[1,2,3,4,5,6,0].map(d => `<label class="row" style="gap:4px;flex-wrap:nowrap"><input type="checkbox" data-diaday="${g}|${d}" ${c.days.includes(d) ? 'checked' : ''}> ${DOW_SHORT[d]}</label>`).join('')}</div></td></tr>`; }).join('');
-    const dp = S.patients.filter(p => p.dia);
-    body = `<div class="stack"><div class="card card-pad stack"><h3>Skupine dialize</h3><div class="banner"><span>${IC.info}</span><div>Začetne ure so ocena. Vpiši dejanske ure dialize. Prevoz tja je ob začetku, prevoz nazaj ob koncu.</div></div>
-      <div class="tablewrap"><table class="edtable"><thead><tr><th>Skupina</th><th>Začetek</th><th>Konec</th><th>Dnevi</th></tr></thead><tbody>${dg}</tbody></table></div></div>
-      <div class="card card-pad stack"><div class="card-head" style="margin:0"><h3>Dializni pacienti</h3><button type="button" class="btn sm" data-nav="pacienti">Odpri bazo pacientov</button></div>
-      <p class="muted" style="margin:0">Dializni pacienti so v bazi pacientov (polje »Dializa«). Za vsakega vpiši letni nalog, aplikacija pa opozori mesec pred iztekom.</p>
-      ${dp.length ? `<div class="row" style="gap:6px">${dp.map(p => `<button type="button" class="chip toggle ${pcClass(p.id)}" data-act="openPatient" data-id="${p.id}"><span class="pdot ${pcClass(p.id)}"></span>${esc(p.name)} · ${esc(p.dia)}</button>`).join('')}</div>` : '<div class="empty-state">Še ni dializnih pacientov. V bazi pacientov izberi skupino dialize.</div>'}</div></div>`;
+    body = diaTab();
+  } else if (T === 'ustanove'){
+    body = placesTab();
   } else if (T === 'planiranje'){
     const k = (label, path, step=1, unit='') => `<label for="k-${path}">${label}${unit ? ' <span class="dim">(' + unit + ')</span>' : ''}</label>${field(path, S.settings[path.split('.')[1]], { num:1, step, label })}`.replace('data-path', `id="k-${path}" data-path`);
     const kl = (label, key) => `<label for="k-lim-${key}">${label} <span class="dim">(km/h)</span></label>${field('settings.lim.' + key, S.settings.lim[key], { num:1, step:1, label }).replace('data-path', 'id="k-lim-' + key + '" data-path')}`;
-    body = `<div class="stack"><div class="card card-pad stack"><h3>Parametri izračuna</h3><div class="kv">
-      ${kl('Omejitev v naselju','naselje')}${kl('Omejitev izven naselij','izven')}${kl('Omejitev na hitri cesti','hitra')}${kl('Omejitev na avtocesti','avtocesta')}${k('Dejanska hitrost glede na omejitev','settings.eff',1,'%')}${k('Faktor ceste (samo za ocene brez cestnih podatkov)','settings.road',0.05)}${k('Čas pobiranja pacienta','settings.pickMin',1,'min')}${k('Čas odpuščanja pacienta','settings.dropMin',1,'min')}
+    body = `<div class="stack">${googleCard()}${routingCard()}<details class="card card-pad sect" data-sect="param" ${UI.sect.param ? 'open' : ''}><summary><h3>Parametri izračuna: hitrosti, časi pobiranja, rezerve</h3></summary><div class="kv" style="margin-top:12px">
+      ${kl('Omejitev v naselju','naselje')}${kl('Omejitev izven naselij','izven')}${kl('Omejitev na hitri cesti','hitra')}${kl('Omejitev na avtocesti','avtocesta')}${k('Dejanska hitrost glede na omejitev','settings.eff',1,'%')}${k('Faktor ceste (samo za ocene brez cestnih podatkov)','settings.road',0.05)}${k('Pobiranje sede pacienta','settings.pickMin',1,'min')}${k('Odpuščanje sede pacienta','settings.dropMin',1,'min')}${k('Pobiranje leže pacienta','settings.pickLeze',1,'min')}${k('Odpuščanje leže pacienta','settings.dropLeze',1,'min')}${k('Pobiranje pacienta na vozičku','settings.pickUtila',1,'min')}${k('Odpuščanje pacienta na vozičku','settings.dropUtila',1,'min')}${k('Privzet čas pregleda (čakanje)','settings.stayDef',5,'min')}${k('Privzeta pot od vhoda do ambulante','settings.extraDef',1,'min')}
       ${k('Rezerva pred preiskavo','settings.buffer',1,'min')}${k('Okno združevanja po uri','settings.window',5,'min')}${k('Največji dodaten čas za soprevoznika','settings.detour',5,'min')}${k('Najdaljša vožnja pacienta v vozilu','settings.maxRide',5,'min')}
       ${k('Čakanje pri odvozu brez zamude','settings.waitTol',1,'min')}${k('Število polj v knjigi na dan','settings.slots',1,'polj')}${k('Samodejna odjava','settings.idleMin',5,'min')}
       <label for="k-shift">Privzet začetek izmene</label><input id="k-shift" type="time" data-path="settings.shift" value="${esc(S.settings.shift)}"></div>
-      <p class="hint" style="margin:0">Spremembe veljajo takoj. Razpored za današnji in jutrišnji dan se ponovno izračuna.</p></div>${routingCard()}</div>`;
+      <p class="hint" style="margin:0">Spremembe veljajo takoj. Razpored za današnji in jutrišnji dan se ponovno izračuna.</p></details></div>`;
   } else if (T === 'naslovi'){
     body = `<div class="stack"><div class="card card-pad stack"><h3>Naslovi za samodejno dopolnjevanje</h3>
       <p class="muted" style="margin:0">Predlogi zajemajo vseh ${SETTLEMENTS.length} naselij Občine Brežice, ustanove, del ulic v Brežicah in naslove, ki jih že vpisuješ (${S.addrBook.length}). Za predloge do hišne številke uvozi CSV z naslovi (npr. iz odprtih podatkov GURS, register prostorskih enot). Stolpci: ulica, hišna številka, naselje, ter koordinate (lat, lon v WGS84 ali E, N v D96/TM); stolpec občina je neobvezen (uvozijo se samo naslovi Občine Brežice). Da bodo naslovi na vseh napravah, po uvozu klikni »Prenesi naslovi.json« in datoteko naloži na GitHub poleg index.html (glej navodila).</p>
@@ -2437,19 +2986,19 @@ function alertsBanner(){
 /* ---------- Dispečer: pravila za dan in objava ---------- */
 function rulesBar(date, plan){
   const mode = dayMode(date), own = !!(S.dayRules[date] && S.dayRules[date].mode);
-  return `<div class="card card-pad stack" style="gap:10px"><div class="card-head" style="margin:0"><h3>Pravila za ta dan</h3>${own ? '<span class="chip accent">samo za ta dan</span> <button type="button" class="btn sm ghost" data-act="dayModeReset">Uporabi privzeto</button>' : `<span class="chip">privzeto: ${RULE_MODES[S.rules.mode]}</span>`}</div>
+  return `<div class="card card-pad stack ctrl" style="gap:8px"><div class="ctrl-row"><span class="lbl">Pravila</span>
     <div class="seg" role="group" aria-label="Način pravil">${Object.entries(RULE_MODES).map(([k, l]) => `<button type="button" data-act="dayMode" data-k="${k}" aria-pressed="${mode === k}">${l}</button>`).join('')}</div>
-    <p class="hint" style="margin:0">${RULE_DESC[mode]}</p>
-    ${plan.bends.length ? `<div class="banner" style="background:var(--accent-soft);color:var(--accent)"><span>${IC.info}</span><div><b>${plan.bends.length} prilagoditev pravil.</b> Podrobnosti so v opozorilih spodaj. Prilagoditve za posamezen prevoz lahko izključiš z načinom »Strogo« ali z ročnim prestavljanjem.</div></div>` : ''}</div>`;
+    ${own ? '<span class="chip accent">samo za ta dan</span><button type="button" class="btn sm ghost" data-act="dayModeReset">Uporabi privzeto</button>' : `<span class="chip">privzeto</span>`}</div>
+    <details class="hintdet"><summary>${esc(RULE_MODES[mode])}: kaj to pomeni</summary><p class="hint" style="margin:6px 0 0">${RULE_DESC[mode]}</p></details>
+    ${plan.bends.length ? `<div class="banner" style="background:var(--accent-soft);color:var(--accent)"><span>${IC.info}</span><div><b>${plan.bends.length} prilagoditev pravil</b> (podrobnosti v opozorilih).</div></div>` : ''}</div>`;
 }
 function publishBar(date, plan){
   const st = publishState(date), pub = S.published[date];
   const duty = S.duty[date] || [], noAcc = duty.filter(d => { const s = staffOfDuty(d); return !(s && s.userId); });
-  const chip = st === 'ok' ? `<span class="chip ok">objavljeno ob ${timeOf(pub.at)}</span>` : st === 'spremenjeno' ? '<span class="chip warn">razpored se je spremenil po objavi</span>' : '<span class="chip">ni objavljeno</span>';
-  return `<div class="card card-pad stack" style="gap:10px"><div class="card-head" style="margin:0"><h3>Objava posadkam</h3>${chip}</div>
-    <div class="row"><button type="button" class="btn primary" data-act="publish" data-date="${date}" ${plan.crews.some(c => c.trips.length) ? '' : 'disabled'}>${IC.send} ${st === 'ni' ? 'Objavi razpored' : 'Objavi znova'}</button><button type="button" class="btn" data-nav="zivo" data-live="${date}">${IC.pulse} Živo stanje</button></div>
-    <p class="hint" style="margin:0">Vsaka posadka v aplikaciji vidi samo svoje prevoze in javlja korake (sprejem, na poti, pri pacientu, v vozilu, na cilju). Časi se vpišejo v knjigo.</p>
-    ${noAcc.length ? `<div class="banner warn"><span>${IC.alert}</span><div>Brez računa: <b>${noAcc.map(d => esc(d.name)).join(', ')}</b>. Ne bodo videli razporeda v aplikaciji (Nastavitve → Zaposleni).</div></div>` : ''}</div>`;
+  const chip = st === 'ok' ? `<span class="chip ok">objavljeno ob ${timeOf(pub.at)}</span>` : st === 'spremenjeno' ? '<span class="chip warn">spremenjeno po objavi</span>' : '<span class="chip">ni objavljeno</span>';
+  return `<div class="card card-pad stack ctrl" style="gap:8px"><div class="ctrl-row"><span class="lbl">Posadke</span>${chip}${noAcc.length ? `<span class="chip warn" title="Brez računa ne vidijo razporeda v aplikaciji: ${esc(noAcc.map(d => d.name).join(', '))}. Poveži v Nastavitve → Zaposleni.">${noAcc.length} brez računa</span>` : ''}<span class="sp"></span>
+    <button type="button" class="btn" data-nav="zivo" data-live="${date}">${IC.pulse} Živo stanje</button>
+    <button type="button" class="btn primary" data-act="publish" data-date="${date}" ${plan.crews.some(c => c.trips.length) ? '' : 'disabled'} title="Vsaka posadka v aplikaciji vidi samo svoje prevoze in javlja korake. Časi se vpišejo v knjigo.">${IC.send} ${st === 'ni' ? 'Objavi razpored' : 'Objavi znova'}</button></div></div>`;
 }
 
 /* ---------- Pacienti ---------- */
@@ -2458,7 +3007,7 @@ function patientMatches(p){
   if (q && !norm([p.name, p.addr, p.phone].join(' ')).includes(q)) return false;
   const sm = patientNalogSummary(p);
   if (UI.pf === 'opozorila') return ['kmalu', 'potekel'].includes(sm.st) && !!nalogAlerts().find(a => a.p.id === p.id);
-  if (UI.pf === 'dializa') return !!p.dia;
+  if (UI.pf === 'dializa') return !!p.dt;
   if (UI.pf === 'brez') return !(p.naloge || []).length || sm.st === 'brez';
   return true;
 }
@@ -2507,7 +3056,6 @@ function patientDetailHTML(p){
       <div class="field"><label for="pf-phone">Telefon / kontakt</label><input id="pf-phone" data-pf="phone" type="tel" value="${esc(p.phone)}" autocomplete="off"></div>
       <div class="field full"><label for="pf-addr">Domači naslov</label><input id="pf-addr" data-pf="addr" data-suggest="from" value="${esc(p.addr)}" autocomplete="off" placeholder="npr. Dobova 25"></div>
       <div class="field"><span class="lbl">Običajni način prevoza</span><div class="seg" role="group">${Object.entries(MODES).map(([k, v]) => `<button type="button" data-act="pMode" data-mode="${k}" aria-pressed="${p.mode === k}">${v}</button>`).join('')}</div></div>
-      <div class="field"><label for="pf-dia">Dializa (skupina)</label><select id="pf-dia" data-pf="dia"><option value="">ni na dializi</option>${DIA_GROUPS.map(g => `<option ${p.dia === g ? 'selected' : ''}>${g}</option>`).join('')}</select></div>
       <div class="field"><label for="pf-zzzs">Št. zavarovane osebe (neobvezno)</label><input id="pf-zzzs" data-pf="zzzs" value="${esc(p.zzzs || '')}" autocomplete="off" inputmode="numeric"></div>
       <div class="field"><span class="lbl">Barva pacienta</span><div class="swatches">${sw}</div></div>
       <div class="field full"><label for="pf-note">Opomba (npr. voziček, kisik, hišni ključ)</label><textarea id="pf-note" data-pf="note" rows="2">${esc(p.note || '')}</textarea></div>
@@ -2523,12 +3071,12 @@ function renderPatients(){
   const all = S.patients.slice().sort((a, b) => a.name.localeCompare(b.name, 'sl'));
   const list = all.filter(patientMatches);
   const al = nalogAlerts();
-  const rows = list.map(p => { const sm = patientNalogSummary(p); return `<button type="button" class="prow ${p.color >= 0 ? 'pc' + p.color : ''}" data-act="openPatient" data-id="${p.id}" aria-current="${UI.pid === p.id}">${avatarP(p)}<span class="pr-main"><b>${esc(p.name || '(brez imena)')}</b><span class="hint">${esc(p.addr || 'brez naslova')}${p.phone ? ' · ' + esc(p.phone) : ''}</span></span><span class="pr-side">${p.dia ? `<span class="chip mono">${esc(p.dia)}</span>` : ''}${sm.n ? nalogChip(sm.n) : '<span class="chip">brez naloga</span>'}</span></button>`; }).join('');
+  const rows = list.map(p => { const sm = patientNalogSummary(p); return `<button type="button" class="prow ${p.color >= 0 ? 'pc' + p.color : ''}" data-act="openPatient" data-id="${p.id}" aria-current="${UI.pid === p.id}">${avatarP(p)}<span class="pr-main"><b>${esc(p.name || '(brez imena)')}</b><span class="hint">${esc(p.addr || 'brez naslova')}${p.phone ? ' · ' + esc(p.phone) : ''}</span></span><span class="pr-side">${p.dt ? `<span class="chip" title="Dializa: ${DIA_TERMS[p.dt.t].toLowerCase()}">dial. ${p.dt.t === 'dop' ? 'dop.' : 'pop.'}</span>` : ''}${sm.n ? nalogChip(sm.n) : '<span class="chip">brez naloga</span>'}</span></button>`; }).join('');
   $('#view').innerHTML = `${demoBanner()}${alertsBanner()}
     <div class="plist ${sel ? 'has-sel' : ''}">
       <div class="stack" style="gap:12px">
         <div class="toolbar"><input type="search" id="patSearch" placeholder="Išči po imenu, naslovu, telefonu" value="${esc(UI.pq)}" aria-label="Išči pacienta"><button type="button" class="btn primary" data-act="newPatient">${IC.plus} Nov pacient</button></div>
-        <div class="seg" role="group" aria-label="Filter">${[['vsi', `Vsi (${all.length})`], ['opozorila', `Opozorila (${al.length})`], ['dializa', 'Dializa'], ['brez', 'Brez naloga']].map(([k, l]) => `<button type="button" data-act="pf" data-k="${k}" aria-pressed="${UI.pf === k}">${l}</button>`).join('')}</div>
+        <div class="seg" role="group" aria-label="Filter">${[['vsi', `Vsi (${all.length})`], ['opozorila', `Opozorila (${al.length})`], ['brez', 'Brez naloga']].map(([k, l]) => `<button type="button" data-act="pf" data-k="${k}" aria-pressed="${UI.pf === k}">${l}</button>`).join('')}</div>
         <div class="prows">${rows || '<div class="empty-state">Ni pacientov za ta filter. Pacienta dodaš z gumbom »Nov pacient« ali v dnevni knjigi z »Shrani v bazo«.</div>'}</div>
       </div>
       <div class="stack">${sel ? patientDetailHTML(sel) : '<div class="empty-state">Izberi pacienta na seznamu ali dodaj novega. Ko pacienta izbereš v dnevni knjigi, se podatki izpolnijo sami.</div>'}</div>
@@ -2774,15 +3322,16 @@ function renderModal(){
 
 
 /* ---------- Tisk knjige prevozov za mesec ---------- */
+const kmPrint = r => { const i = KM.info(r); return i.total == null ? '' : (i.exact && i.backExact ? '' : '~') + KM.fmtKm(i.total); };
 function printMonthHTML(){
   const { y, m } = UI.month, n = daysInMonth(y, m); let body = '', total = 0, canc = 0;
   for (let d = 1; d <= n; d++){
     const date = `${y}-${pad(m + 1)}-${pad(d)}`, rs = filledRides(date), note = ((S.crewBook[date] || {}).ost || {}).text || '';
     if (!rs.length && !note) continue;
     rs.forEach(({ r }) => { if (r.odpovedano) canc++; else total++; });
-    const rows = rs.map(({ r, nr }) => `<tr class="${r.odpovedano ? 'p-cancel' : ''}"><td>${nr}</td><td>${esc(r.time)}</td><td>${esc(r.name)}</td><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td>${esc(MODES[r.mode] || '')}</td><td>${esc(r.dia)}</td><td>${esc(r.note || '')}</td><td>${r.odpovedano ? '<b>ODPOVEDANO</b>' : r.done ? 'opravljeno' + (r.doneBy ? ' · ' + esc(r.doneBy) : '') : ''}</td></tr>`).join('');
+    const rows = rs.map(({ r, nr }) => `<tr class="${r.odpovedano ? 'p-cancel' : ''}"><td>${nr}</td><td>${esc(r.time)}</td><td>${esc(r.name)}</td><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td>${esc(MODES[r.mode] || '')}</td><td class="num">${r.odpovedano ? '' : kmPrint(r)}</td><td>${esc(r.note || '')}</td><td>${r.odpovedano ? '<b>ODPOVEDANO</b>' : r.done ? 'opravljeno' + (r.doneBy ? ' · ' + esc(r.doneBy) : '') : ''}</td></tr>`).join('');
     const hol = holiday(date);
-    body += `<section><h3>${DOW_LONG[dow(date)]}, ${fmtDMY(date)}${hol ? ' · ' + esc(hol) : ''}</h3>${rs.length ? `<table><thead><tr><th>Št.</th><th>Ura</th><th>Pacient</th><th>Od</th><th>Do</th><th>Način</th><th>Dial.</th><th>Opomba</th><th>Stanje</th></tr></thead><tbody>${rows}</tbody></table>` : ''}${note ? `<p class="p-note"><b>Ostalo:</b> ${esc(note)}</p>` : ''}</section>`;
+    body += `<section><h3>${DOW_LONG[dow(date)]}, ${fmtDMY(date)}${hol ? ' · ' + esc(hol) : ''}</h3>${rs.length ? `<table><thead><tr><th>Št.</th><th>Ura</th><th>Pacient</th><th>Od</th><th>Do</th><th>Način</th><th>Km</th><th>Opomba</th><th>Stanje</th></tr></thead><tbody>${rows}</tbody></table>` : ''}${note ? `<p class="p-note"><b>Ostalo:</b> ${esc(note)}</p>` : ''}</section>`;
   }
   return `<h2>Knjiga prevozov · ${MONTHS[m]} ${y}</h2><p>Reševalna postaja Brežice · prevozov: ${total}${canc ? ` · odpovedanih: ${canc}` : ''}</p>${body || '<p>Ni vpisov.</p>'}`;
 }
@@ -3043,6 +3592,8 @@ function onRideField(el){
   const r = hit.r, f = el.dataset.f;
   if (f === 'done'){ r.done = el.checked; r.doneAt = r.done ? new Date().toISOString() : ''; if (!r.done) r.doneBy = ''; else { const p = r.nalogId && patientById(r.patientId); const n = p && (p.naloge || []).find(x => x.id === r.nalogId); if (n && n.vrsta === 'enkratna' && !n.porabljen){ n.porabljen = date; } } }
   else if (f === 'odpovedano'){ r.odpovedano = el.checked; if (el.checked){ r.prevStatus = r.status; r.status = 'preklicana'; } else { r.status = r.prevStatus || 'nova'; r.prevStatus = ''; } }
+  else if (f === 'stayOn'){ r.stayTouched = true; r.stayAuto = false; r.stay = el.checked ? (+r.stay > 0 ? +r.stay : (poiStay(geo(r.to)) || +S.settings.stayDef || 45)) : 0; }
+  else if (f === 'stay'){ r.stayTouched = true; r.stayAuto = false; r.stay = Math.max(0, Math.min(480, parseInt(el.value, 10) || 0)); }
   else if (el.type === 'checkbox') r[f] = el.checked;
   else r[f] = el.value;
   save();
@@ -3103,6 +3654,7 @@ const armBtn = (el, label, ms = 3500) => { el.dataset.arm = '1'; el.dataset.old 
 document.addEventListener('click', async e => {
   const t = e.target;
   if (!t.closest('#suggest') && !t.closest('[data-suggest]')) sgClose();
+  $$('details.menu[open]').forEach(d => { if (!d.contains(t) || (t.closest('[data-act]') && !t.closest('summary'))) d.open = false; });
   const sgb = t.closest('#suggest button'); if (sgb){ sgPick(+sgb.dataset.i); return; }
   const nav = t.closest('[data-nav]'); if (nav){ if (nav.dataset.live) UI.lDate = nav.dataset.live; UI.modal = null; go(nav.dataset.nav); return; }
   const el = t.closest('[data-act]'); if (!el) return;
@@ -3118,13 +3670,50 @@ document.addEventListener('click', async e => {
     case 'dayToday': UI.date = todayStr(); render(); break;
     case 'dayTomorrow': UI.date = addDays(todayStr(), 1); render(); break;
     case 'filter': UI.filter = el.dataset.k; $$('[data-act=filter]').forEach(b => b.setAttribute('aria-pressed', String(b === el))); applyFilter(); break;
-    case 'loadDia': { const n = loadDialysis(UI.date); toast(n ? `Dodanih ${n} dializnih prevozov` : 'Dializni pacienti so že v knjigi ali jih ni v bazi'); rerender(); break; }
+    case 'openRide': {
+      const art = el.closest('[data-ride]'); if (!art) break; const id = art.dataset.ride, was = UI.openRide === id;
+      UI.openRide = was ? '' : id; rerender();
+      if (!was){ const nb = $(`[data-ride="${id}"]`); if (nb){ nb.scrollIntoView({ block:'nearest' }); const nm = $('[data-f=name]', nb); if (nm && !(rideById(UI.date, id).r.name || '').trim()) nm.focus(); } }
+      break; }
+    case 'closeRide': UI.openRide = ''; rerender(); break;
+    case 'newRide': {
+      const a2 = ensureDay(UI.date); let r = a2.find(x => !isFilled(x));
+      if (!r){ addSlots(UI.date, 5); r = ensureDay(UI.date).find(x => !isFilled(x)); }
+      UI.openRide = r.id; UI.filter = 'vsi'; UI.q = ''; rerender();
+      const nb = $(`[data-ride="${r.id}"]`); if (nb){ nb.scrollIntoView({ block:'center' }); const nm = $('[data-f=name]', nb); if (nm) nm.focus(); }
+      break; }
+    case 'kmRecalc': {
+      const art = el.closest('[data-ride]'); if (!art) break; el.disabled = true; el.textContent = 'Računam …';
+      const r = await KM.ensure(art.dataset.date, art.dataset.ride, { force:true });
+      if (r) toast(`Kilometrina: ${KM.fmtKm(r.km)} km (Google)`); else { const nb = $(`[data-ride="${art.dataset.ride}"]`); if (nb) refreshKm(nb); }
+      break; }
+    case 'kmDay': {
+      if (!GOOGLE.enabled()){ toast('Google ni nastavljen (Nastavitve → Izračun)'); break; }
+      el.disabled = true; toast('Računam kilometrino z Googlom …'); const n = await KM.day(UI.date, { force:true }); toast(n ? `Kilometrina preračunana za ${n} prevozov` : 'Ni prevozov za izračun'); rerender(); break; }
+    case 'kmReport': UI.kmRep = !UI.kmRep; render(); break;
+    case 'kmMonth': {
+      if (!GOOGLE.enabled()){ toast('Google ni nastavljen (Nastavitve → Izračun)'); break; }
+      el.disabled = true; const { y, m } = UI.month, n = daysInMonth(y, m); let cnt = 0;
+      for (let d = 1; d <= n; d++){ const dt = `${y}-${pad(m + 1)}-${pad(d)}`; el.textContent = `Računam … ${d}/${n}`; cnt += await KM.day(dt).catch(() => 0); }
+      toast(cnt ? `Izračunano: ${cnt} prevozov` : 'Vsi prevozi imajo že kilometrino'); rerender(); break; }
+    case 'kmCsv': {
+      const { y, m } = UI.month, withNames = el.dataset.names === '1'; if (withNames) audit('km.csv.z.imeni', { mesec:`${y}-${pad(m + 1)}` });
+      const u = URL.createObjectURL(new Blob(['\ufeff' + KM.csv(y, m, withNames)], { type:'text/csv;charset=utf-8' })); const l = document.createElement('a'); l.href = u; l.download = `kilometrina-${y}-${pad(m + 1)}.csv`; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 1000); break; }
+    case 'diaTerm': { const p = patientById(el.dataset.id); if (p && p.dt){ p.dt.t = el.dataset.t; save(); rerender(); } break; }
+    case 'diaDay': { const p = patientById(el.dataset.id); if (p && p.dt){ const d = +el.dataset.d, set = new Set(p.dt.d || []); if (set.has(d)) set.delete(d); else set.add(d); p.dt.d = [...set].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)); save(); rerender(); } break; }
+    case 'diaDel': { const p = patientById(el.dataset.id); if (p){ p.dt = null; save(); rerender(); toast('Pacient ni več na seznamu dialize. Obstoječi vpisi v knjigi ostanejo.'); } break; }
+    case 'addPlace': { const clinic = el.dataset.k === 'clinic'; S.places.push({ id:uid(), parent:clinic ? 'UKC Ljubljana' : '', n:'', al:[], addr:'', lat:null, lon:null, stay:clinic ? 45 : null, extra:null }); save(); rerender(); const ins = $$('[data-pl$="|n"]'); const last = ins.find(i => i.dataset.pl.startsWith((S.places.length - 1) + '|')); if (last){ last.scrollIntoView({ block:'center' }); last.focus(); } break; }
+    case 'delPlace': { const pl = S.places[+el.dataset.i]; if (!pl) break; if (el.dataset.arm){ S.places.splice(+el.dataset.i, 1); save(); rerender(); } else armBtn(el, 'Potrdi'); break; }
+    case 'gkeySave': { const v = ($('#gkey').value || '').trim(); if (!/^[A-Za-z0-9_\-]{20,}$/.test(v)){ toast('Ključ ni videti veljaven (vsaj 20 znakov: črke, številke, - in _)'); break; } store.set('kp.gkey', v); GOOGLE.clear(); UI.gTest = null; audit('google.kljuc.shranjen', {}); toast('Ključ shranjen na tej napravi'); rerender(); break; }
+    case 'gkeyClear': store.del('kp.gkey'); GOOGLE.forget(); UI.gTest = null; audit('google.kljuc.odstranjen', {}); toast('Ključ odstranjen s te naprave'); rerender(); break;
+    case 'gTest': { UI.gTest = { running:true }; rerender(); UI.gTest = await GOOGLE.test(); audit('google.preizkus', { uspeh:!!UI.gTest.ok }); rerender(); break; }
+    case 'loadDia': { const n = loadDialysis(UI.date); if (n && GOOGLE.auto()) KM.day(UI.date).catch(() => {}); toast(n ? `Dodanih ${n} dializnih prevozov` : 'Dializni pacienti so že v knjigi ali jih ni v bazi'); rerender(); break; }
     case 'addSlots': addSlots(UI.date, 5); rerender(); toast('Dodanih 5 polj'); break;
     case 'gotoDisp': UI.dDate = date; go('dispecer'); break;
     case 'mode': { const art = el.closest('[data-ride]'); const hit = rideById(art.dataset.date, art.dataset.ride); if (hit){ hit.r.mode = el.dataset.mode; save(); refreshBox(art); } break; }
     case 'clearRide': {
-      if (el.dataset.arm){ const art = el.closest('[data-ride]'); const a2 = ensureDay(art.dataset.date); const i = a2.findIndex(r => r.id === art.dataset.ride); if (i >= 0){ a2[i] = blankRide(); save(); rerender(); toast(`Polje ${i+1} počiščeno`); } }
-      else { el.dataset.arm = '1'; el.classList.add('danger'); el.style.width = 'auto'; el.style.padding = '0 8px'; el.textContent = 'Počisti?'; setTimeout(() => { if (el.isConnected && el.dataset.arm){ el.removeAttribute('data-arm'); el.removeAttribute('style'); el.classList.remove('danger'); el.innerHTML = IC.x; } }, 3500); }
+      if (el.dataset.arm){ const art = el.closest('[data-ride]'); const a2 = ensureDay(art.dataset.date); const i = a2.findIndex(r => r.id === art.dataset.ride); if (i >= 0){ a2[i] = blankRide(); if (UI.openRide === art.dataset.ride) UI.openRide = ''; save(); rerender(); toast(`Prevoz ${i + 1} počiščen`); } }
+      else armBtn(el, 'Potrdi: počisti');
       break; }
     case 'savePat': { const art = el.closest('[data-ride]'); const p = savePatientFromRide(art.dataset.date, art.dataset.ride); if (p){ toast('Pacient shranjen v bazo'); rerender(); } else toast('Najprej vpiši ime pacienta'); break; }
     case 'rideView': { const art = el.closest('[data-ride]'); const hit = rideById(art.dataset.date, art.dataset.ride); if (hit) openPreview(`Prevoz št. ${hit.nr}`, rideVariants(art.dataset.date, hit.r, hit.nr)); break; }
@@ -3136,7 +3725,7 @@ document.addEventListener('click', async e => {
     case 'pMode': { const p = patientById(UI.pid); if (p){ p.mode = el.dataset.mode; save(); $$('[data-act=pMode]').forEach(b => b.setAttribute('aria-pressed', String(b === el))); refreshPatientList(); } break; }
     case 'pColor': { const p = patientById(UI.pid); if (p){ p.color = +el.dataset.c; save(); rerender(); } break; }
     case 'delPatient': { if (el.dataset.arm){ removePatient(el.dataset.id); UI.pid = ''; render(); toast('Pacient izbrisan'); } else armBtn(el, 'Potrdi brisanje'); break; }
-    case 'addNalog': { const p = patientById(UI.pid); if (!p) break; const n = blankNalog(el.dataset.v); n.od = p.addr || ''; n.mode = p.mode; n.zdravnikVrsta = 'osebni'; if (p.dia && el.dataset.v === 'letna'){ n.razlog = 'Dializa'; n.do = 'SB Brežice – dializa'; } p.naloge = p.naloge || []; p.naloge.push(n); UI.nid = n.id; audit('nalog.dodan', { pid:p.id, vrsta:n.vrsta }); save(); render(); break; }
+    case 'addNalog': { const p = patientById(UI.pid); if (!p) break; const n = blankNalog(el.dataset.v); n.od = p.addr || ''; n.mode = p.mode; n.zdravnikVrsta = 'osebni'; if (p.dt && el.dataset.v === 'letna'){ n.razlog = 'Dializa'; n.do = 'SB Brežice – dializa'; } p.naloge = p.naloge || []; p.naloge.push(n); UI.nid = n.id; audit('nalog.dodan', { pid:p.id, vrsta:n.vrsta }); save(); render(); break; }
     case 'editNalog': { UI.nid = UI.nid === el.dataset.id ? '' : el.dataset.id; render(); break; }
     case 'previewNalog': { const p = patientById(UI.pid), n = p && (p.naloge || []).find(x => x.id === el.dataset.id); if (p && n){ audit('nalog.predogled', { pid:p.id }); openPreview(`${NALOG_VRSTE[n.vrsta].l} nalog · ${p.name}`, nalogVariants(p, n)); } break; }
     case 'renewNalog': { const p = patientById(UI.pid), n = p && (p.naloge || []).find(x => x.id === el.dataset.id); if (!p || !n) break; const from = addDays(n.veljaDo, 1); const m = { ...clone(n), id:uid(), veljaOd:from, veljaDo:defaultValidTo(n.vrsta, from), auto:true, stevilka:'', preklican:false, porabljen:'', created:new Date().toISOString() }; p.naloge.push(m); UI.nid = m.id; audit('nalog.podaljsan', { pid:p.id }); save(); render(); toast('Nov nalog je pripravljen. Vpiši številko in preveri datume.'); break; }
@@ -3244,13 +3833,13 @@ document.addEventListener('click', async e => {
 function setPf(el){
   const p = patientById(UI.pid); if (!p) return;
   const k = el.dataset.pf; p[k] = el.value;
-  if (k === 'name' || k === 'phone' || k === 'addr' || k === 'dia') refreshPatientList();
+  if (k === 'name' || k === 'phone' || k === 'addr') refreshPatientList();
   save();
 }
 function refreshPatientList(){
   const p = patientById(UI.pid); const rows = $('.prows'); if (!rows) return;
   const all = S.patients.slice().sort((a, b) => a.name.localeCompare(b.name, 'sl')).filter(patientMatches);
-  rows.innerHTML = all.map(q => { const sm = patientNalogSummary(q); return `<button type="button" class="prow ${q.color >= 0 ? 'pc' + q.color : ''}" data-act="openPatient" data-id="${q.id}" aria-current="${UI.pid === q.id}">${avatarP(q)}<span class="pr-main"><b>${esc(q.name || '(brez imena)')}</b><span class="hint">${esc(q.addr || 'brez naslova')}${q.phone ? ' · ' + esc(q.phone) : ''}</span></span><span class="pr-side">${q.dia ? `<span class="chip mono">${esc(q.dia)}</span>` : ''}${sm.n ? nalogChip(sm.n) : '<span class="chip">brez naloga</span>'}</span></button>`; }).join('') || '<div class="empty-state">Ni pacientov za ta filter.</div>';
+  rows.innerHTML = all.map(q => { const sm = patientNalogSummary(q); return `<button type="button" class="prow ${q.color >= 0 ? 'pc' + q.color : ''}" data-act="openPatient" data-id="${q.id}" aria-current="${UI.pid === q.id}">${avatarP(q)}<span class="pr-main"><b>${esc(q.name || '(brez imena)')}</b><span class="hint">${esc(q.addr || 'brez naslova')}${q.phone ? ' · ' + esc(q.phone) : ''}</span></span><span class="pr-side">${q.dt ? `<span class="chip">${DIA_TERMS[q.dt.t] ? 'dializa' : ''}</span>` : ''}${sm.n ? nalogChip(sm.n) : '<span class="chip">brez naloga</span>'}</span></button>`; }).join('') || '<div class="empty-state">Ni pacientov za ta filter.</div>';
   const h = $('.pdetail h3'); if (h && p) h.textContent = p.name || 'Nov pacient';
 }
 const lastNalogAudit = {};
@@ -3279,11 +3868,37 @@ document.addEventListener('input', e => {
   if (el.id === 'rideSearch'){ UI.q = el.value; applyFilter(); }
   if (el.id === 'patSearch'){ UI.pq = el.value; refreshPatientList(); }
 });
+/* Ustanova/klinika: samodejno čakanje na pregled; po spremembi naslovov novi izračun kilometrine */
+function afterAddressChange(date, r, f){
+  if (f === 'to'){
+    const g = geo(r.to || ''), clinic = g.kind === 'poi' && g.poi && g.poi.clinic && rideDir(r) === 'to';
+    if (clinic && !(+r.stay > 0) && !r.stayTouched){ r.stay = poiStay(g); r.stayAuto = true; save(); }
+    else if (!clinic && r.stayAuto){ r.stay = 0; r.stayAuto = false; save(); }
+  }
+  KM.schedule(date, r.id);
+}
 document.addEventListener('change', async e => {
   const el = e.target;
+  if (el.dataset.km === 'manual'){
+    const art = el.closest('[data-ride]'); if (!art) return;
+    KM.setManual(art.dataset.date, art.dataset.ride, el.value);
+    if (!el.value.trim()) KM.ensure(art.dataset.date, art.dataset.ride, { force:true }).catch(() => {});
+    refreshKm(art); const kb = $('[data-role=km]', art); if (kb) kb.innerHTML = kmBoxHTML(rideById(art.dataset.date, art.dataset.ride).r); return;
+  }
+  if (el.dataset.pl){
+    const [i, k] = el.dataset.pl.split('|'), p = S.places[+i]; if (!p) return;
+    const v = el.value.trim(), num = x => { const n = parseFloat(String(x).replace(',', '.')); return (x === '' || !isFinite(n)) ? null : n; };
+    if (k === 'al') p.al = v ? v.split(',').map(x => x.trim()).filter(Boolean) : [];
+    else if (k === 'stay' || k === 'extra') p[k] = num(v) == null ? null : Math.max(0, num(v));
+    else if (k === 'lat' || k === 'lon') p[k] = num(v);
+    else p[k] = v;
+    save(); if (k === 'parent') rerender(); return;
+  }
   if (el.dataset.f){
     const res = onRideField(el);
     if (res && (res.f === 'from' || res.f === 'to') && el.value.trim()) learnAddress(el.value);
+    if (res && (res.f === 'from' || res.f === 'to')){ const art = el.closest('[data-ride]'), dt = art && art.dataset.date; if (dt) afterAddressChange(dt, res.r, res.f); if (art && art.classList.contains('box')) refreshBox(art); }
+    if (res && ['from', 'to', 'time', 'mode', 'stay', 'stayOn'].includes(res.f)){ const art = el.closest('.box'); if (art){ if (res.f === 'stay' || res.f === 'stayOn') KM.schedule(art.dataset.date, res.r.id); refreshAssign(art); } }
     if (res && (res.f === 'odpovedano' || ((res.f === 'done' || res.f === 'nalogId' || res.f === 'exc') && (el.closest('.dispatch') || res.f === 'nalogId')))) rerender();
     return;
   }
@@ -3294,7 +3909,6 @@ document.addEventListener('change', async e => {
   if (el.dataset.act === 'daySplit'){ const d = UI.dDate, rr = S.dayRules[d] = S.dayRules[d] || {}; if (el.checked) rr.split = true; else delete rr.split; if (!Object.keys(rr).length) delete S.dayRules[d]; audit('pravila.dan', { datum:d, razdelitev:el.checked }); save(); rerender(); return; }
   if (el.dataset.act === 'vehToggle'){ const list = S.vehOff[UI.dDate] = S.vehOff[UI.dDate] || []; const i = list.indexOf(el.dataset.id); if (el.checked && i >= 0) list.splice(i, 1); if (!el.checked && i < 0) list.push(el.dataset.id); save(); rerender(); return; }
   if (el.dataset.act === 'pin'){ const hit = rideById(UI.dDate, el.dataset.ride); if (hit){ hit.r.pin = el.value; save(); rerender(); } return; }
-  if (el.dataset.diaday){ const [g, d] = el.dataset.diaday.split('|'); const days = S.settings.dia[g].days; const n = +d; const i = days.indexOf(n); if (el.checked && i < 0) days.push(n); if (!el.checked && i >= 0) days.splice(i, 1); save(); return; }
   if (el.dataset.coord){ const [i, k] = el.dataset.coord.split('|').map(Number); const s = SETTLEMENTS[i]; const row = el.closest('tr'); const ins = $$('input', row); const lat = parseFloat(ins[0].value), lon = parseFloat(ins[1].value); if (!isFinite(lat) || !isFinite(lon)) return; if (lat === s.lat && lon === s.lon) delete S.coordOv[s.n]; else S.coordOv[s.n] = [lat, lon]; row.lastElementChild.innerHTML = S.coordOv[s.n] ? '<span class="chip accent">spremenjeno</span>' : ''; save(); return; }
   if (el.dataset.urole){ try { await DB.patch('users/' + el.dataset.urole, { set:{ role:el.value }, del:[], n:1 }); audit('uporabnik.vloga', { uid:el.dataset.urole, vloga:el.value }); toast('Vloga spremenjena'); } catch(err){ toast('Ni uspelo: ' + (err.code || err.message)); } loadRemoteUsers(); return; }
   if (el.dataset.uactive){ try { await DB.patch('users/' + el.dataset.uactive, { set:{ active:el.checked }, del:[], n:1 }); audit('uporabnik.aktiven', { uid:el.dataset.uactive, aktiven:el.checked }); toast(el.checked ? 'Račun aktiviran' : 'Račun onemogočen'); } catch(err){ toast('Ni uspelo: ' + (err.code || err.message)); } loadRemoteUsers(); return; }
@@ -3321,6 +3935,8 @@ document.addEventListener('focusout', e => {
   if (next && next.id){ const n2 = document.getElementById(next.id); if (n2) n2.focus(); }
 });
 document.addEventListener('mousedown', e => { if (e.target.closest('#suggest')) e.preventDefault(); });
+/* Seznam predlogov se zapre, ko fokus zapusti polje (Tab, klik drugam), da ne zakriva polj pod njim */
+document.addEventListener('focusout', e => { if (e.target.matches && e.target.matches('[data-suggest]')) setTimeout(() => { const a = document.activeElement; if (!(a && a.matches && a.matches('[data-suggest]'))) sgClose(); }, 120); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && UI.modal){ UI.modal = null; renderModal(); return; }
   if (e.key === 'Tab' && UI.modal){ const f = $$('#modal button'); if (f.length){ const first = f[0], last = f[f.length - 1]; if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); } else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); } } }
@@ -3342,6 +3958,7 @@ document.addEventListener('submit', async e => {
   try {
     if (kind === 'addDuty'){ const name = (fd.get('name') || '').trim(); if (!name) return; if (!S.staff.some(s => norm(s.name) === norm(name))) S.staff.push({ id:uid(), name, team:'redna', userId:'' }); addDuty(UI.dDate, name, (S.staff.find(s => norm(s.name) === norm(name)) || {}).team); save(); rerender(); }
     else if (kind === 'addNotice'){ S.notices.push({ id:uid(), vehicleId:fd.get('vehicleId'), tip:fd.get('tip'), from:fd.get('from'), to:fd.get('to') || '', note:(fd.get('note') || '').trim(), closed:false }); save(); render(); toast('Posebnost dodana'); }
+    else if (kind === 'diaAdd'){ const p = patientById(fd.get('pid')); if (!p){ toast('Izberi pacienta'); return; } p.dt = { t:fd.get('t') === 'pop' ? 'pop' : 'dop', d:[1, 3, 5] }; save(); rerender(); toast(`${p.name}: dodan na dializo (pon, sre, pet). Popravi dneve po potrebi.`); }
     else if (kind === 'addStaff'){ const name = (fd.get('name') || '').trim(); if (name){ S.staff.push({ id:uid(), name, team:fd.get('team'), userId:'' }); save(); rerender(); } }
     else if (kind === 'addUser'){
       if (!isAdmin()) return;
@@ -3451,7 +4068,7 @@ async function seedDemo(pw){
   S.duty[tom] = isStandby(tom) ? [mkDuty('Tina R.', 'voznik', 'pripravljenost'), mkDuty('Nina S.', 'spremljevalec', 'pripravljenost')] : [{ ...mkDuty('Matej V.'), from:'05:30' }, mkDuty('Tina R.'), mkDuty('Luka B.'), mkDuty('Nina S.', 'spremljevalec')];
   // pacienti in nalogi (različna stanja, da se vidijo opozorila)
   const nl = (vrsta, od, do_, extra = {}) => ({ ...blankNalog(vrsta, od), veljaDo:do_, auto:false, stevilka:'DEMO-' + Math.floor(1000 + Math.random() * 9000), narocnik:'ZD Brežice (osebni zdravnik)', zdravnik:'dr. Primer Vzorec', razlog:'Dializa', od:'', do:'SB Brežice – dializa', ...extra });
-  const pt = (name, addr, phone, mode, dia, naloge) => { const p = blankPatient({ name, addr, phone, mode, dia, color:nextColor(), demo:true, naloge:naloge.map(n => ({ ...n, od:n.od || addr })) }); S.patients.push(p); return p; };
+  const pt = (name, addr, phone, mode, dia, naloge) => { const p = blankPatient({ name, addr, phone, mode, dt:dia ? { t:diaTermOf(dia), d:dia === 'D3' ? [2, 4, 6] : [1, 3, 5] } : null, color:nextColor(), demo:true, naloge:naloge.map(n => ({ ...n, od:n.od || addr })) }); S.patients.push(p); return p; };
   pt('Milan Dializni', 'Velike Malence 3', '031 000 201', 'sede', 'D1', [nl('letna', d(-300), d(65))]);
   pt('Vida Dializna', 'Dobova 90', '031 000 202', 'sede', 'D1', [nl('letna', d(-347), d(18))]);
   pt('Tone Dializni', 'Bizeljsko 12', '031 000 203', 'leze', 'D2', [nl('letna', d(-370), d(-5))]);
@@ -3487,6 +4104,13 @@ async function seedDemo(pw){
 async function boot(){
   applyTheme();
   S = defaultState(); normalizeState(); loadAddr(); loadSharedAddr(); fillLogos();
+  KM.onUpdate = (date, id) => {      // kilometrina prevoza je izračunana: osveži vrstico; ko je čakalna vrsta prazna, še razpored (natančne koordinate)
+    if (!ME) return;
+    if (UI.view === 'dan' && UI.date === date){ const nb = $(`[data-ride="${id}"]`); if (nb) refreshKm(nb); if (GOOGLE.info().queued === 0) scheduleRender(); }
+    else if (['knjiga', 'dispecer'].includes(UI.view)) scheduleRender();
+  };
+  GOOGLE.onUpdate = () => { if (ME && UI.view === 'nastavitve' && UI.setTab === 'planiranje') scheduleRender(); };
+  document.addEventListener('toggle', e => { const d = e.target; if (d && d.dataset && d.dataset.sect) UI.sect[d.dataset.sect] = d.open; }, true);
   ROUTE.onUpdate = () => { if (ME) scheduleRender(); }; ROUTE.init();     // cestni podatki: splošni predpomnilnik + razdalje.json; osveži prikaz, ko prispejo novi podatki
   let msg = ''; try { msg = sessionStorage.getItem('kp.msg') || ''; sessionStorage.removeItem('kp.msg'); } catch(e){}
   if (BACKEND === 'firebase'){

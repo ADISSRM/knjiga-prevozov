@@ -20,19 +20,19 @@ function alertsBanner(){
 /* ---------- Dispečer: pravila za dan in objava ---------- */
 function rulesBar(date, plan){
   const mode = dayMode(date), own = !!(S.dayRules[date] && S.dayRules[date].mode);
-  return `<div class="card card-pad stack" style="gap:10px"><div class="card-head" style="margin:0"><h3>Pravila za ta dan</h3>${own ? '<span class="chip accent">samo za ta dan</span> <button type="button" class="btn sm ghost" data-act="dayModeReset">Uporabi privzeto</button>' : `<span class="chip">privzeto: ${RULE_MODES[S.rules.mode]}</span>`}</div>
+  return `<div class="card card-pad stack ctrl" style="gap:8px"><div class="ctrl-row"><span class="lbl">Pravila</span>
     <div class="seg" role="group" aria-label="Način pravil">${Object.entries(RULE_MODES).map(([k, l]) => `<button type="button" data-act="dayMode" data-k="${k}" aria-pressed="${mode === k}">${l}</button>`).join('')}</div>
-    <p class="hint" style="margin:0">${RULE_DESC[mode]}</p>
-    ${plan.bends.length ? `<div class="banner" style="background:var(--accent-soft);color:var(--accent)"><span>${IC.info}</span><div><b>${plan.bends.length} prilagoditev pravil.</b> Podrobnosti so v opozorilih spodaj. Prilagoditve za posamezen prevoz lahko izključiš z načinom »Strogo« ali z ročnim prestavljanjem.</div></div>` : ''}</div>`;
+    ${own ? '<span class="chip accent">samo za ta dan</span><button type="button" class="btn sm ghost" data-act="dayModeReset">Uporabi privzeto</button>' : `<span class="chip">privzeto</span>`}</div>
+    <details class="hintdet"><summary>${esc(RULE_MODES[mode])}: kaj to pomeni</summary><p class="hint" style="margin:6px 0 0">${RULE_DESC[mode]}</p></details>
+    ${plan.bends.length ? `<div class="banner" style="background:var(--accent-soft);color:var(--accent)"><span>${IC.info}</span><div><b>${plan.bends.length} prilagoditev pravil</b> (podrobnosti v opozorilih).</div></div>` : ''}</div>`;
 }
 function publishBar(date, plan){
   const st = publishState(date), pub = S.published[date];
   const duty = S.duty[date] || [], noAcc = duty.filter(d => { const s = staffOfDuty(d); return !(s && s.userId); });
-  const chip = st === 'ok' ? `<span class="chip ok">objavljeno ob ${timeOf(pub.at)}</span>` : st === 'spremenjeno' ? '<span class="chip warn">razpored se je spremenil po objavi</span>' : '<span class="chip">ni objavljeno</span>';
-  return `<div class="card card-pad stack" style="gap:10px"><div class="card-head" style="margin:0"><h3>Objava posadkam</h3>${chip}</div>
-    <div class="row"><button type="button" class="btn primary" data-act="publish" data-date="${date}" ${plan.crews.some(c => c.trips.length) ? '' : 'disabled'}>${IC.send} ${st === 'ni' ? 'Objavi razpored' : 'Objavi znova'}</button><button type="button" class="btn" data-nav="zivo" data-live="${date}">${IC.pulse} Živo stanje</button></div>
-    <p class="hint" style="margin:0">Vsaka posadka v aplikaciji vidi samo svoje prevoze in javlja korake (sprejem, na poti, pri pacientu, v vozilu, na cilju). Časi se vpišejo v knjigo.</p>
-    ${noAcc.length ? `<div class="banner warn"><span>${IC.alert}</span><div>Brez računa: <b>${noAcc.map(d => esc(d.name)).join(', ')}</b>. Ne bodo videli razporeda v aplikaciji (Nastavitve → Zaposleni).</div></div>` : ''}</div>`;
+  const chip = st === 'ok' ? `<span class="chip ok">objavljeno ob ${timeOf(pub.at)}</span>` : st === 'spremenjeno' ? '<span class="chip warn">spremenjeno po objavi</span>' : '<span class="chip">ni objavljeno</span>';
+  return `<div class="card card-pad stack ctrl" style="gap:8px"><div class="ctrl-row"><span class="lbl">Posadke</span>${chip}${noAcc.length ? `<span class="chip warn" title="Brez računa ne vidijo razporeda v aplikaciji: ${esc(noAcc.map(d => d.name).join(', '))}. Poveži v Nastavitve → Zaposleni.">${noAcc.length} brez računa</span>` : ''}<span class="sp"></span>
+    <button type="button" class="btn" data-nav="zivo" data-live="${date}">${IC.pulse} Živo stanje</button>
+    <button type="button" class="btn primary" data-act="publish" data-date="${date}" ${plan.crews.some(c => c.trips.length) ? '' : 'disabled'} title="Vsaka posadka v aplikaciji vidi samo svoje prevoze in javlja korake. Časi se vpišejo v knjigo.">${IC.send} ${st === 'ni' ? 'Objavi razpored' : 'Objavi znova'}</button></div></div>`;
 }
 
 /* ---------- Pacienti ---------- */
@@ -41,7 +41,7 @@ function patientMatches(p){
   if (q && !norm([p.name, p.addr, p.phone].join(' ')).includes(q)) return false;
   const sm = patientNalogSummary(p);
   if (UI.pf === 'opozorila') return ['kmalu', 'potekel'].includes(sm.st) && !!nalogAlerts().find(a => a.p.id === p.id);
-  if (UI.pf === 'dializa') return !!p.dia;
+  if (UI.pf === 'dializa') return !!p.dt;
   if (UI.pf === 'brez') return !(p.naloge || []).length || sm.st === 'brez';
   return true;
 }
@@ -90,7 +90,6 @@ function patientDetailHTML(p){
       <div class="field"><label for="pf-phone">Telefon / kontakt</label><input id="pf-phone" data-pf="phone" type="tel" value="${esc(p.phone)}" autocomplete="off"></div>
       <div class="field full"><label for="pf-addr">Domači naslov</label><input id="pf-addr" data-pf="addr" data-suggest="from" value="${esc(p.addr)}" autocomplete="off" placeholder="npr. Dobova 25"></div>
       <div class="field"><span class="lbl">Običajni način prevoza</span><div class="seg" role="group">${Object.entries(MODES).map(([k, v]) => `<button type="button" data-act="pMode" data-mode="${k}" aria-pressed="${p.mode === k}">${v}</button>`).join('')}</div></div>
-      <div class="field"><label for="pf-dia">Dializa (skupina)</label><select id="pf-dia" data-pf="dia"><option value="">ni na dializi</option>${DIA_GROUPS.map(g => `<option ${p.dia === g ? 'selected' : ''}>${g}</option>`).join('')}</select></div>
       <div class="field"><label for="pf-zzzs">Št. zavarovane osebe (neobvezno)</label><input id="pf-zzzs" data-pf="zzzs" value="${esc(p.zzzs || '')}" autocomplete="off" inputmode="numeric"></div>
       <div class="field"><span class="lbl">Barva pacienta</span><div class="swatches">${sw}</div></div>
       <div class="field full"><label for="pf-note">Opomba (npr. voziček, kisik, hišni ključ)</label><textarea id="pf-note" data-pf="note" rows="2">${esc(p.note || '')}</textarea></div>
@@ -106,12 +105,12 @@ function renderPatients(){
   const all = S.patients.slice().sort((a, b) => a.name.localeCompare(b.name, 'sl'));
   const list = all.filter(patientMatches);
   const al = nalogAlerts();
-  const rows = list.map(p => { const sm = patientNalogSummary(p); return `<button type="button" class="prow ${p.color >= 0 ? 'pc' + p.color : ''}" data-act="openPatient" data-id="${p.id}" aria-current="${UI.pid === p.id}">${avatarP(p)}<span class="pr-main"><b>${esc(p.name || '(brez imena)')}</b><span class="hint">${esc(p.addr || 'brez naslova')}${p.phone ? ' · ' + esc(p.phone) : ''}</span></span><span class="pr-side">${p.dia ? `<span class="chip mono">${esc(p.dia)}</span>` : ''}${sm.n ? nalogChip(sm.n) : '<span class="chip">brez naloga</span>'}</span></button>`; }).join('');
+  const rows = list.map(p => { const sm = patientNalogSummary(p); return `<button type="button" class="prow ${p.color >= 0 ? 'pc' + p.color : ''}" data-act="openPatient" data-id="${p.id}" aria-current="${UI.pid === p.id}">${avatarP(p)}<span class="pr-main"><b>${esc(p.name || '(brez imena)')}</b><span class="hint">${esc(p.addr || 'brez naslova')}${p.phone ? ' · ' + esc(p.phone) : ''}</span></span><span class="pr-side">${p.dt ? `<span class="chip" title="Dializa: ${DIA_TERMS[p.dt.t].toLowerCase()}">dial. ${p.dt.t === 'dop' ? 'dop.' : 'pop.'}</span>` : ''}${sm.n ? nalogChip(sm.n) : '<span class="chip">brez naloga</span>'}</span></button>`; }).join('');
   $('#view').innerHTML = `${demoBanner()}${alertsBanner()}
     <div class="plist ${sel ? 'has-sel' : ''}">
       <div class="stack" style="gap:12px">
         <div class="toolbar"><input type="search" id="patSearch" placeholder="Išči po imenu, naslovu, telefonu" value="${esc(UI.pq)}" aria-label="Išči pacienta"><button type="button" class="btn primary" data-act="newPatient">${IC.plus} Nov pacient</button></div>
-        <div class="seg" role="group" aria-label="Filter">${[['vsi', `Vsi (${all.length})`], ['opozorila', `Opozorila (${al.length})`], ['dializa', 'Dializa'], ['brez', 'Brez naloga']].map(([k, l]) => `<button type="button" data-act="pf" data-k="${k}" aria-pressed="${UI.pf === k}">${l}</button>`).join('')}</div>
+        <div class="seg" role="group" aria-label="Filter">${[['vsi', `Vsi (${all.length})`], ['opozorila', `Opozorila (${al.length})`], ['brez', 'Brez naloga']].map(([k, l]) => `<button type="button" data-act="pf" data-k="${k}" aria-pressed="${UI.pf === k}">${l}</button>`).join('')}</div>
         <div class="prows">${rows || '<div class="empty-state">Ni pacientov za ta filter. Pacienta dodaš z gumbom »Nov pacient« ali v dnevni knjigi z »Shrani v bazo«.</div>'}</div>
       </div>
       <div class="stack">${sel ? patientDetailHTML(sel) : '<div class="empty-state">Izberi pacienta na seznamu ali dodaj novega. Ko pacienta izbereš v dnevni knjigi, se podatki izpolnijo sami.</div>'}</div>
@@ -357,15 +356,16 @@ function renderModal(){
 
 
 /* ---------- Tisk knjige prevozov za mesec ---------- */
+const kmPrint = r => { const i = KM.info(r); return i.total == null ? '' : (i.exact && i.backExact ? '' : '~') + KM.fmtKm(i.total); };
 function printMonthHTML(){
   const { y, m } = UI.month, n = daysInMonth(y, m); let body = '', total = 0, canc = 0;
   for (let d = 1; d <= n; d++){
     const date = `${y}-${pad(m + 1)}-${pad(d)}`, rs = filledRides(date), note = ((S.crewBook[date] || {}).ost || {}).text || '';
     if (!rs.length && !note) continue;
     rs.forEach(({ r }) => { if (r.odpovedano) canc++; else total++; });
-    const rows = rs.map(({ r, nr }) => `<tr class="${r.odpovedano ? 'p-cancel' : ''}"><td>${nr}</td><td>${esc(r.time)}</td><td>${esc(r.name)}</td><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td>${esc(MODES[r.mode] || '')}</td><td>${esc(r.dia)}</td><td>${esc(r.note || '')}</td><td>${r.odpovedano ? '<b>ODPOVEDANO</b>' : r.done ? 'opravljeno' + (r.doneBy ? ' · ' + esc(r.doneBy) : '') : ''}</td></tr>`).join('');
+    const rows = rs.map(({ r, nr }) => `<tr class="${r.odpovedano ? 'p-cancel' : ''}"><td>${nr}</td><td>${esc(r.time)}</td><td>${esc(r.name)}</td><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td>${esc(MODES[r.mode] || '')}</td><td class="num">${r.odpovedano ? '' : kmPrint(r)}</td><td>${esc(r.note || '')}</td><td>${r.odpovedano ? '<b>ODPOVEDANO</b>' : r.done ? 'opravljeno' + (r.doneBy ? ' · ' + esc(r.doneBy) : '') : ''}</td></tr>`).join('');
     const hol = holiday(date);
-    body += `<section><h3>${DOW_LONG[dow(date)]}, ${fmtDMY(date)}${hol ? ' · ' + esc(hol) : ''}</h3>${rs.length ? `<table><thead><tr><th>Št.</th><th>Ura</th><th>Pacient</th><th>Od</th><th>Do</th><th>Način</th><th>Dial.</th><th>Opomba</th><th>Stanje</th></tr></thead><tbody>${rows}</tbody></table>` : ''}${note ? `<p class="p-note"><b>Ostalo:</b> ${esc(note)}</p>` : ''}</section>`;
+    body += `<section><h3>${DOW_LONG[dow(date)]}, ${fmtDMY(date)}${hol ? ' · ' + esc(hol) : ''}</h3>${rs.length ? `<table><thead><tr><th>Št.</th><th>Ura</th><th>Pacient</th><th>Od</th><th>Do</th><th>Način</th><th>Km</th><th>Opomba</th><th>Stanje</th></tr></thead><tbody>${rows}</tbody></table>` : ''}${note ? `<p class="p-note"><b>Ostalo:</b> ${esc(note)}</p>` : ''}</section>`;
   }
   return `<h2>Knjiga prevozov · ${MONTHS[m]} ${y}</h2><p>Reševalna postaja Brežice · prevozov: ${total}${canc ? ` · odpovedanih: ${canc}` : ''}</p>${body || '<p>Ni vpisov.</p>'}`;
 }

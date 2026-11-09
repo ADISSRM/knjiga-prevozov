@@ -136,20 +136,35 @@ function normalizeState(){
     ['sede','leze','utila','skupaj'].forEach(k => { v[k + 'Max'] = Math.max(+v[k] || 0, v[k + 'Max'] == null ? (+v[k] || 0) : +v[k + 'Max']); });
   });
   S.patients = S.patients || [];
+  if (S.settings.dia){   // stare dializne skupine → dopoldanska / popoldanska
+    const d = S.settings.dia, T = S.settings.diaT = S.settings.diaT || {};
+    if (d.D1 && d.D1.start) T.dop = { start:d.D1.start, end:d.D1.end };
+    if (d.D2 && d.D2.start) T.pop = { start:d.D2.start, end:d.D2.end };
+    delete S.settings.dia;
+  }
+  S.settings.google = Object.assign({ on:true, auto:true, traffic:false }, S.settings.google || {});
+  S.places = Array.isArray(S.places) ? S.places : defaultState().places;
   if (S.diaPatients && S.diaPatients.length){
-    S.diaPatients.forEach(dp => { if (!S.patients.some(p => norm(p.name) === norm(dp.name))) S.patients.push(blankPatient({ name:dp.name, addr:dp.from, phone:dp.phone, mode:dp.mode, dia:dp.group, demo:dp.demo })); });
+    S.diaPatients.forEach(dp => { if (!S.patients.some(p => norm(p.name) === norm(dp.name))) S.patients.push(migratePatient(blankPatient({ name:dp.name, addr:dp.from, phone:dp.phone, mode:dp.mode, dia:dp.group, demo:dp.demo }))); });
     S.diaPatients = [];
   }
+  S.patients.forEach(migratePatient);
+}
+/* Stara skupina dialize (D1, D2, SaD4, D3) → termin dialize pacienta { t:'dop'|'pop', d:[dnevi v tednu] } */
+function migratePatient(p){
+  if (p.dia !== undefined){ if (p.dia && !p.dt) p.dt = { t:diaTermOf(p.dia), d:p.dia === 'D3' ? [2, 4, 6] : [1, 3, 5] }; delete p.dia; }
+  if (p.dt === undefined) p.dt = null;
+  return p;
 }
 function cfgDoc(){
-  return J({ v:2, settings:S.settings, rules:S.rules, vehicles:S.vehicles, staff:S.staff, notices:S.notices, addrBook:S.addrBook,
+  return J({ v:2, settings:S.settings, rules:S.rules, vehicles:S.vehicles, staff:S.staff, notices:S.notices, addrBook:S.addrBook, places:S.places,
     coordOv:Object.entries(S.coordOv || {}).map(([n, c]) => ({ n, lat:c[0], lon:c[1] })) });
 }
 function applyCfg(d){
   const def = defaultState();
   S.settings = mergeDefaults(d.settings || {}, def.settings);
   S.rules = mergeDefaults(d.rules || {}, def.rules);
-  S.vehicles = d.vehicles || def.vehicles; S.staff = d.staff || []; S.notices = d.notices || []; S.addrBook = d.addrBook || [];
+  S.vehicles = d.vehicles || def.vehicles; S.staff = d.staff || []; S.notices = d.notices || []; S.addrBook = d.addrBook || []; S.places = d.places || def.places;
   S.coordOv = {}; (d.coordOv || []).forEach(o => { S.coordOv[o.n] = [o.lat, o.lon]; });
   normalizeState();
 }
@@ -221,7 +236,7 @@ function onPatients(changes, meta){
     const path = 'patients/' + c.id, i = S.patients.findIndex(p => p.id === c.id);
     if (!c.data){ if (i >= 0) S.patients.splice(i, 1); delete SY.snap[path]; return; }
     const merged = mergeRemote(path, c.data, i >= 0 ? J(S.patients[i]) : {});
-    const p = { ...blankPatient(), ...merged, id:c.id };
+    const p = migratePatient({ ...blankPatient(), ...merged, id:c.id });
     if (i >= 0) S.patients[i] = p; else S.patients.push(p);
   });
   if (meta && meta.initial) SY.patReady = true;

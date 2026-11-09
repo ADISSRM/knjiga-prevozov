@@ -35,6 +35,14 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   // vse ostalo zunanje blokiraj (preverimo, da aplikacija ne kliče nič drugega)
   const external = [];
   await ctx.route(url => !/^http:\/\/127\.0\.0\.1/.test(url.href) && !/osrm|openstreetmap\.de/.test(url.href), route => { external.push(route.request().url()); route.abort(); });
+  const { createGoogleMock } = require(SRC + '/tests/mock-google.js');
+  const gmock = createGoogleMock({});
+  const gseen = [];
+  await ctx.route(/^https:\/\/routes\.googleapis\.com\//, async route => {
+    const rq = route.request(), hd = rq.headers(); gseen.push({ url: rq.url(), headers: hd, body: JSON.parse(rq.postData() || '{}') });
+    const r = await gmock.fetch(rq.url(), { method: 'POST', headers: { 'X-Goog-Api-Key': hd['x-goog-api-key'], 'X-Goog-FieldMask': hd['x-goog-fieldmask'] }, body: rq.postData() });
+    route.fulfill({ status: r.status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(await r.json()) });
+  });
   const page = await ctx.newPage();
   const errors = [], csp = [];
   const notFound = []; page.on('response', r => { if (r.status() === 404) notFound.push(r.url().replace(/^http:\/\/127\.0\.0\.1:\d+/, '')); });
@@ -67,15 +75,14 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   });
   await page.click('[data-nav="dispecer"]');
   await page.evaluate(d => { UI.dDate = d; rerender(); }, date);
-  await page.waitForSelector('.routebar', { timeout: 10000 });
+  await page.waitForSelector('.stats', { timeout: 10000 });
   await page.waitForTimeout(2500);   // počakaj na cestne podatke in ponovni izris
   await page.screenshot({ path: OUT + '/1-dispatch.png', fullPage: true });
   await page.screenshot({ path: OUT + '/1a-top.png', clip: { x: 0, y: 0, width: 1280, height: 760 } });
 
   const txt = sel => page.$$eval(sel, els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
-  const rb = (await txt('.routebar'))[0];
-  ok('vrstica cestnih podatkov prikazana', /Cestni podatki/.test(rb), rb);
-  ok('cestni podatki prispeli (OSRM)', /v redu|pripravljeni/.test(rb) && seen.length > 0, `zahtev: ${seen.length}`);
+  ok('mirni vmesnik: vrstica cestnih podatkov je skrita, ko je vse v redu', (await page.$('.routebar')) === null, (await txt('.routebar'))[0] || '');
+  ok('cestni podatki prispeli (OSRM)', seen.length > 0 && /po cestah/.test((await txt('.stats'))[0]), `zahtev: ${seen.length}`);
   ok('v URL-jih samo koordinate (brez imen)', seen.every(s => !/Dobova|Ljubljana|Novak|Horvat|UKC|Brežice/i.test(decodeURIComponent(s.url).replace(/^https:\/\/[^/]+/, ''))));
   ok('brez piškotkov in prilagojenih glav', seen.every(s => !s.headers.cookie && !s.headers.authorization && !s.headers.referer), JSON.stringify(Object.keys(seen[0].headers)));
   const trips = await txt('.trip-head');
@@ -139,8 +146,112 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   await page.screenshot({ path: OUT + '/4-down.png', fullPage: true });
   routeMode = 'ok'; await page.click('[data-act="routeRetry"]').catch(() => {});
   await page.waitForTimeout(4000);
-  const rb4 = (await txt('.routebar'))[0];
-  ok('okrevanje po izpadu', /v redu|pripravljeni|nalaganje/.test(rb4), rb4);
+  const rb4 = (await txt('.routebar'))[0] || '';
+  ok('okrevanje po izpadu', rb4 === '' || /nalaganje/.test(rb4), rb4 || '(vrstica skrita = v redu)');
+
+  /* ================= Dnevna knjiga: mirni vmesnik, kilometrina, čakanje na pregled ================= */
+  await page.evaluate(d => { UI.date = d; UI.openRide = ''; UI.filter = 'vsi'; UI.q = ''; }, date);
+  await page.click('[data-nav="dan"]'); await page.waitForSelector('.rrow');
+  const nRows = await page.$$eval('.rrow', e => e.length);
+  ok('knjiga: vsak prevoz je ena vrstica', nRows >= 5, nRows + ' vrstic');
+  ok('knjiga: nobeden urejevalnik ni odprt (mirno)', (await page.$$('.editor')).length === 0);
+  const rowH = await page.$eval('.rrow', e => Math.round(e.getBoundingClientRect().height));
+  ok('knjiga: vrstica je nizka (< 70 px)', rowH < 70, rowH + ' px');
+  await page.screenshot({ path: OUT + '/5-day-list.png', fullPage: false });
+  await page.click('.box[data-ride="br0"] .rrow');
+  ok('knjiga: klik odpre en urejevalnik', (await page.$$('.editor')).length === 1);
+  await page.click('.box[data-ride="br1"] .rrow');
+  ok('knjiga: odpre se samo en urejevalnik hkrati', (await page.$$('.editor')).length === 1 && await page.$('.box[data-ride="br1"] .editor') !== null);
+  ok('knjiga: ni izbirnika dialize pri prevozu', (await page.$('.editor select[data-f="dia"]')) === null && !/D1|D2|SaD4/.test(await page.$eval('.editor', e => e.textContent)));
+  const kmTxt = await page.$eval('.box[data-ride="br1"] [data-role="km"]', e => e.textContent.replace(/\s+/g, ' ').trim());
+  ok('km brez Googla: ocena/ceste OSM + namig za ključ', /Natančen izračun|Google/.test(kmTxt) && /km/.test(kmTxt), kmTxt);
+  // ročni vnos km
+  await page.fill('.box[data-ride="br1"] input[data-km="manual"]', '97,4'); await page.dispatchEvent('.box[data-ride="br1"] input[data-km="manual"]', 'change');
+  const man = await page.evaluate(() => { const r = rideById(UI.date, 'br1').r; return { km: r.km, src: r.kmSrc }; });
+  ok('ročni vnos km: shranjen z vrednostjo 97,4 in virom »rocno«', man.km === 97.4 && man.src === 'rocno', JSON.stringify(man));
+  const chipTxt = await page.$eval('.box[data-ride="br1"] [data-role="kmchip"]', e => e.textContent.trim());
+  ok('km čip v vrstici prikaže ročni vnos', /97,4/.test(chipTxt), chipTxt);
+
+  // klinika: samodejno čakanje
+  await page.click('.box[data-ride="br1"] .rrow'); await page.click('.box[data-ride="br0"] .rrow');
+  await page.fill('.box[data-ride="br0"] input[data-f="to"]', 'UKC Ljubljana – očesna klinika'); await page.dispatchEvent('.box[data-ride="br0"] input[data-f="to"]', 'change');
+  await page.waitForTimeout(300);
+  const stay = await page.evaluate(() => { const r = rideById(UI.date, 'br0').r; const el = document.querySelector('.box[data-ride="br0"] [data-role="stay"]'); return { stay: r.stay, shown: el && !el.hidden, g: geo(r.to).poi && geo(r.to).poi.clinic }; });
+  ok('klinika: izbira »očesna klinika« odpre vrstico čakanja in vpiše privzeti čas pregleda', stay.shown && stay.stay > 0 && stay.g, JSON.stringify(stay));
+  await page.evaluate(() => { document.activeElement && document.activeElement.blur(); }); await page.waitForTimeout(250);
+  await page.locator('.box[data-ride="br0"]').screenshot({ path: OUT + '/6-editor.png' });
+  await page.fill('.box[data-ride="br0"] input[data-f="stay"]', '90'); await page.dispatchEvent('.box[data-ride="br0"] input[data-f="stay"]', 'input');
+  await page.waitForTimeout(200);
+  const s90 = await page.evaluate(() => rideById(UI.date, 'br0').r.stay);
+  ok('čakanje: ročno nastavljen čas pregleda (90 min) se shrani', s90 === 90, String(s90));
+  const tagTxt = await page.$eval('.box[data-ride="br0"] [data-role="rtags"]', e => e.textContent);
+  ok('vrstica kaže oznako »čaka 90 min«', /čaka 90 min/.test(tagTxt), tagTxt);
+
+  /* ================= Google kilometrina (lažni Routes API na omrežni ravni) ================= */
+  await page.click('[data-nav="nastavitve"]'); await page.click('[data-act="setTab"][data-k="planiranje"]');
+  await page.waitForSelector('#gkey');
+  ok('Google: brez ključa ni nobenega zahtevka', gseen.length === 0);
+  await page.fill('#gkey', 'AIzaSyTEST_KEY_0123456789abcdefghijk'); await page.click('[data-act="gkeySave"]');
+  await page.waitForSelector('[data-act="gTest"]:not([disabled])');
+  await page.click('[data-act="gTest"]');
+  await page.waitForFunction(() => /Google deluje|Preizkus ni uspel/.test(document.body.textContent), null, { timeout: 10000 });
+  const gt = await page.$$eval('.banner', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()).filter(t => /Google deluje|Preizkus ni uspel/.test(t)));
+  ok('Google: gumb »Preveri Google«', gt.some(t => /Google deluje/.test(t)), gt[0]);
+  const g0 = gseen[0];
+  ok('Google: zahtevek ima ključ, masko polj in samo naslova OD in DO', g0 && g0.headers['x-goog-api-key'] && g0.headers['x-goog-fieldmask'] && Object.keys(g0.body).every(k => ['origin', 'destination', 'travelMode', 'routingPreference', 'units', 'languageCode', 'regionCode', 'intermediates', 'departureTime'].includes(k)), g0 && Object.keys(g0.body).join(','));
+  await page.screenshot({ path: OUT + '/7-google-card.png', fullPage: true });
+  // km prevoza z Googlom
+  await page.click('[data-nav="dan"]'); await page.waitForSelector('.rrow');
+  await page.waitForFunction(() => document.querySelectorAll('.rrow .kmchip.ex, .rrow .kmchip').length > 0);
+  await page.waitForTimeout(2500);   // samodejni izračun
+  const kmSrc = await page.evaluate(() => filledRides(UI.date).map(({ r }) => ({ id: r.id, km: r.km, src: r.kmSrc })));
+  const googled = kmSrc.filter(x => x.src === 'google');
+  ok('samodejni izračun: prevozi dobijo km iz Googla, ročni ostane', googled.length >= 3 && kmSrc.find(x => x.id === 'br1').src === 'rocno' && kmSrc.find(x => x.id === 'br1').km === 97.4, JSON.stringify(kmSrc));
+  const stayR = await page.evaluate(() => { const r = rideById(UI.date, 'br0').r; return { km: r.km, back: r.kmBack, src: r.kmSrc }; });
+  ok('prevoz s čakanjem: izračunana je tudi pot nazaj (kmBack)', stayR.back > 0 && stayR.src === 'google', JSON.stringify(stayR));
+  const gb = gseen.slice(1).map(x => JSON.stringify(x.body)).join(' ');
+  ok('Google: v zahtevkih ni imen pacientov in telefonov', !/Novak|Horvat|Kos|Zupan|Rep|031111111|031222222/.test(gb), '');
+  await page.screenshot({ path: OUT + '/8-day-km.png', fullPage: false });
+
+  // mesečna kilometrina
+  await page.click('[data-nav="knjiga"]'); await page.waitForSelector('[data-act="kmReport"]');
+  await page.evaluate(d => { const [y, m] = d.split('-'); UI.month = { y: +y, m: +m - 1 }; rerender(); }, date);
+  await page.click('[data-act="kmReport"]'); await page.waitForSelector('#kmReport');
+  const rep = await page.$eval('#kmReport', e => e.textContent.replace(/\s+/g, ' ').trim());
+  ok('mesečno poročilo kilometrine: skupaj km, delež natančnih, vozila', /km skupaj/.test(rep) && /natančno/.test(rep), rep.slice(0, 160));
+  await page.screenshot({ path: OUT + '/9-month-km.png', fullPage: false });
+  const [dl2] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.click('[data-act="kmCsv"][data-names="0"]')]);
+  const csv = fs.readFileSync(await dl2.path(), 'utf8');
+  ok('CSV kilometrine: BOM, podpičje/decimalna vejica, brez imen', csv.charCodeAt(0) === 0xFEFF && /\d,\d/.test(csv) && !/Novak|Horvat/.test(csv), csv.split('\n').slice(0, 2).join(' | '));
+  await page.screenshot({ path: OUT + '/9a-month.png', fullPage: true });
+
+  /* ================= Dializa (register + termini) in klinike ================= */
+  await page.evaluate(() => { S.patients.push(blankPatient({ name: 'Dializa Preizkus', addr: 'Dobova 30', color: nextColor() })); save(); });
+  await page.click('[data-nav="nastavitve"]'); await page.click('[data-act="setTab"][data-k="dializa"]'); await page.waitForSelector('form[data-form="diaAdd"]');
+  await page.selectOption('form[data-form="diaAdd"] select[name="pid"]', { label: 'Dializa Preizkus' });
+  await page.selectOption('form[data-form="diaAdd"] select[name="t"]', 'pop');
+  await page.click('form[data-form="diaAdd"] button[type="submit"]');
+  await page.waitForSelector('tr[data-pid]');
+  ok('dializa: pacient dodan v register s popoldanskim terminom', await page.evaluate(() => { const p = S.patients.find(x => x.name === 'Dializa Preizkus'); return p.dt && p.dt.t === 'pop'; }));
+  await page.click('tr[data-pid] [data-act="diaTerm"][data-t="dop"]');
+  await page.click('tr[data-pid] [data-act="diaDay"][data-d="2"]');
+  const dt = await page.evaluate(() => S.patients.find(x => x.name === 'Dializa Preizkus').dt);
+  ok('dializa: sprememba termina in dneva', dt.t === 'dop' && dt.d.includes(2) && dt.d.includes(1), JSON.stringify(dt));
+  ok('dializa: ni izbire D1/D2/SaD4 pri podatkih pacienta', await (async () => { await page.click('[data-nav="pacienti"]'); await page.evaluate(() => { UI.pid = S.patients.find(x => x.name === 'Dializa Preizkus').id; render(); }); return !/SaD4|D1 /.test(await page.$eval('#view', e => e.textContent)); })());
+  await page.click('[data-nav="nastavitve"]'); await page.click('[data-act="setTab"][data-k="dializa"]'); await page.waitForSelector('tr[data-pid]');
+  await page.screenshot({ path: OUT + '/10-dializa.png', fullPage: true });
+  await page.click('[data-act="setTab"][data-k="ustanove"]'); await page.waitForSelector('[data-act="addPlace"]');
+  const nPl0 = await page.evaluate(() => S.places.length);
+  await page.click('[data-act="addPlace"][data-k="clinic"]');
+  const last = await page.evaluate(() => S.places.length - 1);
+  await page.fill(`[data-pl="${last}|n"]`, 'Dermatološka amb.'); await page.dispatchEvent(`[data-pl="${last}|n"]`, 'change');
+  const plOk = await page.evaluate(() => { const g = geo('UKC Ljubljana – Dermatološka amb.'); return { n: S.places.length, clinic: !!(g.poi && g.poi.clinic), kind: g.kind }; });
+  ok('klinike: nova klinika pod UKC Ljubljana se razpozna kot cilj', plOk.n === nPl0 + 1 && plOk.clinic, JSON.stringify(plOk));
+  await page.screenshot({ path: OUT + '/11-clinics.png', fullPage: true });
+
+  /* ================= telefon (390 px) ================= */
+  const mob = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await mob.close();
 
   // objava razporeda: lokalni način nima Firebase, zato samo preveri, da gumb ne sproži napake
   ok('brez zunanjih klicev razen OSRM', external.length === 0, external.slice(0, 3).join(', '));

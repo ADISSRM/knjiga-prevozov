@@ -2,21 +2,22 @@
 /* Preizkusi cestnega usmerjanja in planerja. Zagon: node tests/run.js  (Node 18+, brez omrežja, brez namestitve paketov)
    Strežnik OSRM je posnetek dokumentiranega API-ja (tests/mock-osrm.js). Prava povezava: v aplikaciji Nastavitve → Planiranje → »Preveri cestne podatke«. */
 const vm = require('vm'), assert = require('assert'), path = require('path');
-const { load } = require('./load.js'), { createMock } = require('./mock-osrm.js');
+const { load } = require('./load.js'), { createMock } = require('./mock-osrm.js'), { createGoogleMock } = require('./mock-google.js');
 const SRC = path.join(__dirname, '..', 'src') + path.sep;
-const FILES = ['20-data.js', '30-core.js', '35-db.js', '38-routing.js', '40-planner.js', '45-pacienti.js'].map(f => SRC + f);
+const FILES = ['20-data.js', '30-core.js', '35-db.js', '38-routing.js', '39-google.js', '40-planner.js', '45-pacienti.js'].map(f => SRC + f);
 const URLS = { url:'https://osrm.test', fallback:['https://osrm2.test'] };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const DATE = '2026-11-10';   // torek
 
 function boot(o = {}){
   const mock = createMock(o.mock || {});
-  const ctx = load(FILES, { config:{ routing:o.routing || URLS }, mem:o.mem, fetch:mock.fetch });
-  ctx.__mock = mock.fetch;
+  const gm = createGoogleMock(o.gmock || {});
+  const ctx = load(FILES, { config:{ routing:o.routing || URLS, google:o.google }, mem:o.mem, fetch:mock.fetch });
+  ctx.__mock = mock.fetch; ctx.__gmock = gm.fetch;
   const ev = code => vm.runInContext(code, ctx);
   const js = code => JSON.parse(ev('JSON.stringify(' + code + ')'));
-  ev('ROUTE.fetch = __mock; ROUTE.gap = 0; S = defaultState(); normalizeState();');
-  return { ctx, ev, js, mock };
+  ev('ROUTE.fetch = __mock; ROUTE.gap = 0; GOOGLE.fetch = __gmock; GOOGLE.minGap = 0; S = defaultState(); normalizeState();');
+  return { ctx, ev, js, mock, gm };
 }
 const VEH = [
   { id:'v04', name:'Avto 04', tip:'sanitetno', ns:'redna', sede:3, leze:1, utila:0, skupaj:4, sedeMax:3, lezeMax:1, utilaMax:0, skupajMax:4, aktiv:true },
@@ -338,6 +339,196 @@ test('nastavitve: stari podatki dobijo privzete vrednosti za cestne podatke', ()
   const t = boot();
   const o = t.js(`(() => { const s = mergeDefaults({ speed:45, road:1.3 }, defaultState().settings); return { on:s.routing.on, f:s.routing.factor, d:s.destMin, o:s.optimize }; })()`);
   assert.deepStrictEqual(o, { on:true, f:1, d:12, o:true });
+});
+
+/* ------------------------------------------------------------------ klinike, čakanje na pregled */
+test('klinike: »UKC LJ – očesna klinika« je cilj s svojim ključem; ujemanje je najdaljše ime; lastna klinika in ustanova', () => {
+  const t = boot();
+  const g = s => t.js(`(() => { const g = geo(${JSON.stringify(s)}); return { kind:g.kind, label:g.label, key:g.key, stay:poiStay(g), extra:poiExtra(g), gq:g.poi && g.poi.gq }; })()`);
+  assert.strictEqual(g('UKC LJ - očesna klinika').label, 'UKC Ljubljana – Očesna klinika');
+  assert.strictEqual(g('UKC Ljubljana, Očesna klinika').key, 'poi:UKC Ljubljana – Očesna klinika');
+  assert.strictEqual(g('ukc lj kardiološka amb.').label, 'UKC Ljubljana – Kardiološka ambulanta');
+  assert.strictEqual(g('UKC Ljubljana').label, 'UKC Ljubljana');
+  assert.strictEqual(g('UKC Ljubljana').extra, 10);
+  assert.strictEqual(g('SB Celje – Očesni oddelek').label, 'SB Celje – Očesni oddelek');
+  assert.strictEqual(g('UKC LJ - očesna klinika').stay, 45);
+  assert.ok(/Očesna klinika, Grablovičeva ulica 46, Ljubljana/.test(g('UKC LJ - očesna klinika').gq));
+  t.ev(`S.places.push({ id:'x1', parent:'SB Brežice', n:'Ortopedska ambulanta', al:['orto'], addr:'', lat:null, lon:null, stay:30, extra:null }); S.places.push({ id:'x2', parent:'', n:'Privatna klinika Test', al:[], addr:'Cesta 1, Krško', lat:null, lon:null, stay:20, extra:2 }); rev++;`);
+  assert.strictEqual(g('SB Brežice orto').label, 'SB Brežice – Ortopedska ambulanta');
+  assert.strictEqual(g('sb brezice – orto').stay, 30);
+  assert.strictEqual(g('Privatna klinika Test').kind, 'neznano');        // lastna ustanova brez koordinat: Google jo razreši
+  t.ev(`S.places.find(x => x.id === 'x2').lat = 46.0; S.places.find(x => x.id === 'x2').lon = 15.5; rev++;`);
+  assert.strictEqual(g('Privatna klinika Test').kind, 'poi');
+  assert.strictEqual(g('Dobova 25').kind, 'naselje');
+});
+test('čakanje na pregled: reševalec počaka, pacienta odpelje nazaj; čas, km in konec vožnje vključujejo vrnitev', async () => {
+  const t = boot();
+  day(t, { routing:true, vehicles:['v13'], rides:[
+    { name:'Ana', from:'Dobova 25', to:'UKC LJ - očesna klinika', time:'10:00', phone:'1', stay:45 },
+    { name:'Boris', from:'Dobova 30', to:'UKC LJ - očesna klinika', time:'10:30', phone:'1', stay:45 }, { name:'Cene', from:'Bizeljsko 4', to:'SB Brežice', time:'16:30', phone:'1' }] });
+  sum(t); await t.ev('ROUTE.settle()');
+  const s = sum(t), tr = s.crews[0].trips;
+  assert.strictEqual(s.late, 0); assert.strictEqual(s.un.length, 0);
+  assert.strictEqual(tr.length, 2); assert.deepStrictEqual([...tr[0].nrs].sort(), [1, 2]);
+  const st = tr[0].stops.map(x => x[0] + ':' + x[2]);
+  assert.deepStrictEqual(st, ['pu:Dobova', 'pu:Dobova', 'do:UKC Ljubljana – Očesna klinika', 'pu:UKC Ljubljana – Očesna klinika', 'do:Dobova', 'do:Dobova'], st.join(','));
+  assert.ok(tr[0].km > 220, 'km vključuje pot nazaj: ' + tr[0].km);                         // ~2 × 115 km
+  const a = t.js(`computePlan(DATE0).assign`.replace('DATE0', JSON.stringify(DATE)));
+  assert.ok(a.r1.retPickT >= 10 * 60 + 30 + 45 + 10 - 0.01, 'pacienta pobere šele po koncu pregleda (10:30 + 45 + 10 min): ' + a.r1.retPickT);
+  assert.ok(a.r1.retT > a.r1.retPickT && a.r0.retT >= a.r0.retPickT);
+  assert.ok(s.warn.some(w => /počaka na pregled približno/.test(w)), s.warn.join('|'));
+  assert.ok(tr[0].end > tr[0].stops[2][1] + 100, 'konec vožnje je po vrnitvi');
+  assert.ok(tr[1].start >= tr[0].end, 'naslednja vožnja šele po vrnitvi');
+});
+test('čakanje na pregled: en pacient čaka, drugi ne – posadka se vrne samo po prvega; ura vrnitve = ura pregleda + trajanje + pot od vhoda', async () => {
+  const t = boot();
+  day(t, { routing:true, vehicles:['v13'], rides:[
+    { name:'Ana', from:'Dobova 25', to:'UKC LJ - kardiološka amb.', time:'09:00', phone:'1', stay:60 },
+    { name:'Boris', from:'Dobova 30', to:'UKC LJ - kardiološka amb.', time:'09:00', phone:'1' }] });
+  sum(t); await t.ev('ROUTE.settle()');
+  const s = sum(t), tr = s.crews[0].trips[0];
+  assert.deepStrictEqual(tr.stops.filter(x => x[0] === 'pu' && /Kardiološka/.test(x[2])).length, 1);
+  const a = t.js(`computePlan(${JSON.stringify(DATE)}).assign`);
+  assert.strictEqual(a.r0.retPickT, 9 * 60 + 60 + 10, 'vrnitev ob 10:10 (pregled 9:00 + 60 min + 10 min do izhoda)');
+  assert.strictEqual(a.r1.retPickT, null); assert.strictEqual(s.late, 0);
+});
+test('časi nalaganja: leže in utila potrebujeta več časa kot sede (nastavljivo)', async () => {
+  const mk = mode => { const t = boot(); day(t, { routing:true, vehicles:['v04'], duty:[{ name:'V', team:'redna', role:'voznik' }, { name:'E', team:'redna', role:'spremljevalec' }], rides:[{ name:'A', from:'Dobova 25', to:'SB Brežice', time:'09:00', phone:'1', mode }] }); sum(t); return t.ev('ROUTE.settle()').then(() => sum(t).crews.flatMap(c => c.trips)[0].dur); };
+  const sede = await mk('sede'), leze = await mk('leze');
+  assert.ok(Math.abs((leze - sede) - ((10 - 4) + (8 - 3))) < 0.01, `leže +${leze - sede} min`);
+});
+test('dializa: termin dopoldanska/popoldanska iz registra; stare skupine se pretvorijo; dializna posadka vozi po koncu dialize tudi sede prevoze', async () => {
+  const t = boot();
+  // migracija: stara skupina D2 → popoldanska, stare ure iz settings.dia
+  t.ev(`S.patients.push(blankPatient({ name:'Stari', dia:'D2' })); S.settings.dia = { D1:{ start:'06:00', end:'10:00', days:[1,3,5] }, D2:{ start:'11:15', end:'15:15', days:[1,3,5] } }; normalizeState();`);
+  assert.deepStrictEqual(t.js(`(() => { const p = S.patients.find(x => x.name === 'Stari'); return { t:p.dt.t, d:p.dt.d, dia:p.dia }; })()`), { t:'pop', d:[1, 3, 5] });
+  assert.deepStrictEqual(t.js(`S.settings.diaT`), { dop:{ start:'06:00', end:'10:00' }, pop:{ start:'11:15', end:'15:15' } });
+  assert.strictEqual(t.ev(`S.settings.dia`), undefined);
+  // register: torek (2) = dopoldanska
+  t.ev(`S.settings.diaT = { dop:{ start:'06:30', end:'10:30' }, pop:{ start:'11:30', end:'15:30' } };
+    ['Milan','Vida','Tone'].forEach((n, i) => S.patients.push(blankPatient({ name:n, addr:['Dobova 5','Mostec 4','Čatež ob Savi 8'][i], phone:'1', dt:{ t:'dop', d:[2, 4, 6] } })));
+    S.patients.push(blankPatient({ name:'Zora', addr:'Pišece 3', phone:'1', dt:{ t:'pop', d:[1, 3, 5] } }));`);
+  assert.deepStrictEqual(t.js(`diaTermsFor(${JSON.stringify(DATE)})`), ['dop']);
+  day(t, { routing:true, vehicles:['v13', 'v04'], rides:[
+    { name:'Marko', from:'Bizeljsko 4', to:'SB Novo mesto', time:'12:30', phone:'1' }, { name:'Nina', from:'Pišece 7', to:'UKC Ljubljana', time:'08:30', phone:'1' }],
+    duty:[{ name:'V1', team:'redna', role:'voznik', vehicleId:'v13', from:'05:00' }, { name:'V2', team:'redna', role:'voznik', vehicleId:'v04', from:'05:00' }] });
+  t.ev(`S.vehicles.find(v => v.id === 'v13').fn = 'dializa'; normalizeState(); loadDialysis(${JSON.stringify(DATE)})`);
+  assert.strictEqual(t.ev(`loadDialysis(${JSON.stringify(DATE)})`), 0, 'drugič ne dodaja podvojenih prevozov');
+  assert.strictEqual(t.js(`ensureDay(${JSON.stringify(DATE)}).filter(r => r.dia).length`), 6);
+  sum(t); await t.ev('ROUTE.settle()');
+  const s = sum(t);
+  assert.strictEqual(s.un.length, 0, s.warn.join('|')); assert.strictEqual(s.late, 0, s.warn.join('|'));
+  assert.ok(!s.conf.includes('prekrivanje'));
+  const dia = s.crews.find(c => c.id === 'v13');
+  assert.ok(dia.trips.length >= 2, 'dializna posadka ima vožnje');
+  const nrsOf = c => c.trips.flatMap(x => x.nrs);
+  const sedeNrs = [1, 2]; const onDia = sedeNrs.filter(n => nrsOf(dia).includes(n));
+  assert.ok(s.crews.every(c => c.trips.every((x, i, a) => !i || a[i - 1].end <= x.depart + 0.5)), 'vožnje posadke se ne prekrivajo');
+  console.log('   (sede prevozi na dializni posadki: ' + (onDia.join(',') || 'nobeden') + '; različica: ' + s.variant + ')');
+});
+test('dializa: ena posadka – dializna jutranja vožnja, sede prevoz v vrzeli in vračanje z dialize brez zamude (polnjenje vrzeli)', async () => {
+  const t = boot();
+  t.ev(`['Milan','Vida'].forEach((n, i) => S.patients.push(blankPatient({ name:n, addr:['Dobova 5','Mostec 4'][i], phone:'1', dt:{ t:'dop', d:[2] } })));`);
+  day(t, { routing:true, vehicles:['v13'], duty:[{ name:'V1', team:'redna', role:'voznik', from:'05:00' }], rides:[{ name:'Marko', from:'Bizeljsko 4', to:'SB Brežice', time:'08:30', phone:'1' }, { name:'Zala', from:'Pišece 7', to:'SB Brežice', time:'13:00', phone:'1' }] });
+  t.ev(`S.vehicles.find(v => v.id === 'v13').fn = 'dializa'; loadDialysis(${JSON.stringify(DATE)})`);
+  sum(t); await t.ev('ROUTE.settle()'); const s = sum(t);
+  assert.strictEqual(s.un.length, 0, s.warn.join('|')); assert.strictEqual(s.late, 0, s.warn.join('|'));
+  const trips = s.crews[0].trips; assert.ok(trips.length >= 3);
+});
+
+/* ------------------------------------------------------------------ Google: natančna kilometrina */
+const GKEY = { key:'AIzaSyFAKE_KEY_FOR_TESTS_0123456789abcd' };
+test('Google: zahtevek vsebuje samo naslova OD in DO (brez imen, telefona, ure); glave, maska polj, referrer; km = distanceMeters / 1000', async () => {
+  const t = boot({ google:GKEY });
+  const r = await t.ev(`GOOGLE.ride('Dobova 25', 'UKC LJ - očesna klinika')`);
+  const L = t.gm.log[0];
+  assert.strictEqual(L.url, 'https://routes.googleapis.com/directions/v2:computeRoutes'); assert.strictEqual(L.init.method, 'POST');
+  assert.strictEqual(L.init.headers['X-Goog-Api-Key'], GKEY.key);
+  assert.ok(/routes\.distanceMeters/.test(L.init.headers['X-Goog-FieldMask']) && !/\s/.test(L.init.headers['X-Goog-FieldMask']));
+  assert.strictEqual(L.init.credentials, 'omit'); assert.strictEqual(L.init.referrerPolicy, 'strict-origin-when-cross-origin');
+  assert.deepStrictEqual(L.body.origin, { address:'Dobova 25, Slovenija' });
+  assert.deepStrictEqual(L.body.destination, { address:'Očesna klinika, Grablovičeva ulica 46, Ljubljana' });
+  assert.strictEqual(L.body.travelMode, 'DRIVE'); assert.strictEqual(L.body.routingPreference, 'TRAFFIC_UNAWARE'); assert.strictEqual(L.body.regionCode, 'SI');
+  assert.deepStrictEqual(Object.keys(L.body).sort(), ['destination', 'languageCode', 'origin', 'regionCode', 'routingPreference', 'travelMode', 'units']);
+  assert.ok(r.km > 100 && r.km < 150 && r.min > 60, 'km ' + r.km);
+  assert.ok(Array.isArray(r.f) && Array.isArray(r.t));
+  await t.ev(`GOOGLE.ride('Dobova 25', 'UKC LJ - očesna klinika')`);
+  assert.strictEqual(t.gm.log.length, 1, 'isti par: iz predpomnilnika');
+  await Promise.all([t.ev(`GOOGLE.ride('Bizeljsko 4', 'SB Novo mesto')`), t.ev(`GOOGLE.ride('Bizeljsko 4', 'SB Novo mesto')`)]);
+  assert.strictEqual(t.gm.log.length, 2, 'sočasna enaka zahtevka sta eden');
+});
+test('Google: hišna številka v cilju → vpisano besedilo (ne ime ustanove); tujina; brez ključa ni klica', async () => {
+  const t = boot({ google:GKEY });
+  assert.strictEqual(t.ev(`GOOGLE.queryOf('UKC Ljubljana, Zaloška cesta 2')`), 'UKC Ljubljana, Zaloška cesta 2, Slovenija');
+  assert.strictEqual(t.ev(`GOOGLE.queryOf('Zagreb')`), 'KBC Zagreb, Kišpatićeva 12, Zagreb, Hrvaška');
+  assert.strictEqual(t.ev(`GOOGLE.queryOf('Ilica 5, Zagreb')`), 'Ilica 5, Zagreb, Hrvaška');
+  const n = boot({ google:{ key:'' } });
+  assert.strictEqual(n.ev('GOOGLE.enabled()'), false);
+  await assert.rejects(() => n.ev(`GOOGLE.ride('Dobova 25', 'SB Brežice')`), /ni vklopljen/);
+  assert.strictEqual(n.gm.log.length, 0);
+  t.ev(`S.settings.google.on = false`); assert.strictEqual(t.ev('GOOGLE.enabled()'), false);
+});
+test('Google: km prevoza se shrani v vpis, zastari ob spremembi naslova, ročni vnos ima prednost; čakanje na pregled šteje pot nazaj', async () => {
+  const t = boot({ google:GKEY });
+  day(t, { rides:[{ name:'Ana', from:'Dobova 25', to:'UKC LJ - očesna klinika', time:'10:00', phone:'031 111 222', stay:45 }, { name:'Boris', from:'Bizeljsko 4', to:'SB Brežice', time:'11:00' }] });
+  const r = await t.ev(`KM.ensure(DATE0, 'r0')`.replace('DATE0', JSON.stringify(DATE)));
+  assert.strictEqual(r.kmSrc, 'google'); assert.ok(r.km > 100); assert.ok(r.kmBack > 100, 'pot nazaj (DO → OD)');
+  assert.strictEqual(t.gm.log.length, 2);
+  const bodies = JSON.stringify(t.gm.log.map(x => x.body));
+  assert.ok(!/Ana|031 111|10:00|Boris/.test(bodies), 'v zahtevku ni osebnih podatkov');
+  const inf = t.js(`KM.info(rideById(${JSON.stringify(DATE)}, 'r0').r)`);
+  assert.ok(inf.exact && inf.src === 'google' && Math.abs(inf.total - (inf.km + inf.back)) < 1e-9);
+  t.ev(`rideById(${JSON.stringify(DATE)}, 'r0').r.to = 'SB Brežice'`);
+  assert.strictEqual(t.js(`KM.info(rideById(${JSON.stringify(DATE)}, 'r0').r)`).exact, false, 'zastarelo po spremembi naslova');
+  t.ev(`KM.setManual(${JSON.stringify(DATE)}, 'r0', '12,5')`);
+  const m = t.js(`KM.info(rideById(${JSON.stringify(DATE)}, 'r0').r)`); assert.strictEqual(m.km, 12.5); assert.strictEqual(m.src, 'rocno');
+  t.ev(`KM.setManual(${JSON.stringify(DATE)}, 'r0', '')`); assert.strictEqual(t.js(`KM.info(rideById(${JSON.stringify(DATE)}, 'r0').r)`).exact, false);
+  // rezultat se zavrže, če se je besedilo med izračunom spremenilo
+  const t2 = boot({ google:GKEY }); day(t2, { rides:[{ name:'C', from:'Dobova 25', to:'SB Brežice', time:'10:00' }] });
+  const pr = t2.ev(`KM.ensure(${JSON.stringify(DATE)}, 'r0')`); t2.ev(`rideById(${JSON.stringify(DATE)}, 'r0').r.to = 'SB Novo mesto'`); assert.strictEqual(await pr, null);
+  assert.strictEqual(t2.js(`rideById(${JSON.stringify(DATE)}, 'r0').r.km`), null);
+});
+test('Google: planer uporabi natančne koordinate (hišni naslov, ne središče naselja); hišne točke niso v trajnem predpomnilniku poti', async () => {
+  const mem = new Map(); const t = boot({ google:GKEY, mem });
+  day(t, { routing:true, vehicles:['v13'], rides:[{ name:'Ana', from:'Dobova 25', to:'SB Brežice', time:'10:00', phone:'1' }, { name:'Boris', from:'Dobova 30', to:'SB Brežice', time:'10:00', phone:'1' }] });
+  const before = t.js(`computePlan(${JSON.stringify(DATE)}).pending.map(r => r.from.key)`);
+  assert.deepStrictEqual(before, ['n:Dobova', 'n:Dobova']);
+  await t.ev(`KM.day(${JSON.stringify(DATE)})`);
+  const after = t.js(`computePlan(${JSON.stringify(DATE)}).pending.map(r => ({ k:r.from.key, ex:r.from.exact, lat:r.from.lat }))`);
+  assert.ok(after.every(x => /^g:45\.[89]/.test(x.k) && x.ex), JSON.stringify(after)); assert.notStrictEqual(after[0].k, after[1].k, 'dve hiši = dve točki');
+  sum(t); await t.ev('ROUTE.settle()'); t.ev('ROUTE.persist()');
+  const stored = mem.get('kp.route.v1'); assert.ok(stored && stored.length > 20, 'predpomnilnik poti ima splošne točke (preizkus ni prazen)');
+  assert.ok(!/45\.8992|45\.9003|15\.6572|15\.6590/.test(stored), 'hišni naslov (Google koordinata) ni shranjen v trajni predpomnilnik');
+  const s = sum(t); assert.strictEqual(s.un.length, 0); assert.strictEqual(s.late, 0);
+});
+test('Google: napake – 403, 429, brez povezave, ni poti: razumljivo sporočilo, brez zanke; po 403 samodejni izračun počiva', async () => {
+  const t = boot({ google:GKEY, gmock:{ fail:(n, b) => (b.origin.address || '').startsWith('Pišece') ? { status:403, message:'Requests from referer https://x.github.io/ are blocked.', gstatus:'PERMISSION_DENIED' } : null } });
+  await assert.rejects(() => t.ev(`GOOGLE.ride('Pišece 3', 'SB Brežice')`), /referrer|HTTP referrer|dovoljen/i);
+  assert.strictEqual(t.ev('GOOGLE.info().status'), 'error'); assert.strictEqual(t.gm.log.length, 1, '403 se ne ponavlja');
+  assert.strictEqual(t.ev('GOOGLE.auto()'), false, 'po zavrnitvi ključa samodejni izračun počiva');
+  const t2 = boot({ google:GKEY, gmock:{ fail:n => n < 3 ? { status:429, gstatus:'RESOURCE_EXHAUSTED' } : null } });
+  const r = await t2.ev(`GOOGLE.ride('Dobova 25', 'SB Brežice')`); assert.ok(r.km > 0); assert.strictEqual(t2.gm.log.length, 3, '2 × 429 → ponovni poskus uspe');
+  const t3 = boot({ google:GKEY, gmock:{ fail:() => 'throw' } });
+  await assert.rejects(() => t3.ev(`GOOGLE.ride('Dobova 25', 'SB Brežice')`), /povezave/); assert.ok(t3.gm.log.length <= 3);
+  const t4 = boot({ google:GKEY });
+  await assert.rejects(() => t4.ev(`GOOGLE.ride('Neznan kraj 5', 'SB Brežice')`), /ne najde poti/);
+  const tt = await boot({ google:GKEY }).ev('GOOGLE.test()'); assert.strictEqual(tt.ok, true); assert.ok(tt.km > 80 && tt.km < 160);
+  const bad = await boot({ google:{ key:'' } }).ev('GOOGLE.test()'); assert.strictEqual(bad.ok, false);
+});
+test('kilometrina: mesečno poročilo (km po prevozih, vozilih, vir), CSV z BOM in decimalno vejico; brez Googla ceste OSM ali ocena', async () => {
+  const t = boot({ google:GKEY });
+  day(t, { routing:true, vehicles:['v13'], rides:[{ name:'Ana', from:'Dobova 25', to:'UKC LJ - očesna klinika', time:'10:00', phone:'1', stay:45 }, { name:'Boris', from:'Bizeljsko 4', to:'SB Brežice', time:'16:00', phone:'1' }] });
+  await t.ev(`KM.day(${JSON.stringify(DATE)})`);
+  const rep = t.js(`KM.month(2026, 10)`);
+  assert.strictEqual(rep.rows.length, 2);
+  const a = rep.rows[0].i; assert.ok(a.exact && a.total > 2 * 100 && Math.abs(a.total - (a.km + a.back)) < 1e-9);
+  assert.ok(Math.abs(rep.total - rep.rows.reduce((x, r) => x + r.i.total, 0)) < 1e-6); assert.strictEqual(rep.missing, 0);
+  assert.ok(rep.veh['Avto 13'] > 200 && rep.days.length === 1);
+  const csv = t.ev(`KM.csv(2026, 10, true)`); assert.ok(csv.startsWith('﻿datum;št.;ura;pacient;od;do;način;km OD→DO'), csv.slice(0, 60));
+  assert.ok(/Ana;Dobova 25;UKC LJ - očesna klinika;Sede;\d+,\d;\d+,\d;\d+,\d;Google;Avto 13/.test(csv), csv);
+  assert.ok(!/Ana/.test(t.ev(`KM.csv(2026, 10, false)`)), 'CSV brez imen pacientov');
+  const n = boot({ google:{ key:'' } }); day(n, { routing:true, rides:[{ name:'C', from:'Dobova 25', to:'SB Brežice', time:'10:00' }] }); await n.ev('ROUTE.settle && ROUTE.settle()'); sum(n); await n.ev('ROUTE.settle()');
+  const inf = n.js(`KM.info(rideById(${JSON.stringify(DATE)}, 'r0').r)`); assert.ok(inf.src === 'osrm' || inf.src === 'ocena'); assert.strictEqual(inf.exact, false);
 });
 
 /* ------------------------------------------------------------------ zagon */

@@ -67,6 +67,8 @@ function onRideField(el){
   const r = hit.r, f = el.dataset.f;
   if (f === 'done'){ r.done = el.checked; r.doneAt = r.done ? new Date().toISOString() : ''; if (!r.done) r.doneBy = ''; else { const p = r.nalogId && patientById(r.patientId); const n = p && (p.naloge || []).find(x => x.id === r.nalogId); if (n && n.vrsta === 'enkratna' && !n.porabljen){ n.porabljen = date; } } }
   else if (f === 'odpovedano'){ r.odpovedano = el.checked; if (el.checked){ r.prevStatus = r.status; r.status = 'preklicana'; } else { r.status = r.prevStatus || 'nova'; r.prevStatus = ''; } }
+  else if (f === 'stayOn'){ r.stayTouched = true; r.stayAuto = false; r.stay = el.checked ? (+r.stay > 0 ? +r.stay : (poiStay(geo(r.to)) || +S.settings.stayDef || 45)) : 0; }
+  else if (f === 'stay'){ r.stayTouched = true; r.stayAuto = false; r.stay = Math.max(0, Math.min(480, parseInt(el.value, 10) || 0)); }
   else if (el.type === 'checkbox') r[f] = el.checked;
   else r[f] = el.value;
   save();
@@ -127,6 +129,7 @@ const armBtn = (el, label, ms = 3500) => { el.dataset.arm = '1'; el.dataset.old 
 document.addEventListener('click', async e => {
   const t = e.target;
   if (!t.closest('#suggest') && !t.closest('[data-suggest]')) sgClose();
+  $$('details.menu[open]').forEach(d => { if (!d.contains(t) || (t.closest('[data-act]') && !t.closest('summary'))) d.open = false; });
   const sgb = t.closest('#suggest button'); if (sgb){ sgPick(+sgb.dataset.i); return; }
   const nav = t.closest('[data-nav]'); if (nav){ if (nav.dataset.live) UI.lDate = nav.dataset.live; UI.modal = null; go(nav.dataset.nav); return; }
   const el = t.closest('[data-act]'); if (!el) return;
@@ -142,13 +145,50 @@ document.addEventListener('click', async e => {
     case 'dayToday': UI.date = todayStr(); render(); break;
     case 'dayTomorrow': UI.date = addDays(todayStr(), 1); render(); break;
     case 'filter': UI.filter = el.dataset.k; $$('[data-act=filter]').forEach(b => b.setAttribute('aria-pressed', String(b === el))); applyFilter(); break;
-    case 'loadDia': { const n = loadDialysis(UI.date); toast(n ? `Dodanih ${n} dializnih prevozov` : 'Dializni pacienti so že v knjigi ali jih ni v bazi'); rerender(); break; }
+    case 'openRide': {
+      const art = el.closest('[data-ride]'); if (!art) break; const id = art.dataset.ride, was = UI.openRide === id;
+      UI.openRide = was ? '' : id; rerender();
+      if (!was){ const nb = $(`[data-ride="${id}"]`); if (nb){ nb.scrollIntoView({ block:'nearest' }); const nm = $('[data-f=name]', nb); if (nm && !(rideById(UI.date, id).r.name || '').trim()) nm.focus(); } }
+      break; }
+    case 'closeRide': UI.openRide = ''; rerender(); break;
+    case 'newRide': {
+      const a2 = ensureDay(UI.date); let r = a2.find(x => !isFilled(x));
+      if (!r){ addSlots(UI.date, 5); r = ensureDay(UI.date).find(x => !isFilled(x)); }
+      UI.openRide = r.id; UI.filter = 'vsi'; UI.q = ''; rerender();
+      const nb = $(`[data-ride="${r.id}"]`); if (nb){ nb.scrollIntoView({ block:'center' }); const nm = $('[data-f=name]', nb); if (nm) nm.focus(); }
+      break; }
+    case 'kmRecalc': {
+      const art = el.closest('[data-ride]'); if (!art) break; el.disabled = true; el.textContent = 'Računam …';
+      const r = await KM.ensure(art.dataset.date, art.dataset.ride, { force:true });
+      if (r) toast(`Kilometrina: ${KM.fmtKm(r.km)} km (Google)`); else { const nb = $(`[data-ride="${art.dataset.ride}"]`); if (nb) refreshKm(nb); }
+      break; }
+    case 'kmDay': {
+      if (!GOOGLE.enabled()){ toast('Google ni nastavljen (Nastavitve → Izračun)'); break; }
+      el.disabled = true; toast('Računam kilometrino z Googlom …'); const n = await KM.day(UI.date, { force:true }); toast(n ? `Kilometrina preračunana za ${n} prevozov` : 'Ni prevozov za izračun'); rerender(); break; }
+    case 'kmReport': UI.kmRep = !UI.kmRep; render(); break;
+    case 'kmMonth': {
+      if (!GOOGLE.enabled()){ toast('Google ni nastavljen (Nastavitve → Izračun)'); break; }
+      el.disabled = true; const { y, m } = UI.month, n = daysInMonth(y, m); let cnt = 0;
+      for (let d = 1; d <= n; d++){ const dt = `${y}-${pad(m + 1)}-${pad(d)}`; el.textContent = `Računam … ${d}/${n}`; cnt += await KM.day(dt).catch(() => 0); }
+      toast(cnt ? `Izračunano: ${cnt} prevozov` : 'Vsi prevozi imajo že kilometrino'); rerender(); break; }
+    case 'kmCsv': {
+      const { y, m } = UI.month, withNames = el.dataset.names === '1'; if (withNames) audit('km.csv.z.imeni', { mesec:`${y}-${pad(m + 1)}` });
+      const u = URL.createObjectURL(new Blob(['\ufeff' + KM.csv(y, m, withNames)], { type:'text/csv;charset=utf-8' })); const l = document.createElement('a'); l.href = u; l.download = `kilometrina-${y}-${pad(m + 1)}.csv`; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 1000); break; }
+    case 'diaTerm': { const p = patientById(el.dataset.id); if (p && p.dt){ p.dt.t = el.dataset.t; save(); rerender(); } break; }
+    case 'diaDay': { const p = patientById(el.dataset.id); if (p && p.dt){ const d = +el.dataset.d, set = new Set(p.dt.d || []); if (set.has(d)) set.delete(d); else set.add(d); p.dt.d = [...set].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)); save(); rerender(); } break; }
+    case 'diaDel': { const p = patientById(el.dataset.id); if (p){ p.dt = null; save(); rerender(); toast('Pacient ni več na seznamu dialize. Obstoječi vpisi v knjigi ostanejo.'); } break; }
+    case 'addPlace': { const clinic = el.dataset.k === 'clinic'; S.places.push({ id:uid(), parent:clinic ? 'UKC Ljubljana' : '', n:'', al:[], addr:'', lat:null, lon:null, stay:clinic ? 45 : null, extra:null }); save(); rerender(); const ins = $$('[data-pl$="|n"]'); const last = ins.find(i => i.dataset.pl.startsWith((S.places.length - 1) + '|')); if (last){ last.scrollIntoView({ block:'center' }); last.focus(); } break; }
+    case 'delPlace': { const pl = S.places[+el.dataset.i]; if (!pl) break; if (el.dataset.arm){ S.places.splice(+el.dataset.i, 1); save(); rerender(); } else armBtn(el, 'Potrdi'); break; }
+    case 'gkeySave': { const v = ($('#gkey').value || '').trim(); if (!/^[A-Za-z0-9_\-]{20,}$/.test(v)){ toast('Ključ ni videti veljaven (vsaj 20 znakov: črke, številke, - in _)'); break; } store.set('kp.gkey', v); GOOGLE.clear(); UI.gTest = null; audit('google.kljuc.shranjen', {}); toast('Ključ shranjen na tej napravi'); rerender(); break; }
+    case 'gkeyClear': store.del('kp.gkey'); GOOGLE.forget(); UI.gTest = null; audit('google.kljuc.odstranjen', {}); toast('Ključ odstranjen s te naprave'); rerender(); break;
+    case 'gTest': { UI.gTest = { running:true }; rerender(); UI.gTest = await GOOGLE.test(); audit('google.preizkus', { uspeh:!!UI.gTest.ok }); rerender(); break; }
+    case 'loadDia': { const n = loadDialysis(UI.date); if (n && GOOGLE.auto()) KM.day(UI.date).catch(() => {}); toast(n ? `Dodanih ${n} dializnih prevozov` : 'Dializni pacienti so že v knjigi ali jih ni v bazi'); rerender(); break; }
     case 'addSlots': addSlots(UI.date, 5); rerender(); toast('Dodanih 5 polj'); break;
     case 'gotoDisp': UI.dDate = date; go('dispecer'); break;
     case 'mode': { const art = el.closest('[data-ride]'); const hit = rideById(art.dataset.date, art.dataset.ride); if (hit){ hit.r.mode = el.dataset.mode; save(); refreshBox(art); } break; }
     case 'clearRide': {
-      if (el.dataset.arm){ const art = el.closest('[data-ride]'); const a2 = ensureDay(art.dataset.date); const i = a2.findIndex(r => r.id === art.dataset.ride); if (i >= 0){ a2[i] = blankRide(); save(); rerender(); toast(`Polje ${i+1} počiščeno`); } }
-      else { el.dataset.arm = '1'; el.classList.add('danger'); el.style.width = 'auto'; el.style.padding = '0 8px'; el.textContent = 'Počisti?'; setTimeout(() => { if (el.isConnected && el.dataset.arm){ el.removeAttribute('data-arm'); el.removeAttribute('style'); el.classList.remove('danger'); el.innerHTML = IC.x; } }, 3500); }
+      if (el.dataset.arm){ const art = el.closest('[data-ride]'); const a2 = ensureDay(art.dataset.date); const i = a2.findIndex(r => r.id === art.dataset.ride); if (i >= 0){ a2[i] = blankRide(); if (UI.openRide === art.dataset.ride) UI.openRide = ''; save(); rerender(); toast(`Prevoz ${i + 1} počiščen`); } }
+      else armBtn(el, 'Potrdi: počisti');
       break; }
     case 'savePat': { const art = el.closest('[data-ride]'); const p = savePatientFromRide(art.dataset.date, art.dataset.ride); if (p){ toast('Pacient shranjen v bazo'); rerender(); } else toast('Najprej vpiši ime pacienta'); break; }
     case 'rideView': { const art = el.closest('[data-ride]'); const hit = rideById(art.dataset.date, art.dataset.ride); if (hit) openPreview(`Prevoz št. ${hit.nr}`, rideVariants(art.dataset.date, hit.r, hit.nr)); break; }
@@ -160,7 +200,7 @@ document.addEventListener('click', async e => {
     case 'pMode': { const p = patientById(UI.pid); if (p){ p.mode = el.dataset.mode; save(); $$('[data-act=pMode]').forEach(b => b.setAttribute('aria-pressed', String(b === el))); refreshPatientList(); } break; }
     case 'pColor': { const p = patientById(UI.pid); if (p){ p.color = +el.dataset.c; save(); rerender(); } break; }
     case 'delPatient': { if (el.dataset.arm){ removePatient(el.dataset.id); UI.pid = ''; render(); toast('Pacient izbrisan'); } else armBtn(el, 'Potrdi brisanje'); break; }
-    case 'addNalog': { const p = patientById(UI.pid); if (!p) break; const n = blankNalog(el.dataset.v); n.od = p.addr || ''; n.mode = p.mode; n.zdravnikVrsta = 'osebni'; if (p.dia && el.dataset.v === 'letna'){ n.razlog = 'Dializa'; n.do = 'SB Brežice – dializa'; } p.naloge = p.naloge || []; p.naloge.push(n); UI.nid = n.id; audit('nalog.dodan', { pid:p.id, vrsta:n.vrsta }); save(); render(); break; }
+    case 'addNalog': { const p = patientById(UI.pid); if (!p) break; const n = blankNalog(el.dataset.v); n.od = p.addr || ''; n.mode = p.mode; n.zdravnikVrsta = 'osebni'; if (p.dt && el.dataset.v === 'letna'){ n.razlog = 'Dializa'; n.do = 'SB Brežice – dializa'; } p.naloge = p.naloge || []; p.naloge.push(n); UI.nid = n.id; audit('nalog.dodan', { pid:p.id, vrsta:n.vrsta }); save(); render(); break; }
     case 'editNalog': { UI.nid = UI.nid === el.dataset.id ? '' : el.dataset.id; render(); break; }
     case 'previewNalog': { const p = patientById(UI.pid), n = p && (p.naloge || []).find(x => x.id === el.dataset.id); if (p && n){ audit('nalog.predogled', { pid:p.id }); openPreview(`${NALOG_VRSTE[n.vrsta].l} nalog · ${p.name}`, nalogVariants(p, n)); } break; }
     case 'renewNalog': { const p = patientById(UI.pid), n = p && (p.naloge || []).find(x => x.id === el.dataset.id); if (!p || !n) break; const from = addDays(n.veljaDo, 1); const m = { ...clone(n), id:uid(), veljaOd:from, veljaDo:defaultValidTo(n.vrsta, from), auto:true, stevilka:'', preklican:false, porabljen:'', created:new Date().toISOString() }; p.naloge.push(m); UI.nid = m.id; audit('nalog.podaljsan', { pid:p.id }); save(); render(); toast('Nov nalog je pripravljen. Vpiši številko in preveri datume.'); break; }
@@ -268,13 +308,13 @@ document.addEventListener('click', async e => {
 function setPf(el){
   const p = patientById(UI.pid); if (!p) return;
   const k = el.dataset.pf; p[k] = el.value;
-  if (k === 'name' || k === 'phone' || k === 'addr' || k === 'dia') refreshPatientList();
+  if (k === 'name' || k === 'phone' || k === 'addr') refreshPatientList();
   save();
 }
 function refreshPatientList(){
   const p = patientById(UI.pid); const rows = $('.prows'); if (!rows) return;
   const all = S.patients.slice().sort((a, b) => a.name.localeCompare(b.name, 'sl')).filter(patientMatches);
-  rows.innerHTML = all.map(q => { const sm = patientNalogSummary(q); return `<button type="button" class="prow ${q.color >= 0 ? 'pc' + q.color : ''}" data-act="openPatient" data-id="${q.id}" aria-current="${UI.pid === q.id}">${avatarP(q)}<span class="pr-main"><b>${esc(q.name || '(brez imena)')}</b><span class="hint">${esc(q.addr || 'brez naslova')}${q.phone ? ' · ' + esc(q.phone) : ''}</span></span><span class="pr-side">${q.dia ? `<span class="chip mono">${esc(q.dia)}</span>` : ''}${sm.n ? nalogChip(sm.n) : '<span class="chip">brez naloga</span>'}</span></button>`; }).join('') || '<div class="empty-state">Ni pacientov za ta filter.</div>';
+  rows.innerHTML = all.map(q => { const sm = patientNalogSummary(q); return `<button type="button" class="prow ${q.color >= 0 ? 'pc' + q.color : ''}" data-act="openPatient" data-id="${q.id}" aria-current="${UI.pid === q.id}">${avatarP(q)}<span class="pr-main"><b>${esc(q.name || '(brez imena)')}</b><span class="hint">${esc(q.addr || 'brez naslova')}${q.phone ? ' · ' + esc(q.phone) : ''}</span></span><span class="pr-side">${q.dt ? `<span class="chip">${DIA_TERMS[q.dt.t] ? 'dializa' : ''}</span>` : ''}${sm.n ? nalogChip(sm.n) : '<span class="chip">brez naloga</span>'}</span></button>`; }).join('') || '<div class="empty-state">Ni pacientov za ta filter.</div>';
   const h = $('.pdetail h3'); if (h && p) h.textContent = p.name || 'Nov pacient';
 }
 const lastNalogAudit = {};
@@ -303,11 +343,37 @@ document.addEventListener('input', e => {
   if (el.id === 'rideSearch'){ UI.q = el.value; applyFilter(); }
   if (el.id === 'patSearch'){ UI.pq = el.value; refreshPatientList(); }
 });
+/* Ustanova/klinika: samodejno čakanje na pregled; po spremembi naslovov novi izračun kilometrine */
+function afterAddressChange(date, r, f){
+  if (f === 'to'){
+    const g = geo(r.to || ''), clinic = g.kind === 'poi' && g.poi && g.poi.clinic && rideDir(r) === 'to';
+    if (clinic && !(+r.stay > 0) && !r.stayTouched){ r.stay = poiStay(g); r.stayAuto = true; save(); }
+    else if (!clinic && r.stayAuto){ r.stay = 0; r.stayAuto = false; save(); }
+  }
+  KM.schedule(date, r.id);
+}
 document.addEventListener('change', async e => {
   const el = e.target;
+  if (el.dataset.km === 'manual'){
+    const art = el.closest('[data-ride]'); if (!art) return;
+    KM.setManual(art.dataset.date, art.dataset.ride, el.value);
+    if (!el.value.trim()) KM.ensure(art.dataset.date, art.dataset.ride, { force:true }).catch(() => {});
+    refreshKm(art); const kb = $('[data-role=km]', art); if (kb) kb.innerHTML = kmBoxHTML(rideById(art.dataset.date, art.dataset.ride).r); return;
+  }
+  if (el.dataset.pl){
+    const [i, k] = el.dataset.pl.split('|'), p = S.places[+i]; if (!p) return;
+    const v = el.value.trim(), num = x => { const n = parseFloat(String(x).replace(',', '.')); return (x === '' || !isFinite(n)) ? null : n; };
+    if (k === 'al') p.al = v ? v.split(',').map(x => x.trim()).filter(Boolean) : [];
+    else if (k === 'stay' || k === 'extra') p[k] = num(v) == null ? null : Math.max(0, num(v));
+    else if (k === 'lat' || k === 'lon') p[k] = num(v);
+    else p[k] = v;
+    save(); if (k === 'parent') rerender(); return;
+  }
   if (el.dataset.f){
     const res = onRideField(el);
     if (res && (res.f === 'from' || res.f === 'to') && el.value.trim()) learnAddress(el.value);
+    if (res && (res.f === 'from' || res.f === 'to')){ const art = el.closest('[data-ride]'), dt = art && art.dataset.date; if (dt) afterAddressChange(dt, res.r, res.f); if (art && art.classList.contains('box')) refreshBox(art); }
+    if (res && ['from', 'to', 'time', 'mode', 'stay', 'stayOn'].includes(res.f)){ const art = el.closest('.box'); if (art){ if (res.f === 'stay' || res.f === 'stayOn') KM.schedule(art.dataset.date, res.r.id); refreshAssign(art); } }
     if (res && (res.f === 'odpovedano' || ((res.f === 'done' || res.f === 'nalogId' || res.f === 'exc') && (el.closest('.dispatch') || res.f === 'nalogId')))) rerender();
     return;
   }
@@ -318,7 +384,6 @@ document.addEventListener('change', async e => {
   if (el.dataset.act === 'daySplit'){ const d = UI.dDate, rr = S.dayRules[d] = S.dayRules[d] || {}; if (el.checked) rr.split = true; else delete rr.split; if (!Object.keys(rr).length) delete S.dayRules[d]; audit('pravila.dan', { datum:d, razdelitev:el.checked }); save(); rerender(); return; }
   if (el.dataset.act === 'vehToggle'){ const list = S.vehOff[UI.dDate] = S.vehOff[UI.dDate] || []; const i = list.indexOf(el.dataset.id); if (el.checked && i >= 0) list.splice(i, 1); if (!el.checked && i < 0) list.push(el.dataset.id); save(); rerender(); return; }
   if (el.dataset.act === 'pin'){ const hit = rideById(UI.dDate, el.dataset.ride); if (hit){ hit.r.pin = el.value; save(); rerender(); } return; }
-  if (el.dataset.diaday){ const [g, d] = el.dataset.diaday.split('|'); const days = S.settings.dia[g].days; const n = +d; const i = days.indexOf(n); if (el.checked && i < 0) days.push(n); if (!el.checked && i >= 0) days.splice(i, 1); save(); return; }
   if (el.dataset.coord){ const [i, k] = el.dataset.coord.split('|').map(Number); const s = SETTLEMENTS[i]; const row = el.closest('tr'); const ins = $$('input', row); const lat = parseFloat(ins[0].value), lon = parseFloat(ins[1].value); if (!isFinite(lat) || !isFinite(lon)) return; if (lat === s.lat && lon === s.lon) delete S.coordOv[s.n]; else S.coordOv[s.n] = [lat, lon]; row.lastElementChild.innerHTML = S.coordOv[s.n] ? '<span class="chip accent">spremenjeno</span>' : ''; save(); return; }
   if (el.dataset.urole){ try { await DB.patch('users/' + el.dataset.urole, { set:{ role:el.value }, del:[], n:1 }); audit('uporabnik.vloga', { uid:el.dataset.urole, vloga:el.value }); toast('Vloga spremenjena'); } catch(err){ toast('Ni uspelo: ' + (err.code || err.message)); } loadRemoteUsers(); return; }
   if (el.dataset.uactive){ try { await DB.patch('users/' + el.dataset.uactive, { set:{ active:el.checked }, del:[], n:1 }); audit('uporabnik.aktiven', { uid:el.dataset.uactive, aktiven:el.checked }); toast(el.checked ? 'Račun aktiviran' : 'Račun onemogočen'); } catch(err){ toast('Ni uspelo: ' + (err.code || err.message)); } loadRemoteUsers(); return; }
@@ -345,6 +410,8 @@ document.addEventListener('focusout', e => {
   if (next && next.id){ const n2 = document.getElementById(next.id); if (n2) n2.focus(); }
 });
 document.addEventListener('mousedown', e => { if (e.target.closest('#suggest')) e.preventDefault(); });
+/* Seznam predlogov se zapre, ko fokus zapusti polje (Tab, klik drugam), da ne zakriva polj pod njim */
+document.addEventListener('focusout', e => { if (e.target.matches && e.target.matches('[data-suggest]')) setTimeout(() => { const a = document.activeElement; if (!(a && a.matches && a.matches('[data-suggest]'))) sgClose(); }, 120); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && UI.modal){ UI.modal = null; renderModal(); return; }
   if (e.key === 'Tab' && UI.modal){ const f = $$('#modal button'); if (f.length){ const first = f[0], last = f[f.length - 1]; if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); } else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); } } }
@@ -366,6 +433,7 @@ document.addEventListener('submit', async e => {
   try {
     if (kind === 'addDuty'){ const name = (fd.get('name') || '').trim(); if (!name) return; if (!S.staff.some(s => norm(s.name) === norm(name))) S.staff.push({ id:uid(), name, team:'redna', userId:'' }); addDuty(UI.dDate, name, (S.staff.find(s => norm(s.name) === norm(name)) || {}).team); save(); rerender(); }
     else if (kind === 'addNotice'){ S.notices.push({ id:uid(), vehicleId:fd.get('vehicleId'), tip:fd.get('tip'), from:fd.get('from'), to:fd.get('to') || '', note:(fd.get('note') || '').trim(), closed:false }); save(); render(); toast('Posebnost dodana'); }
+    else if (kind === 'diaAdd'){ const p = patientById(fd.get('pid')); if (!p){ toast('Izberi pacienta'); return; } p.dt = { t:fd.get('t') === 'pop' ? 'pop' : 'dop', d:[1, 3, 5] }; save(); rerender(); toast(`${p.name}: dodan na dializo (pon, sre, pet). Popravi dneve po potrebi.`); }
     else if (kind === 'addStaff'){ const name = (fd.get('name') || '').trim(); if (name){ S.staff.push({ id:uid(), name, team:fd.get('team'), userId:'' }); save(); rerender(); } }
     else if (kind === 'addUser'){
       if (!isAdmin()) return;
@@ -475,7 +543,7 @@ async function seedDemo(pw){
   S.duty[tom] = isStandby(tom) ? [mkDuty('Tina R.', 'voznik', 'pripravljenost'), mkDuty('Nina S.', 'spremljevalec', 'pripravljenost')] : [{ ...mkDuty('Matej V.'), from:'05:30' }, mkDuty('Tina R.'), mkDuty('Luka B.'), mkDuty('Nina S.', 'spremljevalec')];
   // pacienti in nalogi (različna stanja, da se vidijo opozorila)
   const nl = (vrsta, od, do_, extra = {}) => ({ ...blankNalog(vrsta, od), veljaDo:do_, auto:false, stevilka:'DEMO-' + Math.floor(1000 + Math.random() * 9000), narocnik:'ZD Brežice (osebni zdravnik)', zdravnik:'dr. Primer Vzorec', razlog:'Dializa', od:'', do:'SB Brežice – dializa', ...extra });
-  const pt = (name, addr, phone, mode, dia, naloge) => { const p = blankPatient({ name, addr, phone, mode, dia, color:nextColor(), demo:true, naloge:naloge.map(n => ({ ...n, od:n.od || addr })) }); S.patients.push(p); return p; };
+  const pt = (name, addr, phone, mode, dia, naloge) => { const p = blankPatient({ name, addr, phone, mode, dt:dia ? { t:diaTermOf(dia), d:dia === 'D3' ? [2, 4, 6] : [1, 3, 5] } : null, color:nextColor(), demo:true, naloge:naloge.map(n => ({ ...n, od:n.od || addr })) }); S.patients.push(p); return p; };
   pt('Milan Dializni', 'Velike Malence 3', '031 000 201', 'sede', 'D1', [nl('letna', d(-300), d(65))]);
   pt('Vida Dializna', 'Dobova 90', '031 000 202', 'sede', 'D1', [nl('letna', d(-347), d(18))]);
   pt('Tone Dializni', 'Bizeljsko 12', '031 000 203', 'leze', 'D2', [nl('letna', d(-370), d(-5))]);
@@ -511,6 +579,13 @@ async function seedDemo(pw){
 async function boot(){
   applyTheme();
   S = defaultState(); normalizeState(); loadAddr(); loadSharedAddr(); fillLogos();
+  KM.onUpdate = (date, id) => {      // kilometrina prevoza je izračunana: osveži vrstico; ko je čakalna vrsta prazna, še razpored (natančne koordinate)
+    if (!ME) return;
+    if (UI.view === 'dan' && UI.date === date){ const nb = $(`[data-ride="${id}"]`); if (nb) refreshKm(nb); if (GOOGLE.info().queued === 0) scheduleRender(); }
+    else if (['knjiga', 'dispecer'].includes(UI.view)) scheduleRender();
+  };
+  GOOGLE.onUpdate = () => { if (ME && UI.view === 'nastavitve' && UI.setTab === 'planiranje') scheduleRender(); };
+  document.addEventListener('toggle', e => { const d = e.target; if (d && d.dataset && d.dataset.sect) UI.sect[d.dataset.sect] = d.open; }, true);
   ROUTE.onUpdate = () => { if (ME) scheduleRender(); }; ROUTE.init();     // cestni podatki: splošni predpomnilnik + razdalje.json; osveži prikaz, ko prispejo novi podatki
   let msg = ''; try { msg = sessionStorage.getItem('kp.msg') || ''; sessionStorage.removeItem('kp.msg'); } catch(e){}
   if (BACKEND === 'firebase'){

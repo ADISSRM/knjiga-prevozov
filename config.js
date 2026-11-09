@@ -20,6 +20,14 @@ window.KP_CONFIG = {
     url: 'https://router.project-osrm.org',
     fallback: ['https://routing.openstreetmap.de/routed-car']   // se uporabi, če prvi strežnik ne odgovori
   },
+  // NATANČNA KILOMETRINA (Google Zemljevidi, Routes API). Kilometrina prevoza = razdalja OD → DO po najboljši poti.
+  // Google dobi SAMO besedilo naslova OD in DO (brez imen, telefonov, nalogov). Naslovi pacientov so osebni podatki:
+  // pred uporabo se posvetuj s pooblaščencem za varstvo podatkov (glej NAVODILA.md).
+  // Ključ lahko vpišeš tukaj (velja za vse naprave) ali v aplikaciji: Nastavitve → Izračun (velja samo za to napravo).
+  // Ključ OBVEZNO omeji na »HTTP referrer« (naslov te strani) in samo na »Routes API«. Prazno = Google izklopljen.
+  google: {
+    key: ''
+  },
   firebase: {
     apiKey: 'VSTAVI-API-KEY',
     authDomain: 'VSTAVI-PROJECT-ID.firebaseapp.com',

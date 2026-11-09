@@ -36,7 +36,8 @@ function holiday(s){
 }
 /* Vikend in prazniki: pripravljenost (2 zaposlena) */
 const isStandby = s => { const w = dow(s); return w === 0 || w === 6 || !!holiday(s); };
-const diaGroupsFor = (s, S) => DIA_GROUPS.filter(g => (S.settings.dia[g].days || []).includes(dow(s)));
+/* Dializa: termini (dopoldanska / popoldanska), v katerih ta dan vozi vsaj en pacient iz registra dialize */
+const diaTermsFor = s => Object.keys(DIA_TERMS).filter(t => S.patients.some(p => p.dt && p.dt.t === t && (p.dt.d || []).includes(dow(s))));
 
 /* ---------- Čas ---------- */
 const toMin = t => { if (!t || !/^\d{1,2}:\d{2}$/.test(t)) return null; const [h,m] = t.split(':').map(Number); return h*60+m; };
@@ -140,10 +141,57 @@ const TOWN_IDX = TOWNS.map(s => ({ ...s, nn:norm(s.n), re:new RegExp('(^|[^a-z0-
 const BASE_POINT = { lat:BASE_POI.lat, lon:BASE_POI.lon };
 function settlementPoint(s){ const o = S.coordOv[s.n]; return o ? { lat:o[0], lon:o[1] } : { lat:s.lat, lon:s.lon }; }
 
+/* ---------- Ustanove, klinike in lastne ustanove (S.places) ----------
+   Klinika je cilj »UKC Ljubljana – Očesna klinika«: enaka točka kot bolnišnica (ali lastna koordinata), svoj ključ, čas pregleda (stay)
+   in pot od vhoda do ambulante (extra). Ujemanje: najdaljše ujemajoče ime (bolnišnica + klinika) ima prednost pred samo bolnišnico. */
+const sepNorm = t => norm(t).replace(/[–—\-,\/.()]+/g, ' ').replace(/\s+/g, ' ').trim();
+let PL = { rev:-1, S:null, all:[], match:[] };
+function placeIndex(){
+  if (PL.rev === rev && PL.S === S) return PL;
+  const num = v => (v != null && v !== '' && isFinite(+v)) ? +v : null;
+  const parents = new Map(POIS.map(p => [p.n, p]));
+  const all = [];
+  ((S && S.places) || []).filter(x => !x.parent && x.n).forEach(x => {   // lastne ustanove
+    const la = num(x.lat), lo = num(x.lon);
+    const p = { n:x.n, al:[norm(x.n), ...(x.al || []).map(norm)], lat:la ?? BASE_POI.lat, lon:lo ?? BASE_POI.lon, sub:x.addr || 'ustanova', extra:num(x.extra), stay:num(x.stay), gq:x.addr ? x.n + ', ' + x.addr : x.n, custom:true, noCoord:la == null || lo == null, fixed:la != null && lo != null, id:x.id };
+    parents.set(p.n, p); all.push(p);
+  });
+  const clinics = [];
+  ((S && S.places) || []).filter(x => x.parent && x.n).forEach(x => {
+    const par = parents.get(x.parent); if (!par) return;
+    const la = num(x.lat), lo = num(x.lon);
+    clinics.push({ n:par.n + ' – ' + x.n, short:x.n, al:(x.al || []).map(norm), parent:par.n, parentAl:[norm(par.n), ...(par.al || [])], clinic:true,
+      lat:la ?? par.lat, lon:lo ?? par.lon, sub:x.addr || par.sub, extra:num(x.extra) ?? par.extra ?? null, stay:num(x.stay), gq:[x.n, x.addr || par.gq || par.n].join(', '),
+      noCoord:la == null && !!par.noCoord, fixed:la != null && lo != null, id:x.id });
+  });
+  const match = [], seen = new Map();
+  clinics.forEach(c => { const b = sepNorm(c.short); seen.set(b, (seen.get(b) || 0) + 1); });
+  clinics.forEach(c => {
+    const names = [sepNorm(c.short), ...c.al.map(sepNorm)];
+    c.parentAl.forEach(pa => names.filter(Boolean).forEach(cn => match.push({ s:sepNorm(pa) + ' ' + cn, poi:c })));
+    const b = sepNorm(c.short); if (b.length >= 10 && seen.get(b) === 1) match.push({ s:b, poi:c });
+  });
+  all.push(...clinics);
+  PL = { rev, S, all, match, customs:all.filter(p => p.custom) };
+  return PL;
+}
+const poiPoint = p => ({ kind:p.noCoord ? 'neznano' : 'poi', poi:p, key:'poi:' + p.n, lat:p.lat, lon:p.lon, label:p.n });
+/* Čas čakanja na pregled (min) in pot od vhoda do ambulante za cilj */
+const poiExtra = g => (g && g.poi) ? (g.poi.extra != null ? g.poi.extra : (S.settings.extraDef ?? 5)) : 0;
+const poiStay = g => (g && g.poi && g.poi.stay != null) ? g.poi.stay : (S.settings.stayDef ?? 45);
+
 function geo(text){
   const t = norm(text);
   if (!t) return { kind:'prazno', key:'', lat:BASE_POINT.lat, lon:BASE_POINT.lon, label:'' };
-  // 1) ustanove
+  // 1) klinike (»UKC Ljubljana – Očesna klinika«) in lastne ustanove
+  const pi = placeIndex();
+  if (pi.all.length){
+    const tn = sepNorm(text); let hit = null;
+    for (const m of pi.match) if ((tn === m.s || tn.startsWith(m.s + ' ')) && (!hit || m.s.length > hit.s.length)) hit = m;
+    if (hit) return poiPoint(hit.poi);
+    for (const p of pi.customs){ const nn = [sepNorm(p.n), ...p.al.map(sepNorm)]; if (nn.some(a => a && (tn === a || tn.startsWith(a + ' ')))) return poiPoint(p); }
+  }
+  // 1b) ustanove
   for (const p of POIS){
     const names = [norm(p.n), ...p.al];
     if (names.some(a => t === a || t.startsWith(a + ' ') || t.startsWith(a + ',') || (a.length > 7 && t.includes(a))))
@@ -193,6 +241,7 @@ function suggestions(kind, raw){
     return out.slice(0, 8);
   }
   POIS.forEach(p => { const sc = Math.min(scoreOf(p.n), ...p.al.map(scoreOf)); if (sc < 9) push(p.n, p.sub, p.n, sc - (kind==='to'?0.5:0)); });
+  placeIndex().all.forEach(p => { const sc = Math.min(scoreOf(p.n), scoreOf(p.short || p.n), ...(p.al || []).map(scoreOf)); if (sc < 9) push(p.n, p.clinic ? 'klinika · ' + (p.sub || '') : p.sub, p.n, sc - (kind==='to'?0.7:0)); });
   S.addrBook.forEach(a => { const sc = scoreOf(a.t); if (sc < 9) push(a.t, 'že vpisan naslov', a.t, sc - 0.2); });
   if (ADDR.list.length){
     let c = 0;

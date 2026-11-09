@@ -8,7 +8,7 @@
 const PLAN_CACHE = new Map();
 
 /* ---------- Knjiga: polja ---------- */
-const blankRide = () => ({ id:uid(), name:'', time:'', from:'', to:'', phone:'', mode:'sede', dia:'', diaKey:'', done:false, doneBy:'', doneAt:'', pin:'', demo:false,
+const blankRide = () => ({ id:uid(), name:'', time:'', from:'', to:'', phone:'', mode:'sede', dia:'', diaKey:'', stay:0, km:null, kmBack:null, kmSrc:'', kk:'', gf:null, gt:null, kmAt:'', done:false, doneBy:'', doneAt:'', pin:'', demo:false,
   patientId:'', nalogId:'', note:'', exc:false, odpovedano:false, prevStatus:'', status:'nova', times:{}, statusBy:'', runKey:'' });
 const isFilled = r => !!((r.name||'').trim() || (r.from||'').trim() || (r.to||'').trim());
 function ensureDay(date){
@@ -19,15 +19,26 @@ function ensureDay(date){
 function addSlots(date, n){ const a = ensureDay(date); for (let i = 0; i < n; i++) a.push(blankRide()); save(); }
 function filledRides(date){ return ensureDay(date).map((r,i) => ({ r, nr:i+1 })).filter(x => isFilled(x.r)); }
 function rideById(date, id){ const a = ensureDay(date); const i = a.findIndex(r => r.id === id); return i < 0 ? null : { r:a[i], nr:i+1 }; }
+const rideKk = r => norm(r.from) + '>' + norm(r.to);
+/* Točka vožnje: ustanova/klinika ali naselje. Če je Google za ta naslov že vrnil natančne koordinate (r.gf / r.gt, glej 39-google.js) in se besedilo
+   od takrat ni spremenilo, se uporabijo te: hišni naslov je točka (ne središče naselja). Takšne točke se nikoli ne shranijo v trajni predpomnilnik poti. */
+function ridePt(r, side){
+  const g = geo(r[side] || ''), ll = side === 'from' ? r.gf : r.gt;
+  if (!ll || g.kind === 'prazno' || !r.kk || r.kk !== rideKk(r) || !isFinite(ll[0]) || !isFinite(ll[1])) return g;
+  if (g.kind === 'poi' && g.poi.fixed) return g;
+  if (g.kind === 'poi') return { ...g, lat:ll[0], lon:ll[1], exact:true };
+  return { ...g, kind:'addr', key:'g:' + (+ll[0]).toFixed(4) + ',' + (+ll[1]).toFixed(4), lat:ll[0], lon:ll[1], label:(r[side] || '').trim(), exact:true };
+}
 function rideDir(r){
   const f = geo(r.from), t = geo(r.to);
   if (f.kind === 'poi' && t.kind !== 'poi' && t.kind !== 'prazno') return 'from';
   return 'to';
 }
 
-/* ---------- Dializa (pacienti iz baze s skupino dialize) ---------- */
+/* ---------- Dializa: register pacientov (Nastavitve → Dializa), termin dopoldanska / popoldanska ----------
+   Za vsakega pacienta, ki ta dan dializira, se vpiše prevoz tja (ura = začetek termina) in nazaj (ura = konec termina). */
 function loadDialysis(date){
-  const groups = diaGroupsFor(date, S); if (!groups.length) return 0;
+  const terms = diaTermsFor(date); if (!terms.length) return 0;
   const a = ensureDay(date); let added = 0;
   const place = obj => {
     let i = a.findIndex(r => !isFilled(r));
@@ -35,10 +46,10 @@ function loadDialysis(date){
     Object.assign(a[i], blankRide(), obj); added++;
   };
   for (const p of S.patients){
-    if (!p.dia || !groups.includes(p.dia)) continue;
-    const g = S.settings.dia[p.dia];
+    const dt = p.dt; if (!dt || !terms.includes(dt.t) || !(dt.d || []).includes(dow(date))) continue;
+    const g = (S.settings.diaT || {})[dt.t]; if (!g) continue;
     const nl = activeNalog(p, date);
-    const base = { name:p.name, phone:p.phone, mode:p.mode, dia:p.dia, demo:!!p.demo, patientId:p.id, nalogId:nl ? nl.id : '' };
+    const base = { name:p.name, phone:p.phone, mode:p.mode, dia:dt.t, demo:!!p.demo, patientId:p.id, nalogId:nl ? nl.id : '' };
     const k1 = p.id + ':tja', k2 = p.id + ':nazaj';
     if (!a.some(r => r.diaKey === k1)) place({ ...base, time:g.start, from:p.addr, to:'SB Brežice – dializa', diaKey:k1 });
     if (!a.some(r => r.diaKey === k2)) place({ ...base, time:g.end, from:'SB Brežice – dializa', to:p.addr, diaKey:k2 });
@@ -202,6 +213,12 @@ function visitOrders(groups, from, leg){
   while (left.length){ let bi = 0; left.forEach((g, i) => { if (cur && leg(cur, g.pt).min < leg(cur, left[bi].pt).min) bi = i; }); const g = left.splice(bi, 1)[0]; seq.push(g); cur = g.pt; }
   return [seq];
 }
+/* Čas nalaganja / odpuščanja glede na način prevoza (leže in utila potrebujejo več časa kot sede) */
+const loadOf = (r, cfg, side) => { const k = side === 'pick' ? 'pick' : 'drop', m = r.mode; const v = m === 'leze' ? cfg[k + 'Leze'] : m === 'utila' ? cfg[k + 'Utila'] : cfg[k + 'Min']; return (v != null && isFinite(v)) ? +v : +cfg[k + 'Min']; };
+const loadSum = (rides, cfg, side) => rides.reduce((x, r) => x + loadOf(r, cfg, side), 0);
+/* Konec vožnje: pri vožnji s čakanjem na pregled (stay) je vrnitev šele, ko je pregled končan (ura pregleda + trajanje + pot od vhoda) */
+function retStartOf(ev, start){ return Math.max(start + ev.outDur, ev.readyAbs != null ? ev.readyAbs : -1e9, ev.readyRel != null ? start + ev.readyRel : -1e9); }
+const tripEnd = (ev, start) => ev.ret ? retStartOf(ev, start) + ev.ret.dur : start + ev.dur;
 const legCount = (l, c) => { if (l.real) c.real++; else if (!l.local){ c.est++; if (l.wait) c.wait++; } };
 
 /* ---------- Ocena poti ene vožnje ----------
@@ -212,9 +229,10 @@ function evalTo(order, dest, cfg, leg){
   for (const r of order){
     if (prev){ const l = leg(prev, r.from); t += l.min; km += l.km; legCount(l, cnt); }
     stops.push({ type:'pu', off:t, pt:r.from, rideId:r.id });
-    t += cfg.pickMin; ride[r.id] = t; prev = r.from;
+    t += loadOf(r, cfg, 'pick'); ride[r.id] = t; prev = r.from;
   }
   const groups = uniqBy(order, r => r.to), ptOf = g => (dest && g.pt.key === dest.key ? dest : g.pt);
+  const ret = order.filter(r => r.stay > 0);
   let best = null;
   for (const seq of visitOrders(groups, prev, leg)){
     let tt = t, kk = km, pv = prev; const dstops = [], arrAt = {}, c2 = { ...cnt };
@@ -222,15 +240,31 @@ function evalTo(order, dest, cfg, leg){
       const pt = ptOf(g), l = leg(pv, pt); tt += l.min; kk += l.km; legCount(l, c2);
       dstops.push({ type:'do', off:tt, pt, rideIds:g.rides.map(r => r.id) });
       g.rides.forEach(r => { arrAt[r.id] = tt; });
-      tt += cfg.dropMin * g.rides.length; pv = pt;
+      tt += loadSum(g.rides, cfg, 'drop'); pv = pt;
     }
     let maxRide = 0; const rideMin = {};
     order.forEach(r => { rideMin[r.id] = arrAt[r.id] - ride[r.id]; if (rideMin[r.id] > maxRide) maxRide = rideMin[r.id]; });
-    let dl = null, early = 0;                                   // dl = najmanjša rezerva do ure preiskave (brez varnostne rezerve)
-    order.forEach(r => { if (r.time != null){ const d = r.time - arrAt[r.id]; if (dl == null || d < dl) dl = d; } });
-    if (seq.length > 1 && dl != null) order.forEach(r => { if (r.time != null) early += (r.time - arrAt[r.id]) - dl; });   // pacienti, ki bi čakali na cilju
-    const ev = { order, stops:stops.concat(dstops), arr:dstops[0].off, dur:tt, km:kk, maxRide, rideMin, arrAt, dl, visit:seq.map(ptOf), lastPt:pv, nReal:c2.real, nEst:c2.est, nWait:c2.wait,
-      score:tt + (maxRide > cfg.maxRide ? 1000 : 0) + (seq.length > 1 ? early * 0.3 : 0) };
+    let dl = null, early = 0;                                   // dl = najmanjša rezerva do ure preiskave (brez varnostne rezerve); pot od vhoda do ambulante (extra) je všteta
+    order.forEach(r => { if (r.time != null){ const d = r.time - arrAt[r.id] - (r.extra || 0); if (dl == null || d < dl) dl = d; } });
+    if (seq.length > 1 && dl != null) order.forEach(r => { if (r.time != null) early += (r.time - arrAt[r.id] - (r.extra || 0)) - dl; });   // pacienti, ki bi čakali na cilju
+    const ev = { order, stops:dstops.length ? stops.concat(dstops) : stops, arr:dstops[0].off, dur:tt, outDur:tt, km:kk, maxRide, rideMin, arrAt, dl, visit:seq.map(ptOf), lastPt:pv, nReal:c2.real, nEst:c2.est, nWait:c2.wait, ret:null, readyAbs:null, readyRel:null, waitNom:0 };
+    /* Čakanje na pregled: po izstopu reševalec počaka do konca pregleda, nato pacienta odpelje nazaj na izhodišče (vožnja nazaj je všteta). */
+    if (ret.length && seq.length === 1){
+      const T0 = dl != null ? dl - cfg.buffer : null;           // nominalni začetek vožnje (prihod točno z rezervo pred pregledom)
+      let nomMax = 0;
+      ret.forEach(r => {
+        if (r.time != null){ const abs = r.time + r.stay + (r.extra || 0); ev.readyAbs = ev.readyAbs == null ? abs : Math.max(ev.readyAbs, abs); nomMax = Math.max(nomMax, abs - (T0 ?? 0)); }
+        else { const rel = arrAt[r.id] + loadOf(r, cfg, 'drop') + (r.extra || 0) + r.stay; ev.readyRel = ev.readyRel == null ? rel : Math.max(ev.readyRel, rel); nomMax = Math.max(nomMax, rel); }
+      });
+      const back = ret.map(r => r.vret || (r.vret = { id:r.id, nr:r.nr, name:r.name, mode:r.mode, from:r.to, to:r.from, time:null, extra:0, stay:0, kind:'from', pid:r.pid }));
+      const er = evalFrom(back, pv, cfg, leg);
+      ev.ret = { stops:er.stops, dur:er.dur, km:er.km, rideMin:er.rideMin, maxRide:er.maxRide, visit:er.visit, lastPt:er.lastPt };
+      ev.waitNom = Math.max(0, nomMax - tt);
+      ev.dur = tt + ev.waitNom + er.dur; ev.km = kk + er.km; ev.lastPt = er.lastPt;
+      ev.nReal = c2.real + er.nReal; ev.nEst = c2.est + er.nEst; ev.nWait = c2.wait + er.nWait;
+      if (er.maxRide > maxRide) ev.maxRide = er.maxRide;
+    }
+    ev.score = ev.dur + (ev.maxRide > cfg.maxRide ? 1000 : 0) + (seq.length > 1 ? early * 0.3 : 0);
     if (!best || ev.score < best.score) best = ev;
   }
   return best;
@@ -245,7 +279,7 @@ function evalFrom(order, origin, cfg, leg){
       if (prev){ const l = leg(prev, pt); t += l.min; km += l.km; legCount(l, cnt); }
       stops.push({ type:'pu', off:t, pt, rideIds:g.rides.map(r => r.id) });
       g.rides.forEach(r => { pickOff[r.id] = t; });
-      t += cfg.pickMin * g.rides.length;
+      t += loadSum(g.rides, cfg, 'pick');
       g.rides.forEach(r => { boarded[r.id] = t; });
       prev = pt;
     }
@@ -254,11 +288,11 @@ function evalFrom(order, origin, cfg, leg){
       const l = leg(prev, r.to); t += l.min; km += l.km; legCount(l, cnt);
       stops.push({ type:'do', off:t, pt:r.to, rideId:r.id });
       rideMin[r.id] = t - boarded[r.id]; if (rideMin[r.id] > maxRide) maxRide = rideMin[r.id];
-      t += cfg.dropMin; prev = r.to;
+      t += loadOf(r, cfg, 'drop'); prev = r.to;
     }
     let rd = null;                                              // najzgodnejši začetek vožnje, da noben pacient ne čaka
     order.forEach(r => { if (r.time != null){ const d = r.time - pickOff[r.id]; if (rd == null || d > rd) rd = d; } });
-    const ev = { order, stops, arr:0, dur:t, km, maxRide, rideMin, pickOff, rd, visit:seq.map(ptOf), lastPt:prev, nReal:cnt.real, nEst:cnt.est, nWait:cnt.wait,
+    const ev = { order, stops, arr:0, dur:t, outDur:t, km, maxRide, rideMin, pickOff, rd, ret:null, readyAbs:null, readyRel:null, visit:seq.map(ptOf), lastPt:prev, nReal:cnt.real, nEst:cnt.est, nWait:cnt.wait,
       score:t + (maxRide > cfg.maxRide ? 1000 : 0) + (seq.length > 1 && rd != null ? rd : 0) };
     if (!best || ev.score < best.score) best = ev;
   }
@@ -310,7 +344,11 @@ function variantList(date){
   v.push({ id:'sorodni cilji + primerna vozila', cluster:true, fit:0.6 });
   v.push({ id:'primerna vozila', fit:0.6 });
   v.push({ id:'sorodni cilji, najdaljše prve', cluster:true, order:'dur' });
-  for (let k = 1; k <= 6; k++) v.push({ id:'iskanje ' + k, cluster:true, fit:0.3, jit:40, seed:seedOf(date, k) });
+  v.push({ id:'najdaljše prve + polnjenje vrzeli', gaps:true, cluster:true, order:'dur' });
+  v.push({ id:'polnjenje vrzeli', gaps:true });
+  v.push({ id:'polnjenje vrzeli + sorodni cilji', gaps:true, cluster:true });
+  v.push({ id:'polnjenje vrzeli + sorodni cilji + primerna vozila', gaps:true, cluster:true, fit:0.6 });
+  for (let k = 1; k <= 6; k++) v.push({ id:'iskanje ' + k, gaps:true, cluster:true, fit:0.3, jit:40, seed:seedOf(date, k) });
   for (let k = 7; k <= 9; k++) v.push({ id:'iskanje ' + k, jit:40, seed:seedOf(date, k) });
   return v;
 }
@@ -349,16 +387,17 @@ function computePlan(date){
 function planLevel(date, level, opts = {}){
   const cfgS = S.settings, cfgB = cfgFor(1), leg = makeLeg(cfgS);
   const rng = opts.seed ? mulberry(opts.seed) : null;
-  const plan = { date, level, opts, crews:[], unassigned:[], warnings:[], bends:[], conflicts:[], assign:{}, totals:{ rides:0, km:0, min:0, late:0, lateMin:0, wait:0, overtime:0, vehicles:0, estLegs:0, waitLegs:0, realLegs:0, waste:0, stretcherUse:0 }, pairing:null, standby:isStandby(date), pending:[] };
+  const plan = { date, level, opts, crews:[], unassigned:[], warnings:[], bends:[], conflicts:[], assign:{}, totals:{ rides:0, km:0, min:0, late:0, lateMin:0, wait:0, overtime:0, vehicles:0, estLegs:0, waitLegs:0, realLegs:0, waste:0, stretcherUse:0, stayWait:0 }, pairing:null, standby:isStandby(date), pending:[] };
 
   // 1) vožnje, ki jih je treba opraviti
   const rides = [];
   ensureDay(date).forEach((r, i) => {
     if (!isFilled(r) || r.done || r.odpovedano || r.status === 'preklicana') return;
-    const f = geo(r.from), t = geo(r.to);
+    const f = ridePt(r, 'from'), t = ridePt(r, 'to'), kind0 = rideDir(r);
     const lock = LIVE_LOCK.includes(r.status) && r.runKey && r.runKey.startsWith(date + '_') ? r.runKey.slice(date.length + 1) : '';
     rides.push({ id:r.id, nr:i+1, name:(r.name || '').trim() || '(brez imena)', mode:r.mode || 'sede', phone:r.phone || '', time:toMin(r.time), timeTxt:r.time || '',
-      from:f, to:t, fromTxt:r.from || '', toTxt:r.to || '', kind:rideDir(r), pin:r.pin || lock, locked:!r.pin && !!lock, exc:!!r.exc, force:!!(r.exc || r.pin), pid:r.patientId || '', dia:r.dia || '' });
+      from:f, to:t, fromTxt:r.from || '', toTxt:r.to || '', kind:kind0, pin:r.pin || lock, locked:!r.pin && !!lock, exc:!!r.exc, force:!!(r.exc || r.pin), pid:r.patientId || '', dia:r.dia ? diaTermOf(r.dia) : '',
+      stay:kind0 === 'to' ? Math.max(0, +r.stay || 0) : 0, extra:kind0 === 'to' ? poiExtra(t) : 0 });
     if (f.kind === 'prazno' || t.kind === 'prazno') plan.warnings.push({ level:'warn', nr:i+1, text:`Prevoz ${i+1}: manjka naslov (${f.kind === 'prazno' ? 'od' : 'do'}). Razdalja je ocenjena iz centra Brežic.` });
   });
   plan.totals.rides = rides.length;
@@ -394,6 +433,7 @@ function planLevel(date, level, opts = {}){
       const cf = st ? cfgB : cfgS;
       for (const t of trips){
         if (t.kind !== r.kind || t.pin !== r.pin) continue;
+        if ((r.stay > 0 || t.rides.some(x => x.stay > 0)) && !t.pts.some(p => p.key === anchor.key)) continue;   // čakanje na pregled: samo isti cilj (reševalec se vrne po pacienta)
         if (!t.pts.some(p => p.key === anchor.key)){
           if (!opts.cluster || t.pts.length >= maxDests || !t.pts.every(p => similar(p, anchor))) continue;
         }
@@ -415,7 +455,7 @@ function planLevel(date, level, opts = {}){
   trips.forEach(t => { t.ev = bestExact(t.kind, t.ev.order, t.anchor, t.lvl ? cfgB : cfgS, leg); });
 
   // 4) ključni časi vožnje
-  const qkey = t => (opts.order === 'dur' ? -t.ev.dur : (t.need ?? 1e6)) + (rng ? (rng() - 0.5) * opts.jit : 0);
+  const qkey = t => (opts.order === 'dur' ? -t.ev.dur : (t.need ?? 1e6)) + (rng ? (rng() - 0.5) * opts.jit : 0) + (opts.gaps && t.rides.some(r => r.dia) ? -1e5 : 0);   // dializni prevozi imajo fiksne ure: najprej njih
   const prep = t => {
     t.ref = refOf(t);
     t.counts = countModes(t.rides);
@@ -438,6 +478,17 @@ function planLevel(date, level, opts = {}){
   // 5) razdelitev vožnj med posadke
   const queue = trips.slice().sort((a,b) => a.qk - b.qk);
   const crewFor = pin => crews.filter(c => !pin || c.id === pin);
+  /* Mesta v dnevu posadke, kamor se lahko vstavi vožnja. Osnovni razpored: samo na konec (kot prej). Napredni: tudi v vrzeli med vožnjami
+     (npr. dializna posadka po koncu dializnih voženj, ali med prevozom tja in nazaj). */
+  const slotsOf = c => {
+    if (!opts.gaps) return [{ i:c.trips.length, free:c.free, pos:c.pos, next:null }];
+    const out = []; let free = c.shift, pos = baseG;
+    for (let i = 0; i <= c.trips.length; i++){
+      out.push({ i, free, pos, next:c.trips[i] || null });
+      if (c.trips[i]){ free = c.trips[i].end; pos = c.trips[i].last; }
+    }
+    return out;
+  };
   let guard = 0;
   while (queue.length && guard++ < 800){
     const t = queue.shift();
@@ -448,29 +499,44 @@ function planLevel(date, level, opts = {}){
       plan.warnings.push({ level:lockedN.length ? 'bad' : 'info', text:lockedN.length ? `Prevoz ${lockedN.join(', ')} je že v teku pri vozilu, ki ni več v razporedu; izbrano je drugo vozilo. Posadki sporoči spremembo.` : `Pripeto vozilo za prevoz ${t.rides.map(r => r.nr).join(', ')} ni na voljo; izbrano je drugo vozilo.` });
     }
     const stages = (level === 1 || t.force || t.lvl) ? [0, 1] : [0];
+    const isDia = t.rides.some(r => r.dia);
     let best = null, capOk = false, shiftBlocked = false, lezNoTeam = false, shiftNeed = null, shiftCrew = null;
     for (const st of stages){
       for (const c of pool){
         if (t.counts.leze > 0 && c.solo){ lezNoTeam = true; continue; }   // leže: 2 reševalca za nošenje
         if (!fits(t.counts, c.vehicle, st)) continue;
         capOk = true;
-        const d = leg(c.pos, t.first), arrive = c.free + d.min;
         const latest = st ? t.latestB : t.latestS;
-        let start = arrive, late = 0;
-        if (t.kind === 'to' && latest != null){ start = Math.max(arrive, latest); late = Math.max(0, arrive - latest); }
-        else if (t.kind === 'from' && t.rdy != null){ start = Math.max(arrive, t.rdy); late = Math.max(0, arrive - t.rdy - cfgS.waitTol); }
-        const endAbs = start + t.ev.dur + leg(t.last, baseG).min;
-        if (c.end != null){ const okOt = Math.max(c.ot, st ? (S.rules.overtimeMax || 0) : 0); if (endAbs > c.end + okOt){ shiftBlocked = true; const need = Math.ceil(endAbs - (c.end + okOt)); if (shiftNeed == null || need < shiftNeed){ shiftNeed = need; shiftCrew = c; } continue; } }
-        const idle = start - arrive;
-        let cost = late * 20 + d.min + idle * 0.05 + c.trips.length * 0.5 + (st ? 25 : 0);
-        if (c.vehicle.fn === 'dializa') cost += t.rides.some(r => r.dia) ? -15 : 45;   // dializno vozilo za druge prevoze samo po potrebi
-        if (t.sbReturn){ if (c.team === 'NN') cost -= 20; else if (hasNN) cost += 15; }
-        if (opts.fit){   // primerno vozilo: ne zasedaj večjega vozila, kot je treba, in ne vozila z nosili, če jih ta dan potrebuje leže pacient
-          const cap = capOf(c.vehicle, st), n = t.counts.sede + t.counts.leze + t.counts.utila;
-          cost += opts.fit * Math.max(0, cap.skupaj - n);
-          if (hasLeze && !t.counts.leze && c.vehicle.leze > 0) cost += 8;
+        for (const sl of slotsOf(c)){
+          const d = leg(sl.pos, t.first), arrive = sl.free + d.min;
+          let start = arrive, late = 0;
+          if (t.kind === 'to' && latest != null){ start = Math.max(arrive, latest); late = Math.max(0, arrive - latest); }
+          else if (t.kind === 'from' && t.rdy != null){ start = Math.max(arrive, t.rdy); late = Math.max(0, arrive - t.rdy - cfgS.waitTol); }
+          const endT = tripEnd(t.ev, start);
+          let detour = 0;
+          if (sl.next){   // vstavljanje v vrzel med dvema vožnjama: do naslednje mora biti dovolj časa (naslednja vožnja se ne premakne)
+            const ln = leg(t.last, sl.next.first);
+            if (endT + ln.min > sl.next.start + 1e-6) continue;
+            detour = Math.max(0, ln.min - leg(sl.pos, sl.next.first).min);
+          } else {
+            const endAbs = endT + leg(t.last, baseG).min;
+            if (c.end != null){ const okOt = Math.max(c.ot, st ? (S.rules.overtimeMax || 0) : 0); if (endAbs > c.end + okOt){ shiftBlocked = true; const need = Math.ceil(endAbs - (c.end + okOt)); if (shiftNeed == null || need < shiftNeed){ shiftNeed = need; shiftCrew = c; } continue; } }
+          }
+          const idle = start - arrive;
+          let cost = late * 20 + d.min + detour + idle * 0.05 + c.trips.length * 0.5 + (st ? 25 : 0);
+          if (c.vehicle.fn === 'dializa'){
+            if (!opts.gaps) cost += isDia ? -15 : 45;   // osnovni razpored: dializno vozilo za druge prevoze samo po potrebi
+            else if (isDia) cost -= 30;
+            else cost += c.trips.some(x => x.dia) ? (sl.next && sl.next.dia ? 12 : 0) : 6;   // po koncu dializnih voženj je posadka prosta za sede prevoze; med njimi le, če je vrzel dovolj velika
+          }
+          if (t.sbReturn){ if (c.team === 'NN') cost -= 20; else if (hasNN) cost += 15; }
+          if (opts.fit){   // primerno vozilo: ne zasedaj večjega vozila, kot je treba, in ne vozila z nosili, če jih ta dan potrebuje leže pacient
+            const cap = capOf(c.vehicle, st), n = t.counts.sede + t.counts.leze + t.counts.utila;
+            cost += opts.fit * Math.max(0, cap.skupaj - n);
+            if (hasLeze && !t.counts.leze && c.vehicle.leze > 0) cost += 8;
+          }
+          if (!best || cost < best.cost) best = { c, d, arrive, start, late, cost, st, latest, sl };
         }
-        if (!best || cost < best.cost) best = { c, d, arrive, start, late, cost, st, latest };
       }
     }
     if (!best && lezNoTeam) plan.warnings.push({ level:'bad', text:`Prevoz ${t.rides.map(r => r.nr).join(', ')}: pacient leže potrebuje 2 reševalca (voznik + spremljevalec) in vozilo z nosili.` });
@@ -487,12 +553,13 @@ function planLevel(date, level, opts = {}){
       }
       continue;
     }
-    const { c, d, start, late } = best;
-    const trip = { id:t.id, kind:t.kind, rides:t.ev.order, ev:t.ev, anchor:t.anchor, dests:t.ev.visit, start, depart:start - d.min, deadKm:d.km, from:c.pos, late:Math.round(late), counts:t.counts, ref:t.ref, sbReturn:t.sbReturn, pin:t.pin,
+    const { c, d, start, late, sl } = best;
+    const trip = { id:t.id, kind:t.kind, rides:t.ev.order, ev:t.ev, anchor:t.anchor, dests:t.ev.visit, start, depart:start - d.min, deadKm:d.km, from:sl.pos, first:t.first, last:t.last, dia:isDia, late:Math.round(late), counts:t.counts, ref:t.ref, sbReturn:t.sbReturn, pin:t.pin,
       wait: t.kind === 'from' && t.rdy != null ? Math.max(0, Math.round(best.arrive - t.rdy)) : 0, stage:best.st, forced:t.force,
       latestDepart: best.latest != null ? best.latest - d.min : null, shiftLimited: t.kind === 'to' && best.latest != null && c.trips.length === 0 && late > 0 };
-    trip.end = start + t.ev.dur;
-    c.trips.push(trip); c.free = trip.end; c.pos = t.last; c.km += d.km + t.ev.km; c.busy += d.min + t.ev.dur;
+    trip.end = tripEnd(t.ev, start);
+    c.trips.splice(sl.i, 0, trip);
+    if (!opts.gaps){ c.free = trip.end; c.pos = t.last; }
   }
 
   // 6) izhod: časi postankov, ETA, skupne vrednosti
@@ -500,21 +567,27 @@ function planLevel(date, level, opts = {}){
   const countLeg = (a, b) => { const k = a.key + '>' + b.key; if (seen.has(k)) return; seen.add(k); legCount(leg(a, b), cntAll); };
   for (const c of crews){
     c.trips.sort((a,b) => a.start - b.start);
+    /* verižen izračun: odhod, prazne vožnje (km), zasedenost; vožnje s čakanjem na pregled imajo konec šele po vrnitvi */
+    c.km = 0; c.busy = 0; let prevPt = baseG;
+    for (const t of c.trips){
+      const ev = t.ev;
+      if (ev.ret){ t.retStart = retStartOf(ev, t.start); t.waitMin = Math.max(0, Math.round(t.retStart - (t.start + ev.outDur))); t.end = t.retStart + ev.ret.dur; }
+      const dd = leg(prevPt, t.first); t.from = prevPt; t.deadKm = dd.km; t.depart = t.start - dd.min;
+      c.km += dd.km + ev.km; c.busy += dd.min + (t.end - t.start); prevPt = t.last;
+    }
+    c.pos = prevPt;
     const back = leg(c.pos, baseG); if (c.trips.length) c.km += back.km;
     c.rideNrs = [];
     for (const t of c.trips){
-      t.stopsAbs = t.ev.stops.map(s => {
-        const o = { ...s, t: t.start + s.off };
-        const ids = s.rideIds || [s.rideId]; o.people = ids.map(id => t.rides.find(r => r.id === id));
-        return o;
-      });
+      const mk = (s, base, isRet) => { const o = { ...s, t:base + s.off, ret:isRet }; const ids = s.rideIds || [s.rideId]; o.people = ids.map(id => t.rides.find(r => r.id === id)); return o; };
+      t.stopsAbs = t.ev.stops.map(s => mk(s, t.start, false)).concat(t.ev.ret ? t.ev.ret.stops.map(s => mk(s, t.retStart, true)) : []);
       t.arrive = t.kind === 'to' ? t.start + t.ev.arr : null;
       // ETA za vsakega pacienta: pobiranje, prihod na cilj, rezerva do ure preiskave oziroma čakanje na odvoz
       t.info = {};
-      t.stopsAbs.forEach(s => { (s.rideIds || [s.rideId]).forEach(id => { const o = t.info[id] || (t.info[id] = {}); if (s.type === 'pu') o.pickT = s.t; else o.dropT = s.t; }); });
+      t.stopsAbs.forEach(s => { (s.rideIds || [s.rideId]).forEach(id => { const o = t.info[id] || (t.info[id] = {}); if (s.ret){ if (s.type === 'pu') o.retPickT = s.t; else o.retDropT = s.t; } else if (s.type === 'pu') o.pickT = s.t; else o.dropT = s.t; }); });
       t.rides.forEach(r => {
         const o = t.info[r.id];
-        if (t.kind === 'to' && r.time != null) o.slack = Math.round(r.time - o.dropT);
+        if (t.kind === 'to' && r.time != null) o.slack = Math.round(r.time - o.dropT - (r.extra || 0));
         if (t.kind === 'from' && r.time != null) o.wait = Math.max(0, Math.round(o.pickT - r.time));
       });
       const sl = t.rides.map(r => t.info[r.id].slack).filter(x => x != null);
@@ -525,7 +598,7 @@ function planLevel(date, level, opts = {}){
         const pu = t.stopsAbs.find(s => s.type === 'pu' && (s.rideId === r.id || (s.rideIds && s.rideIds.includes(r.id))));
         const inf = t.info[r.id];
         plan.assign[r.id] = { crewId:c.id, veh:c.vehicle.name, t:pu ? pu.t : t.start, order:i+1, trip:t.id, late:t.late, rideMin:Math.round(t.ev.rideMin[r.id] || 0),
-          pickT:inf.pickT, dropT:inf.dropT, slack:inf.slack ?? null, wait:inf.wait ?? 0, kind:t.kind };
+          pickT:inf.pickT, dropT:inf.dropT, retPickT:inf.retPickT ?? null, retT:inf.retDropT ?? null, stay:r.stay || 0, slack:inf.slack ?? null, wait:inf.wait ?? 0, kind:t.kind };
       });
       if (t.late > 0){
         const nrs = t.rides.map(r => r.nr).join(', ');
@@ -534,6 +607,8 @@ function planLevel(date, level, opts = {}){
           : `${c.vehicle.name}: prevoz ${nrs} bo zamudil približno ${t.late} min. Dodaj vozilo ali prerazporedi.`;
         plan.warnings.push({ level:'bad', text:txt });
       }
+      if (t.ev.ret && t.waitMin > 0) plan.warnings.push({ level:'info', text:`${c.vehicle.name}: prevoz ${t.rides.map(r => r.nr).join(', ')} počaka na pregled približno ${fmtDur(t.waitMin)} (do ${fmtT(t.retStart)}), nato pacienta odpelje nazaj.` });
+      plan.totals.stayWait += t.waitMin || 0;
       plan.totals.late += t.late > 0 ? t.rides.length : 0;
       plan.totals.lateMin += t.late > 0 ? t.late * t.rides.length : 0;
       plan.totals.wait += t.wait || 0;
@@ -674,7 +749,7 @@ function tripWaypoints(t){
   const pts = [t.from, ...t.stopsAbs.map(s => s.pt)];
   return pts.filter((p, i) => !i || p.key !== pts[i - 1].key);
 }
-const stopDwell = s => (s.type === 'pu' ? S.settings.pickMin : S.settings.dropMin) * (((s.people || []).filter(Boolean).length) || 1);
+const stopDwell = s => { const pp = (s.people || []).filter(Boolean); return pp.length ? loadSum(pp, S.settings, s.type === 'pu' ? 'pick' : 'drop') : (s.type === 'pu' ? S.settings.pickMin : S.settings.dropMin); };
 /* ETA glede na dejanski potek: iz časa, ko je posadka sporočila korak (na poti, v vozilu …), naprej po razporedu po cestnih podatkih */
 function liveEta(date, r){
   if (!r || !['na_poti', 'na_kraju', 'v_vozilu'].includes(r.status)) return null;
@@ -686,7 +761,7 @@ function liveEta(date, r){
   const iPu = st.findIndex(s => s.type === 'pu' && has(s, r.id)), iDo = st.findIndex(s => s.type === 'do' && has(s, r.id));
   if (iPu < 0 || iDo < 0) return null;
   if (r.status === 'na_poti' && tm('na_poti') != null) return { t:tm('na_poti') + leg(iPu ? st[iPu - 1].pt : t.from, st[iPu].pt).min, what:'prihod k pacientu' };
-  if (r.status === 'na_kraju' && tm('na_kraju') != null) return { t:tm('na_kraju') + S.settings.pickMin * (((st[iPu].people || []).filter(Boolean).length) || 1), what:'odhod s pacientom' };
+  if (r.status === 'na_kraju' && tm('na_kraju') != null) return { t:tm('na_kraju') + stopDwell(st[iPu]), what:'odhod s pacientom' };
   if (r.status === 'v_vozilu' && tm('v_vozilu') != null){
     let x = tm('v_vozilu');
     for (let k = iPu + 1; k <= iDo; k++){ x += leg(st[k - 1].pt, st[k].pt).min; if (k < iDo) x += stopDwell(st[k]); }

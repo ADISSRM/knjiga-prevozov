@@ -14,7 +14,7 @@ css = '\n'.join(re.findall(r'<style>(.*?)</style>', head, re.S))
 assert css.strip(), 'CSS ni najden'
 (out / 'style.css').write_text(css, encoding='utf-8')
 
-order = ['20-data', '30-core', '35-db', '38-routing', '40-planner', '45-pacienti', '50-views', '52-views2', '55-live', '60-main']
+order = ['20-data', '30-core', '35-db', '38-routing', '39-google', '40-planner', '45-pacienti', '50-views', '52-views2', '55-live', '60-main']
 js = '\n'.join((src / f'{n}.js').read_text(encoding='utf-8') for n in order)
 (out / 'app.js').write_text(js, encoding='utf-8')
 body = (src / '10-body.html').read_text(encoding='utf-8')
@@ -78,7 +78,8 @@ icon(192).save(out / 'icons/icon-192.png'); icon(512).save(out / 'icons/icon-512
 icon(512, True).save(out / 'icons/icon-maskable-512.png'); icon(32).save(out / 'icons/icon-32.png')
 ai = icon(180, True); ai.convert('RGB').save(out / 'icons/apple-touch-icon.png')
 
-(out / 'logos/README.txt').write_text('Sem skopiraj logotipa (PNG, prosojno ozadje, višina vsaj 120 px):\n  zd-brezice.png  (logotip ZD Brežice)\n  nmp.png         (logotip NMP)\nČe datotek ni, aplikacija pokaže besedilo. Logotipe lahko naložiš tudi v Nastavitve > Logotipi (velja samo za ta telefon/brskalnik).\n', encoding='utf-8')
+for lf in (dep / 'logos').glob('*.png'): shutil.copy(lf, out / 'logos' / lf.name)      # logotipa ZD Brežice in NMP (Nastavitve → Logotipi ju lahko zamenja na posamezni napravi)
+shutil.copy(dep / 'logos' / 'README.txt', out / 'logos' / 'README.txt') if (dep / 'logos' / 'README.txt').exists() else None
 for f in ('config.js', 'boot.js', 'manifest.webmanifest', '.nojekyll'): shutil.copy(dep / f, out / f)
 if (dep / 'naslovi.json').exists(): shutil.copy(dep / 'naslovi.json', out / 'naslovi.json')
 if (dep / 'razdalje.json').exists(): shutil.copy(dep / 'razdalje.json', out / 'razdalje.json')

@@ -16,7 +16,3 @@ Interna PWA za iPhone in Android: dispečer (knjiga, pacienti in nalogi, razpore
 - Prevozi se lahko označijo kot ODPOVEDANO (rdeče, izven razporeda).
 - Hitrosti po ZPrCP: naselje 50, izven naselij 90, hitra cesta 110, avtocesta 130 km/h (Nastavitve → Izračun).
 - Barve nalogov: letni (modra), mesečni (vijolična), enkratni (zelena), za čas zdravljenja (oranžna); polje prevoza je celo obarvano, ko je pacient v bazi.
-- **Cestno usmerjanje (OpenStreetMap / OSRM)**: razdalje, časi in ure prihoda po dejanskih cestah (tudi Ljubljana, Novo mesto in drugi kraji izven občine) namesto zračne razdalje; ocena (označena z ~) samo, kadar cestnih podatkov ni. Strežniku gredo samo koordinate. Nastavitev: `routing` v `config.js`; neobvezna datoteka `razdalje.json`; glej NAVODILA.md 10.2 in 11.6.
-- **Pametnejši samodejni razpored**: več ciljev v eni vožnji, optimalen vrstni red pobiranja, ustrezno vozilo glede na kapaciteto in vrsto prevoza, rezerva/čakanje/zamuda po pacientih, zaznava konfliktov, nerazporejeni prevozi s predlogi, pot na zemljevidu in ocena prihoda v živo. Prvotni algoritem je ohranjen in se uporablja kot osnova (izklop: Nastavitve → Izračun).
-- Preizkusi: `cd source && node tests/run.js` (Node 18+, brez omrežja); `tests/browser.js` (neobvezno, potrebuje Playwright).
-- Vloge zaposlenih na delu: voznik, spremljevalec, študent, dijak. NN ekipa (2 reševalca) je samodejno voznik + spremljevalec. Leže prevoz vedno potrebuje voznika + spremljevalca in vozilo z nosili; če nobena posadka nima obeh, aplikacija sama združi dva zaposlena v eno posadko.
