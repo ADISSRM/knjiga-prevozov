@@ -134,10 +134,14 @@ function loadAddr(){
   ADDR.list = raw.map(r => ({ t:r[0], n:norm(r[0]), lat:r[1], lon:r[2] }));
   ADDR.map = new Map(ADDR.list.map(a => [a.n, a]));
 }
-const SET_IDX = SETTLEMENTS.map(s => ({ ...s, nn:norm(s.n), re:new RegExp('(^|[^a-z0-9])' + norm(s.n).replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(?![a-z0-9])') }))
+/* Kraji, ki jih dispečer piše krajše ali drugače, kot je uradno ime: Stara vas = Stara vas - Bizeljsko (edina v občini), Zakot je del Brežic */
+const SET_ALIAS = [['Stara vas', 'Stara vas - Bizeljsko'], ['Zakot', 'Brežice'], ['Orešje', 'Orešje na Bizeljskem'], ['Gornje Skopice', 'Gorenje Skopice'], ['Gornja Pirošica', 'Gorenja Pirošica']];
+const SET_IDX = [...SETTLEMENTS, ...SET_ALIAS.map(([a, t]) => { const s = SETTLEMENTS.find(x => x.n === t); return s ? { ...s, alias:a } : null; }).filter(Boolean)]
+                           .map(s => { const nm = s.alias || s.n; return { ...s, nn:norm(nm), re:new RegExp('(^|[^a-z0-9])' + norm(nm).replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(?![a-z0-9])') }; })
                            .sort((a,b) => b.nn.length - a.nn.length);
 const TOWN_IDX = TOWNS.map(s => ({ ...s, nn:norm(s.n), re:new RegExp('(^|[^a-z0-9])' + norm(s.n).replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(?![a-z0-9])') }))
                       .sort((a,b) => b.nn.length - a.nn.length);
+const BR_STREET_IDX = BREZICE_STREETS.map(x => norm(x).replace(/ (ulica|cesta|drevored)$/, '')).filter(x => x.length >= 5);
 const BASE_POINT = { lat:BASE_POI.lat, lon:BASE_POI.lon };
 function settlementPoint(s){ const o = S.coordOv[s.n]; return o ? { lat:o[0], lon:o[1] } : { lat:s.lat, lon:s.lon }; }
 
@@ -169,6 +173,7 @@ function placeIndex(){
   clinics.forEach(c => {
     const names = [sepNorm(c.short), ...c.al.map(sepNorm)];
     c.parentAl.forEach(pa => names.filter(Boolean).forEach(cn => match.push({ s:sepNorm(pa) + ' ' + cn, poi:c })));
+    if (/ljubljana/.test(norm(c.parent))) names.filter(cn => cn && cn.length >= 5).forEach(cn => { match.push({ s:cn + ' lj', poi:c }); match.push({ s:cn + ' ljubljana', poi:c }); });   // »Ginekolog LJ«, »ORL Ljubljana« brez imena bolnišnice
     const b = sepNorm(c.short); if (b.length >= 10 && seen.get(b) === 1) match.push({ s:b, poi:c });
   });
   all.push(...clinics);
@@ -180,6 +185,13 @@ const poiPoint = p => ({ kind:p.noCoord ? 'neznano' : 'poi', poi:p, key:'poi:' +
 const poiExtra = g => (g && g.poi) ? (g.poi.extra != null ? g.poi.extra : (S.settings.extraDef ?? 5)) : 0;
 const poiStay = g => (g && g.poi && g.poi.stay != null) ? g.poi.stay : (S.settings.stayDef ?? 45);
 
+/* »Dializa KK« in splošno »dializa« pomenita dializni center, ki je v Nastavitve → Dializa (privzeto Dializni center Krško – »Dializa KK« v knjigi). */
+function diaCenterFor(p){
+  if (!p || !p.dia) return p;
+  const want = S && S.settings && S.settings.diaPlace;
+  if (!want || want === p.n) return p;
+  return POIS.find(x => x.n === want) || placeIndex().customs.find(x => x.n === want) || p;
+}
 function geo(text){
   const t = norm(text);
   if (!t) return { kind:'prazno', key:'', lat:BASE_POINT.lat, lon:BASE_POINT.lon, label:'' };
@@ -191,15 +203,22 @@ function geo(text){
     if (hit) return poiPoint(hit.poi);
     for (const p of pi.customs){ const nn = [sepNorm(p.n), ...p.al.map(sepNorm)]; if (nn.some(a => a && (tn === a || tn.startsWith(a + ' ')))) return poiPoint(p); }
   }
-  // 1b) ustanove
+  // 1b) ustanove (tudi dispečerski žargon: »O.I. LJ«, »UKC LJ.«, »SBB«, »ZD KK«; pike in vezaji se ob primerjavi spremenijo v presledke)
+  const tj = sepNorm(text);
   for (const p of POIS){
     const names = [norm(p.n), ...p.al];
-    if (names.some(a => t === a || t.startsWith(a + ' ') || t.startsWith(a + ',') || (a.length > 7 && t.includes(a))))
-      return { kind:'poi', poi:p, key:'poi:'+p.n, lat:p.lat, lon:p.lon, label:p.n };
+    if (names.some(a => t === a || t.startsWith(a + ' ') || t.startsWith(a + ',') || (a.length > 7 && t.includes(a))) ||
+        [...names.map(sepNorm), ...(p.ex || [])].some(a => a && (tj === a || (!(p.ex || []).includes(a) && (tj.startsWith(a + ' ') || (a.length > 7 && tj.includes(a))))))){
+      const q = diaCenterFor(p);
+      return { kind:q.noCoord ? 'neznano' : 'poi', poi:q, key:'poi:'+q.n, lat:q.lat, lon:q.lon, label:q.n };
+    }
   }
   // 2) uvoženi naslovi (natančni)
   const ex = ADDR.map.get(t) || ADDR.map.get(t.replace(/,\s*/g, ' ').replace(/\s+/g,' '));
   if (ex) return { kind:'addr', key:'a:'+ex.n, lat:ex.lat, lon:ex.lon, label:ex.t, naselje:'' };
+  // 2b) ulica v Brežicah brez imena kraja (»Cankarjeva 5«, »Levstikova 12«): središče Brežic, ne »neznan naslov«
+  { const hs = BR_STREET_IDX.find(x => t === x || t.startsWith(x + ' ') || t.startsWith(x + ',')); const sb = hs && SET_IDX.find(x => x.nn === 'brezice');
+    if (sb){ const pt = settlementPoint(sb); return { kind:'naselje', key:'n:' + sb.n, lat:pt.lat, lon:pt.lon, label:sb.n, naselje:sb.n }; } }
   // 3) naselje: zadnja omemba v besedilu, najdaljše ime
   let best = null;
   for (const s of SET_IDX){

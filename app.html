@@ -217,14 +217,65 @@ details.warnbox summary{cursor:pointer;font-weight:600}
 .eta{display:inline-flex;gap:4px;align-items:center;font:500 12px var(--font-mono);color:var(--ink-2)}
 .eta.bad{color:var(--bad)} .eta.ok{color:var(--ok)} .eta.warn{color:var(--warn)}
 .rmap{border:1px solid var(--line);border-radius:12px;background:var(--surface-2);padding:6px;margin:4px 0 2px}
-.rmap svg{display:block;width:100%;height:auto;max-height:340px}
-.rmap .rl{fill:none;stroke:var(--info);stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round}
-.rmap .rl.est{stroke:var(--ink-3);stroke-dasharray:6 5}
-.rmap .rp{fill:var(--surface);stroke:var(--accent);stroke-width:2}
-.rmap .rp.do{fill:var(--accent)}
-.rmap .rp.base{fill:var(--ink);stroke:var(--ink)}
-.rmap text{font:600 11px var(--font-mono);fill:var(--ink);paint-order:stroke;stroke:var(--surface-2);stroke-width:3px}
-.rmap .rleg{font-size:12px;color:var(--ink-2);margin:4px 4px 0}
+.rmap .rleg{font-size:12px;color:var(--ink-2);margin:6px 4px 2px}
+/* interaktivni zemljevid (56-map.js) */
+.imap{position:relative;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:#e8ecef}
+.imap-vp{position:relative;height:clamp(280px,52vh,440px);overflow:hidden;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;outline-offset:-3px;
+  background:linear-gradient(var(--line) 1px,transparent 1px) 0 0/48px 48px,linear-gradient(90deg,var(--line) 1px,transparent 1px) 0 0/48px 48px,var(--surface-2)}
+.imap-vp.grab{cursor:grabbing}
+.imap-tiles,.imap-pins{position:absolute;inset:0;overflow:hidden}
+.imap-tiles{z-index:0}
+.imap-pins{pointer-events:none;z-index:2}
+.imap-t{position:absolute;left:0;top:0;max-width:none;opacity:0;transition:opacity .15s;pointer-events:none;-webkit-user-drag:none}
+.imap-t.ok{opacity:1}
+.imap-svg{position:absolute;left:0;top:0;pointer-events:none;overflow:visible;z-index:1}
+.imap-casing{fill:none;stroke:#fff;stroke-width:8.5;stroke-linecap:round;stroke-linejoin:round;opacity:.92}
+.imap-line{fill:none;stroke-width:4.6;stroke-linecap:round;stroke-linejoin:round}
+.imap-line.est{stroke:#5b6572;stroke-dasharray:7 6}
+.imap-arrow{fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.imap-pin{position:absolute;left:0;top:0;pointer-events:auto;min-width:26px;height:26px;margin:-13px 0 0 -13px;padding:0 6px;border-radius:13px;border:2.5px solid var(--pc,var(--accent));background:#fff;color:#14202e;font:700 12px/1 var(--font-mono);display:flex;align-items:center;justify-content:center;box-shadow:0 1px 5px rgba(0,0,0,.4);cursor:pointer;will-change:transform}
+.imap-pin.do{background:var(--pc,var(--accent));color:#fff}
+.imap-pin.base{border-radius:6px;background:#0d1a2c;border-color:#fff;color:#fff;min-width:24px;height:24px;margin:-12px 0 0 -12px;padding:0}
+.imap-pin.base::after{content:'+';font-size:16px;font-weight:700}
+.imap-pin.mixed{box-shadow:0 0 0 3px #0d1a2c,0 1px 5px rgba(0,0,0,.4)}
+.imap-pin.sel{outline:3px solid rgba(37,99,235,.7);outline-offset:1px;z-index:2}
+.imap-pin:focus-visible,.imap-ctl button:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+.imap-ctl{position:absolute;right:8px;top:8px;z-index:5;display:flex;flex-direction:column;gap:6px}
+.imap-ctl button{width:36px;height:36px;border-radius:9px;border:1px solid var(--line-2,var(--line));background:var(--surface);color:var(--ink);display:grid;place-items:center;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.25);padding:0}
+.imap-ctl button[aria-pressed="false"]{color:var(--ink-3)}
+.imap-ctl button:hover{background:var(--surface-2)}
+.imap-pop{position:absolute;z-index:6;width:max-content;max-width:min(290px,calc(100% - 12px));max-height:calc(100% - 12px);overflow:auto;background:var(--surface);color:var(--ink);border:1px solid var(--line-2,var(--line));border-radius:11px;padding:9px 34px 9px 11px;font-size:13px;line-height:1.35;box-shadow:0 6px 20px rgba(0,0,0,.35);cursor:auto}
+.imap-pop[hidden],.imap-note[hidden]{display:none}
+.imap-pi + .imap-pi{border-top:1px solid var(--line);margin-top:7px;padding-top:7px}
+.imap-pi b{font-weight:650}
+.imap-pi .mp-t{font:600 12px var(--font-mono);color:var(--ink-2)}
+.imap-pi .mp-p{color:var(--ink-2)}
+.imap-x{position:absolute;right:3px;top:3px;width:28px;height:28px;border:0;background:transparent;color:var(--ink-2);border-radius:8px;display:grid;place-items:center;cursor:pointer;padding:0}
+.imap-scale{position:absolute;left:8px;bottom:24px;z-index:4;border:2px solid #333;border-top:0;font:600 10.5px var(--font-mono);color:#222;background:rgba(255,255,255,.7);padding:0 4px;height:12px;line-height:10px;white-space:nowrap}
+.imap-note{position:absolute;left:8px;top:8px;right:56px;z-index:4;background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:6px 10px;font-size:12.5px}
+.imap-attr{position:absolute;left:0;bottom:0;z-index:4;font-size:10.5px;line-height:1.5;background:rgba(255,255,255,.82);color:#333;padding:0 6px;border-top-right-radius:6px}
+.imap-attr a{color:inherit}
+.imap.imap-tall .imap-vp{height:clamp(340px,64vh,580px)}
+.imap.imap-full{position:fixed;inset:0;z-index:1000;border-radius:0;border:0}
+.imap.imap-full .imap-vp{height:100%}
+html.imap-lock,html.imap-lock body{overflow:hidden}
+.daymap-legend{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 8px}
+.daymap-legend .chip.toggle{display:inline-flex;align-items:center;gap:6px}
+.daymap-legend .sw{width:12px;height:12px;border-radius:3px;flex:none}
+.daymap-legend .chip.toggle[aria-pressed="false"]{opacity:.5;text-decoration:line-through}
+li.stop.mapfocus{cursor:pointer}
+li.stop.mapfocus:hover{background:var(--surface-2)}
+.quick{display:flex;gap:8px;margin:2px 0 4px}
+.quick input{flex:1 1 auto;min-width:0;font-size:15px}
+.quickprev{min-height:20px;margin:0 2px 8px;line-height:1.45}
+.notechips{display:flex;flex-wrap:wrap;gap:6px;flex-direction:row}
+.menulbl{font-size:11.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;margin:8px 4px 2px}
+.copylist{display:flex;flex-direction:column;gap:2px;max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px}
+.copyrow{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px;cursor:pointer}
+.copyrow:hover{background:var(--surface-2)}
+.copyrow .cn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.copyrow .nr{flex:none}
+@media (max-width:760px){.imap-vp{height:clamp(260px,46vh,380px)}.imap-ctl button{width:40px;height:40px}}
 
 /* ---------- Suggestions ---------- */
 #suggest{position:fixed;z-index:50;background:var(--surface);border:1px solid var(--line-2);border-radius:11px;box-shadow:0 12px 32px rgba(13,26,44,.22);padding:4px;max-height:300px;overflow:auto;min-width:240px}
@@ -253,7 +304,15 @@ td.nums{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 .numchips{display:flex;gap:4px;flex-wrap:wrap}
 .numchips .chip{font-family:var(--font-mono)}
 .crewcard{padding:0;overflow:hidden}
-.crewcard>header{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:13px 16px;background:var(--surface-2);border-bottom:1px solid var(--line)}
+.crewcard>summary{cursor:pointer;list-style:none;position:relative;padding-right:42px!important}
+.crewcard>summary::-webkit-details-marker{display:none}
+.crewcard>summary::after{content:"";position:absolute;right:18px;top:50%;width:8px;height:8px;border-right:2px solid var(--ink-3);border-bottom:2px solid var(--ink-3);transform:translateY(-70%) rotate(45deg);transition:transform .15s}
+.crewcard[open]>summary::after{transform:translateY(-30%) rotate(-135deg)}
+.crewcard[open]>summary{border-bottom:1px solid var(--line)}
+.crewcard:not([open])>summary{border-bottom:0!important}
+.crewhead{display:flex;align-items:center;gap:8px;margin:4px 2px 0}.crewhead h3{margin:0;font-size:15px;color:var(--ink-2)}
+.stats.compact{gap:6px}.stats.compact .stat{display:flex;align-items:baseline;gap:7px;min-width:0;padding:5px 12px;border-radius:999px}.stats.compact .stat b{display:inline;font-size:16px}.stats.compact .stat span{font-size:12px;white-space:nowrap}
+.crewcard>summary{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:13px 16px;background:var(--surface-2);border-bottom:1px solid var(--line)}
 .crewcard h3{font-size:18px}
 .crewcard .meta{display:flex;gap:6px;flex-wrap:wrap}
 .trip{padding:12px 16px;border-top:1px solid var(--line)}
@@ -453,6 +512,7 @@ a.btn{text-decoration:none}
 @media print{
   @page{size:A4 landscape;margin:10mm}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  html,body{background:#fff!important}
   body>*:not(#printArea){display:none!important}
   #printArea{display:block!important;background:#fff;color:#000;font:11px/1.35 system-ui,sans-serif}
   #printArea h2{margin:0 0 2px;font-size:18px} #printArea h3{margin:12px 0 4px;font-size:13px;text-transform:capitalize}
@@ -461,6 +521,26 @@ a.btn{text-decoration:none}
   #printArea th{background:#e8e8e8}
   #printArea tr.p-cancel td{background:#fde2e2;color:#b00020}
   #printArea .p-note{margin:4px 0 0}
+}
+/* Tisk knjige dneva (A4 pokonci, obrazec OBR REŠ 08) */
+@page dayform{size:A4 portrait;margin:9mm}
+@media print{
+  #printArea.pday{page:dayform;font:11px/1.3 system-ui,sans-serif}
+  .pd-page{break-after:page;display:block}
+  .pd-page:last-child{break-after:auto}
+  .pd-head{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px}
+  .pd-logos{display:flex;gap:8px;align-items:center;min-height:34px} .pd-logos img{max-height:34px;width:auto} .pd-logos i{display:none}
+  .pd-title{display:flex;flex-direction:column;text-align:center} .pd-title b{font-size:15px;letter-spacing:.04em} .pd-title span{font-size:11px}
+  .pd-date{text-align:right;line-height:1.5} .pd-date b{font-size:13px} .pd-pg{font-size:10px;color:#444}
+  .pd-veh{margin:0 0 6px;font-size:12px}
+  .pd-tab{width:100%;border-collapse:collapse;table-layout:fixed}
+  .pd-tab th,.pd-tab td{border:1px solid #000;padding:3px 4px;vertical-align:top;word-break:break-word;height:19px;color:#000;background:#fff}
+  .pd-tab th{background:#e6e6e6;font-size:10px;text-transform:uppercase}
+  .pd-tab .pd-nr{width:9.5mm;padding-left:1px;padding-right:1px;text-align:center;font-weight:700;white-space:nowrap} .pd-tab .pd-t{width:15mm;text-align:center;font-family:ui-monospace,Menlo,monospace} .pd-tab .pd-v{width:14mm;text-align:center}
+  .pd-tab tr.pd-empty td{height:30px}
+  .pd-tab tr.p-cancel td{color:#c00000;text-decoration:line-through} .pd-tab tr.p-cancel td b{text-decoration:none}
+  .pd-crew td{height:34px;font-size:12px} .pd-pos{margin-top:12px} .pd-pos ul{margin:4px 0 0 16px;padding:0} .pd-lines{height:90px;background:repeating-linear-gradient(transparent 0 21px,#999 21px 22px)}
+  .pd-sign{display:flex;justify-content:space-between;margin-top:22px;font-size:12px} .pd-fine{font-size:9.5px;color:#444;margin:8px 0 0} .pd-warn{color:#c00000;font-weight:700;margin:8px 0 0}
 }
 </style>
 
@@ -653,24 +733,37 @@ const SETTLEMENT_RAW =
 'Piršenbreg|45.92|15.57;Pišece|46.00|15.46;Podgorje|45.94|15.51;Podgračeno|45.99|15.51;Podvinje|45.95|15.66;Ponikve|45.98|15.64;Poštena vas|45.88|15.67;Prilipe|45.90|15.69;Račja vas|45.88|15.60;Rajec|45.99|15.47;'+
 'Rakovec|45.88|15.68;Ribnica|45.95|15.71;Rigonce|45.97|15.58;Sela|45.90|15.63;Silovec|45.98|15.67;Slogonsko|45.90|15.47;Slovenska vas|45.87|15.69;Sobenja vas|45.99|15.68;Spodnja Pohanca|45.91|15.55;Sromlje|45.97|15.52;'+
 'Stankovo|45.99|15.69;Stara vas - Bizeljsko|46.00|15.72;Stojanski vrh|45.98|15.70;Trebež|45.88|15.64;Velika Dolina|45.89|15.53;Velike Malence|45.90|15.55;Veliki Obrež|45.91|15.63;Vinji vrh|45.96|15.57;Vitna vas|45.94|15.61;Volčje|45.96|15.55;'+
-'Vrhje|45.94|15.55;Vrhovska vas|45.98|15.53;Zasap|45.91|15.66;Zgornja Pohanca|45.92|15.54;Zgornji Obrež|45.92|15.64;Žejno|45.87|15.65;Župeča vas|45.92|15.69;Župelevec|45.87|15.56';
+'Vrhje|45.94|15.55;Vrhovska vas|45.98|15.53;Zasap|45.91|15.66;Zgornja Pohanca|45.92|15.54;Zgornji Obrež|45.92|15.64;Žejno|45.87|15.65;Župeča vas|45.92|15.69;Dolenja vas|45.93|15.50;Župelevec|45.87|15.56';
 
 const SETTLEMENTS = SETTLEMENT_RAW.split(';').map(s => { const p = s.split('|'); return { n: p[0], lat: +p[1], lon: +p[2] }; });
 
 /* Delni seznam ulic v mestu Brežice. Dopolni z uvozom CSV ali pa se naslovi naučijo sami. */
-const BREZICE_STREETS = ['Cesta prvih borcev','Trg izgnancev','Cesta bratov Milavcev','Černelčeva cesta','Cesta svobode','Bizeljska cesta','Prešernova ulica','Aškerčeva ulica','Levstikova ulica','Gubčeva ulica'];
+const BREZICE_STREETS = ['Cesta prvih borcev','Trg izgnancev','Cesta bratov Milavcev','Černelčeva cesta','Cesta svobode','Bizeljska cesta','Prešernova ulica','Aškerčeva ulica','Levstikova ulica','Gubčeva ulica','Maistrova ulica','Šolska ulica','Cankarjeva ulica','Dalmatinova ulica','Ulica stare pravde','Kettejev drevored','Pod gradom'];
 
 /* Ustanove (cilji prevozov). Koordinate približne. */
+const DIA_DEFAULT = 'Dializni center Krško';   // privzeti dializni center (Nastavitve → Dializa ga lahko spremeni)
 const POIS = [
-  { n:'SB Brežice', al:['sb brezice','bolnisnica brezice','splosna bolnisnica brezice','sb brez'], lat:45.903, lon:15.590, sub:'Splošna bolnišnica Brežice', home:true, extra:3, gq:'Splošna bolnišnica Brežice, Brežice' },
-  { n:'SB Brežice – dializa', al:['dializa','dializni center','sb brezice dializa'], lat:45.903, lon:15.590, sub:'Dializni center', home:true, extra:3, gq:'Splošna bolnišnica Brežice, Brežice' },
-  { n:'ZD Brežice', al:['zd brezice','zdravstveni dom brezice','rp brezice','resevalna postaja'], lat:45.905, lon:15.589, sub:'Zdravstveni dom Brežice', home:true, extra:2, gq:'Zdravstveni dom Brežice, Brežice' },
-  { n:'ZD Krško', al:['zd krsko','zdravstveni dom krsko'], lat:45.959, lon:15.492, sub:'Zdravstveni dom Krško', extra:2, gq:'Zdravstveni dom Krško, Krško' },
-  { n:'SB Novo mesto', al:['sb novo mesto','bolnisnica novo mesto','sb nm'], lat:45.803, lon:15.170, sub:'Splošna bolnišnica Novo mesto', extra:5, gq:'Splošna bolnišnica Novo mesto, Novo mesto' },
+  { n:'SB Brežice – dializa', al:['sb brezice dializa','dializa sb brezice','dializa sbb'],dia:true, lat:45.903, lon:15.590, sub:'Dializni center', home:true, extra:3, gq:'Splošna bolnišnica Brežice, Brežice' },
+  { n:'SB Brežice', al:['sb brezice','bolnisnica brezice','splosna bolnisnica brezice','sb brez','sbb','sb b','nbo','interni oddelek','int ii','int i','int 1','int 2','s b b','kt','ct','itp'], lat:45.903, lon:15.590, sub:'Splošna bolnišnica Brežice', home:true, extra:3, gq:'Splošna bolnišnica Brežice, Brežice' },
+  /* »Dializa KK« v knjigi = dializni center v Krškem (Nefrodial; KK je krška registrska oznaka). Koordinate približne – preveri. */
+  { n:'Dializni center Krško', al:['dializa','dializni center','dializa kk','kk dializa','dializa k k','nefrodial','nefrodial kk','nefrodial krsko','dializa krsko','dializni center krsko'],dia:true, lat:45.9585, lon:15.4905, sub:'Dializni center Krško (Nefrodial)', extra:3, gq:'Nefrodial dializni center Krško' },
+  { n:'ZD Brežice', al:['zd brezice','zdravstveni dom brezice','rp brezice','resevalna postaja','zd b'],ex:['zd'], lat:45.905, lon:15.589, sub:'Zdravstveni dom Brežice', home:true, extra:2, gq:'Zdravstveni dom Brežice, Brežice' },
+  { n:'ZD Krško', al:['zd krsko','zdravstveni dom krsko','zd kk','zdkk'], lat:45.959, lon:15.492, sub:'Zdravstveni dom Krško', extra:2, gq:'Zdravstveni dom Krško, Krško' },
+  { n:'SB Novo mesto', al:['sb novo mesto','bolnisnica novo mesto','sb nm','sbnm'], lat:45.803, lon:15.170, sub:'Splošna bolnišnica Novo mesto', extra:5, gq:'Splošna bolnišnica Novo mesto, Novo mesto' },
   { n:'SB Celje', al:['sb celje','bolnisnica celje'], lat:46.237, lon:15.265, sub:'Splošna bolnišnica Celje', extra:5, gq:'Splošna bolnišnica Celje, Celje' },
-  { n:'UKC Ljubljana', al:['ukc ljubljana','ukc lj','ukcl','klinicni center','kc ljubljana'], lat:46.054, lon:14.525, sub:'Univerzitetni klinični center', extra:10, gq:'UKC Ljubljana, Zaloška cesta 2, Ljubljana' },
-  { n:'Onkološki inštitut Ljubljana', al:['onkoloski institut','oi ljubljana','onkologija'], lat:46.064, lon:14.521, sub:'Zaloška cesta, Ljubljana', extra:5, gq:'Onkološki inštitut Ljubljana, Zaloška cesta 2, Ljubljana' },
+  { n:'UKC Ljubljana', al:['ukc ljubljana','ukc lj','ukcl','ukc l','klinicni center','kc ljubljana','kc lj','poliklinika','poliklinika lj','polikl lj'], lat:46.054, lon:14.525, sub:'Univerzitetni klinični center', extra:10, gq:'UKC Ljubljana, Zaloška cesta 2, Ljubljana' },
+  { n:'Onkološki inštitut Ljubljana', al:['onkoloski institut','oi ljubljana','oi lj','oil','onkologija','onkolosko','onkoloski','lj onkolosko','lj onkologija','o i lj'], lat:46.064, lon:14.521, sub:'Zaloška cesta, Ljubljana', extra:5, gq:'Onkološki inštitut Ljubljana, Zaloška cesta 2, Ljubljana' },
+  { n:'Stomatološka klinika Ljubljana', al:['stomatoloska klinika','stomatoloska klinika lj','stomatoloska lj','stomatoloska','stomatologija lj','zobna klinika lj'], lat:46.0517, lon:14.5129, sub:'Hrvatski trg, Ljubljana (preveri)', extra:5, gq:'Stomatološka klinika, Hrvatski trg 6, Ljubljana' },
   { n:'URI Soča Ljubljana', al:['uri soca','soca','rehabilitacija'], lat:46.062, lon:14.513, sub:'Linhartova, Ljubljana', extra:5, gq:'URI Soča, Linhartova cesta 51, Ljubljana' },
+  { n:'IMI Ljubljana', al:['imi lj','imi','imi ljubljana','institut za mikrobiologijo','mikrobiologija ljubljana'], lat:46.0537, lon:14.5230, sub:'Inštitut za mikrobiologijo in imunologijo, Zaloška cesta 4, Ljubljana (preveri)', extra:3, gq:'Inštitut za mikrobiologijo in imunologijo, Zaloška cesta 4, Ljubljana' },
+  { n:'SB Trbovlje', al:['sb trbovlje','bolnisnica trbovlje','splosna bolnisnica trbovlje','sb trb'], lat:46.155, lon:15.054, sub:'Splošna bolnišnica Trbovlje (preveri)', extra:5, gq:'Splošna bolnišnica Trbovlje, Trbovlje' },
+  { n:'ZD Sevnica', al:['zd sevnica','zdravstveni dom sevnica'], lat:46.009, lon:15.302, sub:'Zdravstveni dom Sevnica (preveri)', extra:2, gq:'Zdravstveni dom Sevnica, Sevnica' },
+  { n:'Spar Brežice (Carlos)', al:['carlos','spar','carlos spar','carlos caffe','carlos kavarna','spar brezice'], lat:45.9025, lon:15.5925, sub:'Prevzemna točka pri trgovini Spar (preveri)', home:true, extra:0, gq:'Spar Brežice, Brežice' },
+  { n:'DSO Loka', al:['dso loka','loka','trubarjev dom','dom upokojencev loka','dso loka pri zidanem mostu'], lat:46.083, lon:15.277, sub:'Trubarjev dom upokojencev, Loka pri Zidanem Mostu (preveri)', extra:3, gq:'Trubarjev dom upokojencev Loka pri Zidanem Mostu' },
+  { n:'Šmarješke Toplice', al:['smarjeske toplice','smarjeske','zdravilisce smarjeske toplice','toplice smarjeske'], lat:45.866, lon:15.222, sub:'Zdravilišče Šmarješke Toplice (preveri)', extra:5, gq:'Zdravilišče Šmarješke Toplice' },
+  { n:'Zdravilišče Laško', al:['zdravilisce lasko','terme lasko','lasko zdravilisce'], lat:46.153, lon:15.234, sub:'Zdravilišče Laško (preveri)', extra:5, gq:'Zdravilišče Laško, Zdraviliška cesta 4, Laško' },
+  { n:'Terme Čatež', al:['terme catez','catez terme','hotel catez','zdravilisce catez'], lat:45.891, lon:15.619, sub:'Terme Čatež (preveri)', extra:3, gq:'Terme Čatež, Topliška cesta 35, Čatež ob Savi' },
+  { n:'DSO Brežice', al:['dso','dom starejsih obcanov','dom starejsih','dom upokojencev brezice'], lat:45.9045, lon:15.5895, sub:'Dom starejših občanov Brežice (preveri naslov)', home:true, extra:2, gq:'Dom starejših občanov Brežice, Brežice' },
   { n:'UKC Maribor', al:['ukc maribor','kc maribor'], lat:46.560, lon:15.635, sub:'Univerzitetni klinični center Maribor', extra:10, gq:'UKC Maribor, Ljubljanska ulica 5, Maribor' },
   { n:'Klinika Golnik', al:['golnik','bolnisnica golnik'], lat:46.349, lon:14.338, sub:'Univerzitetna klinika Golnik', extra:5, gq:'Univerzitetna klinika Golnik, Golnik 36, Golnik' },
   { n:'KBC Zagreb', al:['zagreb','kbc zagreb'], lat:45.820, lon:15.990, sub:'Hrvaška', extra:10, gq:'KBC Zagreb, Kišpatićeva 12, Zagreb, Hrvaška' }
@@ -686,14 +779,16 @@ const CLINIC_SEED = [
   { p:'UKC Ljubljana', n:'Travmatološka klinika', al:['travmatologija','travma'], addr:'Zaloška cesta 7, Ljubljana', stay:60 },
   { p:'UKC Ljubljana', n:'Nevrološka klinika', al:['nevrologija','nevroloska'], addr:'Zaloška cesta 2, Ljubljana', stay:60 },
   { p:'UKC Ljubljana', n:'ORL klinika', al:['orl','otorinolaringologija'], addr:'Zaloška cesta 2, Ljubljana', stay:45 },
-  { p:'UKC Ljubljana', n:'Dermatovenerološka klinika', al:['dermatologija','derma'], addr:'Gradišče 4, Ljubljana', stay:45 },
+  { p:'UKC Ljubljana', n:'Dermatovenerološka klinika', al:['dermatologija','derma','dermatoloska','dermatoloska klinika','dermatolog'], addr:'Gradišče 4, Ljubljana', stay:45 },
   { p:'UKC Ljubljana', n:'Pediatrična klinika', al:['pediatrija','pediatricna'], addr:'Bohoričeva ulica 20, Ljubljana', stay:60 },
-  { p:'UKC Ljubljana', n:'Ginekološka klinika', al:['ginekologija','ginekoloska'], addr:'Šlajmerjeva ulica 3, Ljubljana', stay:60 },
+  { p:'UKC Ljubljana', n:'Ginekološka klinika', al:['ginekologija','ginekoloska','ginekolog'], addr:'Šlajmerjeva ulica 3, Ljubljana', stay:60 },
   { p:'UKC Ljubljana', n:'Klinika za infekcijske bolezni', al:['infekcijska','infekcije'], addr:'Japljeva ulica 2, Ljubljana', stay:60 },
   { p:'UKC Ljubljana', n:'Urgentni center', al:['uc','urgenca'], addr:'Zaloška cesta 2, Ljubljana', stay:0 },
+  { p:'SB Brežice', n:'Kirurška ambulanta', al:['krg amb','krg','kirurska amb','kirurgija','kirurska ambulanta','kir amb'], addr:'', stay:30 },
+  { p:'SB Brežice', n:'Interni oddelek', al:['int','int ii','int i','interna'], addr:'', stay:0 },
   { p:'SB Celje', n:'Očesni oddelek', al:['oci','ocesna'], addr:'', stay:45 },
   { p:'SB Celje', n:'Kardiološka ambulanta', al:['kardiologija','kardio'], addr:'', stay:60 },
-  { p:'SB Novo mesto', n:'Očesna ambulanta', al:['oci','ocesna'], addr:'', stay:45 },
+  { p:'SB Novo mesto', n:'Očesna ambulanta', al:['oci','ocesna','okulist','okulistika','ocesni'], addr:'', stay:45 },
   { p:'SB Novo mesto', n:'Kardiološka ambulanta', al:['kardiologija','kardio'], addr:'', stay:60 },
   { p:'UKC Maribor', n:'Kardiološka ambulanta', al:['kardiologija','kardio'], addr:'', stay:60 },
   { p:'UKC Maribor', n:'Očesna klinika', al:['oci','ocesna'], addr:'', stay:45 }
@@ -719,7 +814,8 @@ const diaTermOf = v => (v === 'dop' || v === 'pop') ? v : (v === 'D2' || v === '
 const DOW_LONG = ['nedelja','ponedeljek','torek','sreda','četrtek','petek','sobota'];
 const DOW_SHORT = ['ned','pon','tor','sre','čet','pet','sob'];
 const MONTHS = ['januar','februar','marec','april','maj','junij','julij','avgust','september','oktober','november','december'];
-const MODES = { sede:'Sede', leze:'Leže', utila:'Utila' };
+const MODES = { sede:'Sede', leze:'Leže', utila:'Utila', vzorci:'Vzorci' };   // vzorci = pošiljka brez pacienta (npr. vzorci za IMI Ljubljana): ne zasede sedeža
+const PMODES = { sede:'Sede', leze:'Leže', utila:'Utila' };       // načini prevoza pacienta (pacienti, nalogi)
 const VEH_VRSTE = { osebno:'Osebno vozilo', resevalni:'Reševalni kombi', transportni:'Transportni kombi' };
 const VEH_FN = { vse:'Vsi prevozi', dializa:'Primarno dializa (drugo po potrebi)' };
 
@@ -757,7 +853,7 @@ function defaultState(){
   return {
     v:2,
     settings:{
-      speed:45, speedHw:85, lim:{ naselje:50, izven:90, hitra:110, avtocesta:130 }, eff:85, road:1.3, pickMin:4, dropMin:3, buffer:15, window:60, detour:25, maxRide:120,
+      speed:45, speedHw:85, lim:{ naselje:50, izven:90, hitra:110, avtocesta:130 }, eff:85, road:1.3, pickMin:4, dropMin:3, buffer:15, window:90, windowFar:180, farMin:40, detour:25, maxRide:120, nnMaxKm:60,
       shift:'06:00', idleMin:30, slots:35, waitTol:10,
       routing:{ on:true, factor:1 },   // cestni podatki (OSRM); faktor = množitelj trajanja vožnje (1 = podatki OSRM)
       optimize:true, destMin:12, maxDests:3, waitMax:90,   // optimizacija razporeda, »sorodni cilji« (največ min med cilji), največ ciljev v eni vožnji, opozorilo za čakanje
@@ -928,10 +1024,14 @@ function loadAddr(){
   ADDR.list = raw.map(r => ({ t:r[0], n:norm(r[0]), lat:r[1], lon:r[2] }));
   ADDR.map = new Map(ADDR.list.map(a => [a.n, a]));
 }
-const SET_IDX = SETTLEMENTS.map(s => ({ ...s, nn:norm(s.n), re:new RegExp('(^|[^a-z0-9])' + norm(s.n).replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(?![a-z0-9])') }))
+/* Kraji, ki jih dispečer piše krajše ali drugače, kot je uradno ime: Stara vas = Stara vas - Bizeljsko (edina v občini), Zakot je del Brežic */
+const SET_ALIAS = [['Stara vas', 'Stara vas - Bizeljsko'], ['Zakot', 'Brežice'], ['Orešje', 'Orešje na Bizeljskem'], ['Gornje Skopice', 'Gorenje Skopice'], ['Gornja Pirošica', 'Gorenja Pirošica']];
+const SET_IDX = [...SETTLEMENTS, ...SET_ALIAS.map(([a, t]) => { const s = SETTLEMENTS.find(x => x.n === t); return s ? { ...s, alias:a } : null; }).filter(Boolean)]
+                           .map(s => { const nm = s.alias || s.n; return { ...s, nn:norm(nm), re:new RegExp('(^|[^a-z0-9])' + norm(nm).replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(?![a-z0-9])') }; })
                            .sort((a,b) => b.nn.length - a.nn.length);
 const TOWN_IDX = TOWNS.map(s => ({ ...s, nn:norm(s.n), re:new RegExp('(^|[^a-z0-9])' + norm(s.n).replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(?![a-z0-9])') }))
                       .sort((a,b) => b.nn.length - a.nn.length);
+const BR_STREET_IDX = BREZICE_STREETS.map(x => norm(x).replace(/ (ulica|cesta|drevored)$/, '')).filter(x => x.length >= 5);
 const BASE_POINT = { lat:BASE_POI.lat, lon:BASE_POI.lon };
 function settlementPoint(s){ const o = S.coordOv[s.n]; return o ? { lat:o[0], lon:o[1] } : { lat:s.lat, lon:s.lon }; }
 
@@ -963,6 +1063,7 @@ function placeIndex(){
   clinics.forEach(c => {
     const names = [sepNorm(c.short), ...c.al.map(sepNorm)];
     c.parentAl.forEach(pa => names.filter(Boolean).forEach(cn => match.push({ s:sepNorm(pa) + ' ' + cn, poi:c })));
+    if (/ljubljana/.test(norm(c.parent))) names.filter(cn => cn && cn.length >= 5).forEach(cn => { match.push({ s:cn + ' lj', poi:c }); match.push({ s:cn + ' ljubljana', poi:c }); });   // »Ginekolog LJ«, »ORL Ljubljana« brez imena bolnišnice
     const b = sepNorm(c.short); if (b.length >= 10 && seen.get(b) === 1) match.push({ s:b, poi:c });
   });
   all.push(...clinics);
@@ -974,6 +1075,13 @@ const poiPoint = p => ({ kind:p.noCoord ? 'neznano' : 'poi', poi:p, key:'poi:' +
 const poiExtra = g => (g && g.poi) ? (g.poi.extra != null ? g.poi.extra : (S.settings.extraDef ?? 5)) : 0;
 const poiStay = g => (g && g.poi && g.poi.stay != null) ? g.poi.stay : (S.settings.stayDef ?? 45);
 
+/* »Dializa KK« in splošno »dializa« pomenita dializni center, ki je v Nastavitve → Dializa (privzeto Dializni center Krško – »Dializa KK« v knjigi). */
+function diaCenterFor(p){
+  if (!p || !p.dia) return p;
+  const want = S && S.settings && S.settings.diaPlace;
+  if (!want || want === p.n) return p;
+  return POIS.find(x => x.n === want) || placeIndex().customs.find(x => x.n === want) || p;
+}
 function geo(text){
   const t = norm(text);
   if (!t) return { kind:'prazno', key:'', lat:BASE_POINT.lat, lon:BASE_POINT.lon, label:'' };
@@ -985,15 +1093,22 @@ function geo(text){
     if (hit) return poiPoint(hit.poi);
     for (const p of pi.customs){ const nn = [sepNorm(p.n), ...p.al.map(sepNorm)]; if (nn.some(a => a && (tn === a || tn.startsWith(a + ' ')))) return poiPoint(p); }
   }
-  // 1b) ustanove
+  // 1b) ustanove (tudi dispečerski žargon: »O.I. LJ«, »UKC LJ.«, »SBB«, »ZD KK«; pike in vezaji se ob primerjavi spremenijo v presledke)
+  const tj = sepNorm(text);
   for (const p of POIS){
     const names = [norm(p.n), ...p.al];
-    if (names.some(a => t === a || t.startsWith(a + ' ') || t.startsWith(a + ',') || (a.length > 7 && t.includes(a))))
-      return { kind:'poi', poi:p, key:'poi:'+p.n, lat:p.lat, lon:p.lon, label:p.n };
+    if (names.some(a => t === a || t.startsWith(a + ' ') || t.startsWith(a + ',') || (a.length > 7 && t.includes(a))) ||
+        [...names.map(sepNorm), ...(p.ex || [])].some(a => a && (tj === a || (!(p.ex || []).includes(a) && (tj.startsWith(a + ' ') || (a.length > 7 && tj.includes(a))))))){
+      const q = diaCenterFor(p);
+      return { kind:q.noCoord ? 'neznano' : 'poi', poi:q, key:'poi:'+q.n, lat:q.lat, lon:q.lon, label:q.n };
+    }
   }
   // 2) uvoženi naslovi (natančni)
   const ex = ADDR.map.get(t) || ADDR.map.get(t.replace(/,\s*/g, ' ').replace(/\s+/g,' '));
   if (ex) return { kind:'addr', key:'a:'+ex.n, lat:ex.lat, lon:ex.lon, label:ex.t, naselje:'' };
+  // 2b) ulica v Brežicah brez imena kraja (»Cankarjeva 5«, »Levstikova 12«): središče Brežic, ne »neznan naslov«
+  { const hs = BR_STREET_IDX.find(x => t === x || t.startsWith(x + ' ') || t.startsWith(x + ',')); const sb = hs && SET_IDX.find(x => x.nn === 'brezice');
+    if (sb){ const pt = settlementPoint(sb); return { kind:'naselje', key:'n:' + sb.n, lat:pt.lat, lon:pt.lon, label:sb.n, naselje:sb.n }; } }
   // 3) naselje: zadnja omemba v besedilu, najdaljše ime
   let best = null;
   for (const s of SET_IDX){
@@ -1229,8 +1344,16 @@ function normalizeState(){
     if (d.D2 && d.D2.start) T.pop = { start:d.D2.start, end:d.D2.end };
     delete S.settings.dia;
   }
+  if (S.settings.nnMaxKm == null) S.settings.nnMaxKm = 60;
+  if (!S.settings.v3){ if (S.settings.window === 60) S.settings.window = 90; S.settings.v3 = 1; }   // dispečer v praksi združuje ure v ~90 min oknu
   S.settings.google = Object.assign({ on:true, auto:true, traffic:false }, S.settings.google || {});
   S.places = Array.isArray(S.places) ? S.places : defaultState().places;
+  if (S.settings.windowFar == null) S.settings.windowFar = 180;   // oddaljeni cilji: skupna vožnja kljub večjemu razponu ur (glej Nastavitve → Izračun)
+  if (S.settings.farMin == null) S.settings.farMin = 40;
+  if (!S.settings.v4){   // enkratno: kratice, ki jih dispečer uporablja v praksi (npr. »ginekolog«), dodaj tudi v že shranjene klinike
+    CLINIC_SEED.forEach(c => { const p = S.places.find(x => x.parent === c.p && x.n === c.n); if (p){ p.al = Array.isArray(p.al) ? p.al : []; (c.al || []).forEach(a => { if (!p.al.includes(a)) p.al.push(a); }); } });
+    S.settings.v4 = 1;
+  }
   if (S.diaPatients && S.diaPatients.length){
     S.diaPatients.forEach(dp => { if (!S.patients.some(p => norm(p.name) === norm(dp.name))) S.patients.push(migratePatient(blankPatient({ name:dp.name, addr:dp.from, phone:dp.phone, mode:dp.mode, dia:dp.group, demo:dp.demo }))); });
     S.diaPatients = [];
@@ -1886,7 +2009,7 @@ const rideKk = r => norm(r.from) + '>' + norm(r.to);
 /* Točka vožnje: ustanova/klinika ali naselje. Če je Google za ta naslov že vrnil natančne koordinate (r.gf / r.gt, glej 39-google.js) in se besedilo
    od takrat ni spremenilo, se uporabijo te: hišni naslov je točka (ne središče naselja). Takšne točke se nikoli ne shranijo v trajni predpomnilnik poti. */
 function ridePt(r, side){
-  const g = geo(r[side] || ''), ll = side === 'from' ? r.gf : r.gt;
+  const g = geo(r[side] || (r.mode === 'vzorci' && side === 'from' ? 'ZD Brežice' : '')), ll = side === 'from' ? r.gf : r.gt;
   if (!ll || g.kind === 'prazno' || !r.kk || r.kk !== rideKk(r) || !isFinite(ll[0]) || !isFinite(ll[1])) return g;
   if (g.kind === 'poi' && g.poi.fixed) return g;
   if (g.kind === 'poi') return { ...g, lat:ll[0], lon:ll[1], exact:true };
@@ -1914,8 +2037,8 @@ function loadDialysis(date){
     const nl = activeNalog(p, date);
     const base = { name:p.name, phone:p.phone, mode:p.mode, dia:dt.t, demo:!!p.demo, patientId:p.id, nalogId:nl ? nl.id : '' };
     const k1 = p.id + ':tja', k2 = p.id + ':nazaj';
-    if (!a.some(r => r.diaKey === k1)) place({ ...base, time:g.start, from:p.addr, to:'SB Brežice – dializa', diaKey:k1 });
-    if (!a.some(r => r.diaKey === k2)) place({ ...base, time:g.end, from:'SB Brežice – dializa', to:p.addr, diaKey:k2 });
+    if (!a.some(r => r.diaKey === k1)) place({ ...base, time:g.start, from:p.addr, to:DIA_DEFAULT, diaKey:k1 });
+    if (!a.some(r => r.diaKey === k2)) place({ ...base, time:g.end, from:DIA_DEFAULT, to:p.addr, diaKey:k2 });
   }
   if (added) save();
   return added;
@@ -1939,7 +2062,7 @@ const capText = v => {
   return `${v.sede} sede · ${v.leze} leže · ${v.utila} utila · skupaj ${v.skupaj}` + (bent ? ` (izjemoma do ${m.skupaj})` : '');
 };
 const fits = (counts, v, lvl = 0) => { const c = capOf(v, lvl); return counts.sede <= c.sede && counts.leze <= c.leze && counts.utila <= c.utila && (counts.sede + counts.leze + counts.utila) <= c.skupaj; };
-const countModes = rides => { const c = { sede:0, leze:0, utila:0 }; rides.forEach(r => { c[r.mode] = (c[r.mode] || 0) + 1; }); return c; };
+const countModes = rides => { const c = { sede:0, leze:0, utila:0, vzorci:0 }; rides.forEach(r => { c[r.mode] = (c[r.mode] || 0) + 1; }); return c; };
 
 /* ---------- Parjenje: kateri zaposleni vozi katero vozilo ---------- */
 const isHelperRole = r => r === 'student' || r === 'dijak';
@@ -2186,11 +2309,12 @@ function bestExact(kind, rides, anchor, cfg, leg){
    Ročna izjema na prevozu (kljukica "Izjema") ali pripeto vozilo vedno dovoljujeta prilagoditev za ta prevoz. */
 const dayMode = date => (S.dayRules[date] && S.dayRules[date].mode) || S.rules.mode || 'samodejno';
 const cfgFor = lvl => lvl ? { ...S.settings, ...S.rules.bend } : S.settings;
+const EARLY_TOL = 60;   // do toliko minut pred preiskavo čakanje na cilju ni kaznovano
 const planProblem = p => p.unassigned.length > 0 || p.totals.late > 0;
 const planScore = p => p.unassigned.length * 1000 + p.totals.late * 50 + p.bends.length * 3 + p.totals.km * 0.05;
 /* Cilj optimizacije (manj je bolje): nerazporejeno ≫ zamude ≫ konflikti ≫ prilagoditve, nato nadure, čakanje, kilometri in čas voženj */
 const planObjective = p => p.unassigned.length * 1000 + p.totals.late * 300 + p.totals.lateMin * 1 + p.conflicts.filter(c => c.pen).length * 200 + p.bends.length * 3
-  + p.totals.overtime * 0.3 + p.totals.wait * 0.1 + p.totals.km * 0.1 + p.totals.min * 0.03 + p.totals.waste * 0.3 + p.totals.stretcherUse * 2;
+  + p.totals.overtime * 0.3 + p.totals.wait * 0.1 + p.totals.km * 0.1 + p.totals.min * 0.03 + p.totals.waste * 0.3 + p.totals.stretcherUse * 2 + (p.totals.early || 0) * (S.settings.earlyW ?? 0.08);
 /* Prevozi, ki so že v teku pri posadki: razpored jih ne prestavlja na drugo vozilo */
 const LIVE_LOCK = ['sprejeta', 'na_poti', 'na_kraju', 'v_vozilu', 'na_cilju'];
 const mulberry = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
@@ -2213,6 +2337,8 @@ function variantList(date){
   v.push({ id:'polnjenje vrzeli + sorodni cilji + primerna vozila', gaps:true, cluster:true, fit:0.6 });
   for (let k = 1; k <= 6; k++) v.push({ id:'iskanje ' + k, gaps:true, cluster:true, fit:0.3, jit:40, seed:seedOf(date, k) });
   for (let k = 7; k <= 9; k++) v.push({ id:'iskanje ' + k, jit:40, seed:seedOf(date, k) });
+  /* Enake različice še z »oddaljenimi cilji«: ure preiskav v isti vožnji se smejo razlikovati do Nastavitve → windowFar (Ljubljana, Novo mesto). Izbira po cilju (km, čakanje pacientov na cilju). */
+  if (+S.settings.windowFar > S.settings.window) v.slice(0, 9).forEach(o => v.push({ ...o, id:o.id + ' + skupne vožnje', far:true }));
   return v;
 }
 function bestPlan(date, level){
@@ -2250,7 +2376,7 @@ function computePlan(date){
 function planLevel(date, level, opts = {}){
   const cfgS = S.settings, cfgB = cfgFor(1), leg = makeLeg(cfgS);
   const rng = opts.seed ? mulberry(opts.seed) : null;
-  const plan = { date, level, opts, crews:[], unassigned:[], warnings:[], bends:[], conflicts:[], assign:{}, totals:{ rides:0, km:0, min:0, late:0, lateMin:0, wait:0, overtime:0, vehicles:0, estLegs:0, waitLegs:0, realLegs:0, waste:0, stretcherUse:0, stayWait:0 }, pairing:null, standby:isStandby(date), pending:[] };
+  const plan = { date, level, opts, crews:[], unassigned:[], warnings:[], bends:[], conflicts:[], assign:{}, totals:{ rides:0, km:0, min:0, late:0, lateMin:0, wait:0, overtime:0, vehicles:0, estLegs:0, waitLegs:0, realLegs:0, waste:0, stretcherUse:0, stayWait:0, early:0 }, pairing:null, standby:isStandby(date), pending:[] };
 
   // 1) vožnje, ki jih je treba opraviti
   const rides = [];
@@ -2258,7 +2384,9 @@ function planLevel(date, level, opts = {}){
     if (!isFilled(r) || r.done || r.odpovedano || r.status === 'preklicana') return;
     const f = ridePt(r, 'from'), t = ridePt(r, 'to'), kind0 = rideDir(r);
     const lock = LIVE_LOCK.includes(r.status) && r.runKey && r.runKey.startsWith(date + '_') ? r.runKey.slice(date.length + 1) : '';
-    rides.push({ id:r.id, nr:i+1, name:(r.name || '').trim() || '(brez imena)', mode:r.mode || 'sede', phone:r.phone || '', time:toMin(r.time), timeTxt:r.time || '',
+    /* Dializni prevoz brez ure (v knjigi »Dop« / »Pop«): ura je začetek (tja) oziroma konec (nazaj) termina iz Nastavitve → Dializa */
+    const dT = r.dia && !toMin(r.time) ? (S.settings.diaT || {})[diaTermOf(r.dia)] : null, dTime = dT ? (kind0 === 'from' ? dT.end : dT.start) : '';
+    rides.push({ id:r.id, nr:i+1, name:(r.name || '').trim() || '(brez imena)', mode:r.mode || 'sede', phone:r.phone || '', time:toMin(r.time) ?? toMin(dTime), timeTxt:r.time || dTime || '',
       from:f, to:t, fromTxt:r.from || '', toTxt:r.to || '', kind:kind0, pin:r.pin || lock, locked:!r.pin && !!lock, exc:!!r.exc, force:!!(r.exc || r.pin), pid:r.patientId || '', dia:r.dia ? diaTermOf(r.dia) : '',
       stay:kind0 === 'to' ? Math.max(0, +r.stay || 0) : 0, extra:kind0 === 'to' ? poiExtra(t) : 0 });
     if (f.kind === 'prazno' || t.kind === 'prazno') plan.warnings.push({ level:'warn', nr:i+1, text:`Prevoz ${i+1}: manjka naslov (${f.kind === 'prazno' ? 'od' : 'do'}). Razdalja je ocenjena iz centra Brežic.` });
@@ -2288,6 +2416,10 @@ function planLevel(date, level, opts = {}){
   const destMin = cfgS.destMin ?? 12, maxDests = cfgS.maxDests ?? 3;
   const okPt = p => p.kind !== 'neznano' && p.kind !== 'prazno';
   const similar = (a, b) => a.key === b.key || (opts.cluster && okPt(a) && okPt(b) && leg(a, b).min <= destMin && leg(b, a).min <= destMin);
+  /* Oddaljeni cilji (Ljubljana, Novo mesto): ena skupna vožnja je smiselna tudi, če se ure preiskav razlikujejo do »windowFar« min (pacienti počakajo na cilju); dispečer to v praksi stalno počne */
+  const base0 = BASE_POINT_G(), farMin = cfgS.farMin ?? 40;
+  const isFar = p => okPt(p) && leg(base0, p).min >= farMin;
+  const winOf = (cf, t) => (opts.far && +cfgS.windowFar > cf.window && t.pts.some(isFar)) ? +cfgS.windowFar : cf.window;
   for (const r of [...timed, ...untimed]){
     const anchor = anchorOf(r);
     const stages = (level === 1 || r.force) ? [0, 1] : [0];
@@ -2301,7 +2433,7 @@ function planLevel(date, level, opts = {}){
           if (!opts.cluster || t.pts.length >= maxDests || !t.pts.every(p => similar(p, anchor))) continue;
         }
         const ref = refOf(t);
-        if (ref != null && r.time != null && Math.abs(ref - r.time) > cf.window) continue;
+        if (ref != null && r.time != null && Math.abs(ref - r.time) > winOf(cf, t)) continue;
         if (anchor.kind === 'neznano' && !t.pts.some(p => p.key === anchor.key)) continue;
         if (!capable(countModes([...t.rides, r]), st)) continue;
         const ev = bestInsert(r.kind, t.ev.order, r, t.anchor, cf, leg);
@@ -2313,12 +2445,12 @@ function planLevel(date, level, opts = {}){
       if (best){ bestStage = st; break; }
     }
     if (best){ best.t.rides.push(r); best.t.ev = best.ev; if (!best.t.pts.some(p => p.key === anchor.key)) best.t.pts.push(anchor); if (bestStage || r.force) best.t.lvl = 1; }
-    else trips.push({ id:uid(), kind:r.kind, anchor, pts:[anchor], rides:[r], ev:evalTrip(r.kind, [r], anchor, cfgS, leg), pin:r.pin, lvl:r.force ? 1 : 0 });
+    else trips.push({ id:uid(), kind:r.kind, anchor, pts:[anchor], rides:[r], ev:evalTrip(r.kind, [r], anchor, cfgS, leg), pin:r.pin, lvl:r.force ? 1 : 0, far:isFar(anchor) });
   }
   trips.forEach(t => { t.ev = bestExact(t.kind, t.ev.order, t.anchor, t.lvl ? cfgB : cfgS, leg); });
 
   // 4) ključni časi vožnje
-  const qkey = t => (opts.order === 'dur' ? -t.ev.dur : (t.need ?? 1e6)) + (rng ? (rng() - 0.5) * opts.jit : 0) + (opts.gaps && t.rides.some(r => r.dia) ? -1e5 : 0);   // dializni prevozi imajo fiksne ure: najprej njih
+  const qkey = t => (opts.order === 'dur' ? -t.ev.dur : (t.need ?? 1e6)) + (rng ? (rng() - 0.5) * opts.jit : 0) + (t.rides.some(r => r.dia) ? -1e5 : 0);   // dializni prevozi imajo fiksne ure: najprej njih
   const prep = t => {
     t.ref = refOf(t);
     t.counts = countModes(t.rides);
@@ -2352,6 +2484,7 @@ function planLevel(date, level, opts = {}){
     }
     return out;
   };
+  const nnLimit = +S.settings.nnMaxKm || 0;
   let guard = 0;
   while (queue.length && guard++ < 800){
     const t = queue.shift();
@@ -2363,6 +2496,7 @@ function planLevel(date, level, opts = {}){
     }
     const stages = (level === 1 || t.force || t.lvl) ? [0, 1] : [0];
     const isDia = t.rides.some(r => r.dia);
+    const farKm = nnLimit > 0 ? Math.max(0, ...t.ev.visit.map(p => leg(baseG, p).km), ...t.ev.order.map(r => leg(baseG, r.from).km)) : 0;
     let best = null, capOk = false, shiftBlocked = false, lezNoTeam = false, shiftNeed = null, shiftCrew = null;
     for (const st of stages){
       for (const c of pool){
@@ -2393,6 +2527,7 @@ function planLevel(date, level, opts = {}){
             else cost += c.trips.some(x => x.dia) ? (sl.next && sl.next.dia ? 12 : 0) : 6;   // po koncu dializnih voženj je posadka prosta za sede prevoze; med njimi le, če je vrzel dovolj velika
           }
           if (t.sbReturn){ if (c.team === 'NN') cost -= 20; else if (hasNN) cost += 15; }
+          if (c.team === 'NN' && nnLimit > 0 && farKm > nnLimit) cost += 200;   // NN ekipa ostane v regiji: dolge vožnje (Ljubljana ...) samo kot skrajna možnost
           if (opts.fit){   // primerno vozilo: ne zasedaj večjega vozila, kot je treba, in ne vozila z nosili, če jih ta dan potrebuje leže pacient
             const cap = capOf(c.vehicle, st), n = t.counts.sede + t.counts.leze + t.counts.utila;
             cost += opts.fit * Math.max(0, cap.skupaj - n);
@@ -2417,7 +2552,7 @@ function planLevel(date, level, opts = {}){
       continue;
     }
     const { c, d, start, late, sl } = best;
-    const trip = { id:t.id, kind:t.kind, rides:t.ev.order, ev:t.ev, anchor:t.anchor, dests:t.ev.visit, start, depart:start - d.min, deadKm:d.km, from:sl.pos, first:t.first, last:t.last, dia:isDia, late:Math.round(late), counts:t.counts, ref:t.ref, sbReturn:t.sbReturn, pin:t.pin,
+    const trip = { id:t.id, kind:t.kind, far:!!t.far, rides:t.ev.order, ev:t.ev, anchor:t.anchor, dests:t.ev.visit, start, depart:start - d.min, deadKm:d.km, from:sl.pos, first:t.first, last:t.last, dia:isDia, late:Math.round(late), counts:t.counts, ref:t.ref, sbReturn:t.sbReturn, pin:t.pin,
       wait: t.kind === 'from' && t.rdy != null ? Math.max(0, Math.round(best.arrive - t.rdy)) : 0, stage:best.st, forced:t.force,
       latestDepart: best.latest != null ? best.latest - d.min : null, shiftLimited: t.kind === 'to' && best.latest != null && c.trips.length === 0 && late > 0 };
     trip.end = tripEnd(t.ev, start);
@@ -2472,6 +2607,7 @@ function planLevel(date, level, opts = {}){
       }
       if (t.ev.ret && t.waitMin > 0) plan.warnings.push({ level:'info', text:`${c.vehicle.name}: prevoz ${t.rides.map(r => r.nr).join(', ')} počaka na pregled približno ${fmtDur(t.waitMin)} (do ${fmtT(t.retStart)}), nato pacienta odpelje nazaj.` });
       plan.totals.stayWait += t.waitMin || 0;
+      if (t.kind === 'to') t.rides.forEach(r => { const s = t.info[r.id].slack; if (s != null && s > EARLY_TOL) plan.totals.early += s - EARLY_TOL; });   // pacient je na cilju precej pred uro preiskave
       plan.totals.late += t.late > 0 ? t.rides.length : 0;
       plan.totals.lateMin += t.late > 0 ? t.late * t.rides.length : 0;
       plan.totals.wait += t.wait || 0;
@@ -2499,7 +2635,8 @@ function planLevel(date, level, opts = {}){
       const over = t.rides.filter(r => (t.ev.rideMin[r.id] || 0) > cfgS.maxRide);
       if (over.length) plan.bends.push({ k:'voznja', text:`${c.vehicle.name}: pot v vozilu je daljša od običajnih ${cfgS.maxRide} min (prevoz ${over.map(r => r.nr).join(', ')}).` });
       const ts = t.rides.map(r => r.time).filter(x => x != null);
-      if (ts.length > 1 && Math.max(...ts) - Math.min(...ts) > cfgS.window) plan.bends.push({ k:'okno', text:`${c.vehicle.name}: ure pacientov se razlikujejo za več kot običajnih ${cfgS.window} min (prevozi ${nrs}).` });
+      const wLim = t.far && +cfgS.windowFar > cfgS.window ? +cfgS.windowFar : cfgS.window;
+      if (ts.length > 1 && Math.max(...ts) - Math.min(...ts) > wLim) plan.bends.push({ k:'okno', text:`${c.vehicle.name}: ure pacientov se razlikujejo za več kot običajnih ${wLim} min (prevozi ${nrs}).` });
       if (t.kind === 'to' && t.slack != null && t.slack >= 0 && t.slack < cfgS.buffer) plan.bends.push({ k:'rezerva', text:`${c.vehicle.name}: rezerva pred preiskavo je ${t.slack} min (običajno ${cfgS.buffer} min). Prevozi ${nrs}.` });
     }
     if (c.overtime > 0) plan.bends.push({ k:'nadure', text:`${c.driver.name}: nadure približno ${c.overtime} min (izmena se običajno konča ob ${fmtT(c.end)}).` });
@@ -2554,8 +2691,8 @@ function analyzeConflicts(plan, cfgS){
   // 4) pacient bi na cilju dolgo čakal
   const wm = cfgS.waitMax ?? 90;
   for (const c of plan.crews) for (const t of c.trips) if (t.kind === 'to') t.rides.forEach(r => {
-    const sl = t.info[r.id].slack;
-    if (sl != null && sl > wm) add('warn', 'cakanje', `Prevoz ${r.nr} (${r.name}): pacient bo na cilju približno ${sl} min pred uro preiskave. Razmisli o drugem vrstnem redu ali vozilu.`, [r.nr]);
+    const sl = t.info[r.id].slack, wmT = t.far ? Math.max(wm, +cfgS.windowFar || 0) : wm;   // pri oddaljenih ciljih je dolgo čakanje cena skupne vožnje
+    if (sl != null && sl > wmT) add('warn', 'cakanje', `Prevoz ${r.nr} (${r.name}): pacient bo na cilju približno ${sl} min pred uro preiskave. Razmisli o drugem vrstnem redu ali vozilu.`, [r.nr]);
   });
   // 5) cestni podatki: ocenjene relacije in naslovi daleč od ceste
   const rs = ROUTE.info();
@@ -2886,7 +3023,7 @@ function logPatientOpen(id){ const t = Date.now(); if (lastOpened[id] && t - las
 /* =====================================================================
    ZASLONI
    ===================================================================== */
-const UI = { view:'knjiga', month:null, date:null, dDate:null, lDate:null, cDate:null, filter:'vsi', q:'', setTab:'vozila', bookRev:'', pid:'', nid:'', pf:'vsi', pq:'', modal:null, stale:false, selfTest:null, maps:{}, routeBusy:'', sect:{}, openRide:'', kmRep:false, gTest:null, kmTried:{} };
+const UI = { copy:null, view:'knjiga', month:null, date:null, dDate:null, lDate:null, cDate:null, filter:'vsi', q:'', setTab:'vozila', bookRev:'', pid:'', nid:'', pf:'vsi', pq:'', modal:null, stale:false, selfTest:null, maps:{}, routeBusy:'', sect:{}, openRide:'', kmRep:false, gTest:null, kmTried:{} };
 const IC = {
   book:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 5.5v16M9 8h6M9 12h6"/></svg>',
   day:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
@@ -3084,6 +3221,7 @@ function boxHTML(date, r, nr, plan){
       <div class="field full kmrow" data-role="km">${kmBoxHTML(r)}</div>
       <div class="field"><label for="p-${r.id}">Telefon</label><input id="p-${r.id}" type="tel" data-f="phone" value="${esc(r.phone)}" autocomplete="off"></div>
       <div class="field"><label for="x-${r.id}" title="npr. voziček, kisik, spremljevalec">Opomba</label><input id="x-${r.id}" type="text" data-f="note" value="${esc(r.note || '')}" autocomplete="off"></div>
+      <div class="field full notechips" role="group" aria-label="Hitre opombe">${NOTE_CHIPS.map(c => `<button type="button" class="chip toggle" data-act="noteChip" data-t="${esc(c)}" aria-pressed="${noteHas(r.note, c)}">${esc(c)}</button>`).join('')}</div>
     </div>
     ${pinfoHTML(date, r)}
     ${r.status && r.status !== 'nova' && r.times && Object.keys(r.times).length ? `<div class="row" style="gap:4px">${timesChips(r)}</div>` : ''}
@@ -3094,7 +3232,11 @@ function boxHTML(date, r, nr, plan){
       <details class="menu"><summary class="btn sm ghost">Več</summary><div class="menupop">
         <label class="check" title="Prevoz je odpovedan: označen je rdeče in ni v razporedu"><input type="checkbox" data-f="odpovedano" ${r.odpovedano ? 'checked' : ''}> Odpovedano</label>
         <label class="check" title="Dovoli, da se za ta prevoz pravila prilagodijo (npr. več pacientov v vozilu, daljša pot)"><input type="checkbox" data-f="exc" ${r.exc ? 'checked' : ''}> Izjema pravil</label>
-        ${filled ? `<button type="button" class="btn sm" data-act="rideView">${IC.eye} Predogled za kopiranje</button>` : ''}
+        ${filled ? `<button type="button" class="btn sm" data-act="rideView">${IC.eye} Predogled za kopiranje</button>
+        <div class="menulbl">Ponovi prevoz (npr. obsevanje)</div>
+        <button type="button" class="btn sm" data-act="repeatRide" data-how="next">Naslednji delovni dan</button>
+        <button type="button" class="btn sm" data-act="repeatRide" data-how="week">Do konca tedna (pon–pet)</button>
+        <button type="button" class="btn sm" data-act="repeatRide" data-how="five">Naslednjih 5 delovnih dni</button>` : ''}
         <button type="button" class="btn sm danger" data-act="clearRide" title="Počisti polje ${nr}">Počisti prevoz</button></div></details>
       <button type="button" class="btn sm" data-act="closeRide">Zapri</button>
     </div></div>`;
@@ -3105,6 +3247,21 @@ function refreshStaffList(date){
   $('#staffList').innerHTML = [...names].map(n => `<option value="${esc(n)}"></option>`).join('');
 }
 const kmSum = date => { let t = 0, all = true, any = false; filledRides(date).forEach(({ r }) => { if (r.odpovedano) return; const i = KM.info(r); if (i.total == null) return; any = true; t += i.total; if (!(i.exact && i.backExact)) all = false; }); return { t, all, any }; };
+const noteHas = (note, c) => String(note || '').split(/\s*;\s*/).some(x => norm(x) === norm(c));
+function quickFormHTML(date){
+  return `<form class="quick" data-form="quick" autocomplete="off"><input id="quickIn" type="text" autocomplete="off" spellcheck="false" placeholder="Hitri vnos: ime, od, do, ura  (npr. Novak Ivan, Dobova 25, OI LJ, 8:00)" aria-label="Hitri vnos prevoza"><button type="submit" class="btn primary">${IC.plus} Dodaj</button></form>
+    <div class="hint quickprev" id="quickPrev" aria-live="polite">${QUICK_HELP}</div>`;
+}
+function copyPanelHTML(date){
+  const c = UI.copy, src = c.src, list = filledRides(src).filter(x => !x.r.odpovedano), n = c.sel.size;
+  const loaded = typeof dayLoaded === 'function' ? dayLoaded(src) : true;
+  return `<section class="card card-pad stack copypanel" style="gap:10px"><div class="card-head" style="margin:0"><h3>Kopiraj prevoze z drugega dne na ${fmtShort(date)}</h3><button type="button" class="icon-btn" data-act="copyClose" aria-label="Zapri">${IC.x}</button></div>
+    <div class="row"><label for="copySrc" style="font-weight:600">Z dne</label><input type="date" id="copySrc" value="${src}" style="width:auto"><button type="button" class="btn sm" data-act="copyStep" data-d="-1">${IC.left}</button><button type="button" class="btn sm" data-act="copyStep" data-d="1">${IC.right}</button><span class="hint">${fmtShort(src)} · ${list.length} prevozov</span></div>
+    ${list.length ? `<div class="copylist">${list.map(({ r, nr }) => `<label class="copyrow"><input type="checkbox" data-copy="${r.id}" ${c.sel.has(r.id) ? 'checked' : ''}><span class="nr">${nr}</span><span class="cn"><b>${esc(r.name || '(brez imena)')}</b> <span class="mono dim">${esc(r.time)}</span><span class="hint"> ${esc(r.from)} → ${esc(r.to)}</span></span></label>`).join('')}</div>`
+      : `<div class="empty-state">${loaded ? 'Ta dan nima vpisanih prevozov.' : 'Ta dan še ni naložen iz baze. Počakaj trenutek ali izberi drug datum.'}</div>`}
+    <div class="row"><button type="button" class="btn sm" data-act="copyAll">Označi vse</button><button type="button" class="btn sm" data-act="copyNone">Odznači vse</button><span class="sp" style="flex:1"></span><button type="button" class="btn primary" data-act="copyDo" ${n ? '' : 'disabled'}>Kopiraj izbrane (${n})</button></div>
+    <p class="hint" style="margin:0">Kopirajo se ime, ura, naslova, način prevoza in opomba. Opravljeno, stanje in posadka se ne kopirajo. Prevozi, ki so tega dne že vpisani, se preskočijo.</p></section>`;
+}
 function renderDay(){
   const date = UI.date, today = todayStr(), a = ensureDay(date), plan = computePlan(date);
   refreshStaffList(date);
@@ -3126,12 +3283,15 @@ function renderDay(){
         <button type="button" class="btn primary" data-act="gotoDisp" data-date="${date}">${IC.route} Razpored</button>
         <details class="menu right"><summary class="btn" aria-label="Več možnosti">Več</summary><div class="menupop">
           ${terms.length ? `<button type="button" class="btn sm" data-act="loadDia">${IC.kidney.replace('<svg', '<svg width="14" height="14"')} Naloži dializne paciente</button>` : ''}
+          <button type="button" class="btn sm" data-act="copyOpen">Kopiraj prevoze z drugega dne …</button>
+          <button type="button" class="btn sm" data-act="printDay">Natisni knjigo dneva (OBR REŠ 08)</button>
           <button type="button" class="btn sm" data-act="kmDay" ${GOOGLE.enabled() ? '' : 'disabled title="Najprej vnesi ključ Google (Nastavitve → Izračun)"'}>Preračunaj kilometrino z Googlom</button></div></details>
       </div>
     </div>
     <div class="sumline" id="daySum"><span><b class="mono">${filled}</b> ${filled === 1 ? 'prevoz' : 'prevozov'}</span><span><b class="mono">${done}</b> opravljenih</span>${ks.any ? `<span title="${ks.all ? 'Vse razdalje so natančne (Google ali ročno)' : 'Del razdalj je ocena (~)'}"><b class="mono">${ks.all ? '' : '~'}${KM.fmtKm(ks.t)}</b> km</span>` : ''}${terms.map(t => `<span class="chip">${IC.kidney.replace('<svg', '<svg width="12" height="12"')} dializa ${t === 'dop' ? 'dopoldne' : 'popoldne'}</span>`).join('')}${warns.length ? `<details class="warnbox inline"><summary>${warns.length} opozoril</summary><ul class="warnlist">${warns.slice(0, 40).map(w => `<li>${esc(w.text)}</li>`).join('')}</ul></details>` : ''}</div>
     ${blocked.length ? `<div class="banner bad"><span>${IC.alert}</span><div>${blocked.map(v => `<b>${esc(v.name)}</b>: ${esc(vehBlocked(date, v.id).tip)}${vehBlocked(date, v.id).note ? ' (' + esc(vehBlocked(date, v.id).note) + ')' : ''}`).join(' · ')}. Vozilo ni v razporedu.</div></div>` : ''}
     ${S.dayNote[date] ? `<div class="banner warn"><span>${IC.info}</span><div><b>Opomba dneva:</b> ${esc(S.dayNote[date])}</div></div>` : ''}
+    ${quickFormHTML(date)}${UI.copy ? copyPanelHTML(date) : ''}
     ${tools ? `<div class="toolbar"><div class="seg inline" role="group" aria-label="Filter">${[['vsi', 'Vsi'], ['cakajo', 'Čakajo'], ['opravljeni', 'Opravljeni']].map(([k, l]) => `<button type="button" data-act="filter" data-k="${k}" aria-pressed="${UI.filter === k}">${l}</button>`).join('')}</div>
       <input type="search" id="rideSearch" placeholder="Išči po imenu ali naslovu" value="${esc(UI.q)}" aria-label="Išči"></div>` : ''}
     <div class="boxes" id="boxes">${list.map(({ r, nr }) => boxHTML(date, r, nr, plan)).join('')}${openEmpty ? boxHTML(date, openEmpty.r, openEmpty.nr, plan) : ''}</div>
@@ -3271,31 +3431,82 @@ function suggestHTML(plan){
     ${eff ? `<p class="hint" style="margin:0">${eff}</p>` : ''}
     ${sg.length ? `<ul class="sugg">${sg.map(x => `<li><span class="chip ${x.tone || ''}">${esc(SUG_LABEL[x.k] || 'predlog')}</span><span>${esc(x.text)}</span></li>`).join('')}</ul>` : ''}</section>`;
 }
-function tripMapHTML(c, t){
-  const st = UI.maps[tripKey(c, t)]; if (!st) return '';
-  const pts = tripWaypoints(t), g = ROUTE.pathCached(pts);
-  if (st === 'load' && !g) return '<div class="rmap"><div class="rleg">Nalaganje poti …</div></div>';
-  const stops = [t.from, ...t.stopsAbs.map(x => x.pt)].filter(p => p && isFinite(p.lat) && isFinite(p.lon));
-  const all = (g && g.coords.length ? g.coords : []).concat(stops.map(p => [p.lon, p.lat]));
-  if (all.length < 2) return '<div class="rmap"><div class="rleg">Za to vožnjo ni koordinat za prikaz.</div></div>';
-  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
-  all.forEach(([x, y]) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); });
-  const W = 640, H = 320, pad = 30, kx = Math.cos((y0 + y1) / 2 * Math.PI / 180);
-  const sc = Math.min((W - 2 * pad) / (((x1 - x0) * kx) || 1e-6), (H - 2 * pad) / ((y1 - y0) || 1e-6));
-  const ox = (W - (x1 - x0) * kx * sc) / 2, oy = (H - (y1 - y0) * sc) / 2;
-  const X = lon => (ox + (lon - x0) * kx * sc).toFixed(1), Y = lat => (H - oy - (lat - y0) * sc).toFixed(1);
-  const line = g && g.coords.length > 1 ? g.coords : stops.map(p => [p.lon, p.lat]);
-  const cl = [];   // postanki na isti točki (npr. več bolnišnic v istem mestu) se združijo v eno oznako s skupnimi številkami
-  stops.forEach((p, i) => {
-    const x = +X(p.lon), y = +Y(p.lat), s = i ? t.stopsAbs[i - 1] : null;
-    let c = cl.find(q => Math.hypot(q.x - x, q.y - y) < 11);
-    if (!c){ c = { x, y, nums:[], base:!i, drop:false }; cl.push(c); }
-    if (i) c.nums.push(i); if (s && s.type === 'do') c.drop = true;
+/* ---------- Zemljevid: pot vožnje in zemljevid dneva (interaktivni zemljevid, 56-map.js) ---------- */
+const MAP_COLORS = ['#1d4ed8', '#c2410c', '#15803d', '#7e22ce', '#be123c', '#0f766e', '#a16207', '#475569'];
+const crewColor = c => { const i = (typeof CREWS_PIN !== 'undefined' ? CREWS_PIN : []).findIndex(v => v.id === c.vehicle.id); return MAP_COLORS[(i < 0 ? 0 : i) % MAP_COLORS.length]; };
+const geoOk = p => p && isFinite(p.lat) && isFinite(p.lon);
+function stopPopHTML(t, s, i, tag){
+  const ppl = (s.people || []).filter(Boolean), pt = s.pt;
+  const personRow = (t.kind === 'to' && s.type === 'pu') || (t.kind === 'from' && s.type === 'do');
+  const label = pt.label || (s.type === 'do' && t.kind === 'to' ? (t.anchor.label || '') : ''), ap = t.ev && (t.ev.nEst || t.ev.nWait) ? '~' : '';
+  const addr = personRow && ppl[0] ? (ppl[0].kind === 'to' ? ppl[0].fromTxt : ppl[0].toTxt) || label : label;
+  const who = ppl.map(r => `${esc(r.name)} <span class="mp-t">št. ${r.nr}</span>${r.timeTxt ? ` · ura ${esc(r.timeTxt)}` : ''}`).join('<br>');
+  return `${tag || ''}<b>${i}. ${s.type === 'pu' ? 'Pobere' : 'Izstop'}</b> <span class="mp-t">${ap}${fmtT(s.t)}</span><div>${esc(addr || '')}</div>${who ? `<div class="mp-p">${who}</div>` : ''}`;
+}
+/* točke ene vožnje: postaja (ali prejšnji cilj) in postanki; pri zemljevidu dneva je oznaka številka prevoza, pri vožnji vrstni red postankov */
+function tripPins(c, t, color, idp, byRide){
+  const pins = [], tag = byRide ? `<span class="chip mono" style="margin-right:6px">${esc(c.vehicle.name)}</span>` : '';
+  if (geoOk(t.from)) pins.push({ id:idp + '0', lon:t.from.lon, lat:t.from.lat, kind:'base', label:'', name:'Štart', color, html:`${tag}<b>Štart</b> <span class="mp-t">${fmtT(t.depart)}</span><div>${esc(t.from.label || 'RP Brežice (ZD)')}</div>` });
+  t.stopsAbs.forEach((s, i) => {
+    if (!geoOk(s.pt)) return;
+    const ppl = (s.people || []).filter(Boolean);
+    pins.push({ id:idp + (i + 1), lon:s.pt.lon, lat:s.pt.lat, kind:s.type === 'do' ? 'do' : 'pu', label:byRide && ppl.length ? ppl.map(r => r.nr).join(',') : String(i + 1), name:ppl.map(r => r.name).join(', '), color, html:stopPopHTML(t, s, i + 1, tag) });
   });
-  const marks = cl.map(c => (c.base ? `<rect class="rp base" x="${c.x - 6}" y="${c.y - 6}" width="12" height="12" rx="2"/>` : '') + (c.nums.length ? `<circle class="rp ${c.drop ? 'do' : ''}" cx="${c.x}" cy="${c.y}" r="6.5"/><text x="${c.x + 9}" y="${c.y - 7}">${c.nums.join(',')}</text>` : '')).join('');
-  const legend = g ? `Pot po cestah: ${g.km.toFixed(1)} km, ${fmtDur(g.min)} (brez postankov).` : (st && String(st).startsWith('err') ? 'Cestna geometrija ni na voljo (' + esc(String(st).slice(4)) + '); črtkana črta je samo orientacija med točkami, ne razdalja.' : 'Cestna geometrija ni na voljo; črtkana črta je samo orientacija med točkami, ne razdalja.');
-  return `<div class="rmap"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pot vožnje: ${stops.length - 1} postankov"><polyline class="rl ${g ? '' : 'est'}" points="${line.map(([x, y]) => X(x) + ',' + Y(y)).join(' ')}"/>${marks}</svg>
-    <div class="rleg">${legend} Kvadrat = postaja ali prejšnji cilj, polni krog = izstop, številke = vrstni red postankov. Podatki cest: © prispevajoči OpenStreetMap.</div></div>`;
+  return pins;
+}
+function tripRoute(t, g, color){
+  const pts = [t.from, ...t.stopsAbs.map(x => x.pt)].filter(geoOk);
+  return { coords:g && g.coords.length > 1 ? g.coords : pts.map(p => [p.lon, p.lat]), color, est:!g };
+}
+const MAP_HOW = 'Povleci za premik, kolešček ali dva prsta za povečavo, klik na točko za podrobnosti.';
+function tripMapHTML(c, t){
+  const key = tripKey(c, t), st = UI.maps[key]; if (!st) return '';
+  const g = ROUTE.pathCached(tripWaypoints(t)), col = crewColor(c);
+  const pins = tripPins(c, t, col, 't', false);
+  if (pins.length < 2) return '<div class="rmap"><div class="rleg">Za to vožnjo ni koordinat za prikaz.</div></div>';
+  const legend = (g ? `Pot po cestah: ${g.km.toFixed(1)} km, ${fmtDur(g.min)} (brez postankov).` : st === 'load' ? 'Nalaganje cestne poti …' : (String(st).startsWith('err') ? 'Cestna geometrija ni na voljo (' + esc(String(st).slice(4)) + '); črtkana črta je samo orientacija med točkami, ne razdalja.' : 'Cestna geometrija ni na voljo; črtkana črta je samo orientacija med točkami, ne razdalja.'))
+    + ` ${MAP_HOW} Kvadrat = postaja ali prejšnji cilj, polni krog = izstop, številke = vrstni red postankov (klik na postanek v seznamu ga pokaže na zemljevidu).${MAP.tilesOn() ? '' : ' Podlaga zemljevida je izklopljena (Nastavitve → Izračun).'}`;
+  return MAP.html(key, { routes:[tripRoute(t, g, col)], pins }, { legend, label:'Zemljevid poti vožnje, ' + c.vehicle.name });
+}
+/* Zemljevid dneva: vse vožnje vseh vozil na enem zemljevidu; barva = vozilo */
+function dayMapSpec(date, plan){
+  const hide = UI.dayHide || (UI.dayHide = {}), routes = [], pins = []; let total = 0, have = 0, km = 0;
+  plan.crews.filter(c => c.trips.length && !hide[c.vehicle.id]).forEach(c => {
+    const col = crewColor(c);
+    c.trips.forEach((t, ti) => {
+      const g = ROUTE.pathCached(tripWaypoints(t)); total++; if (g){ have++; km += g.km; }
+      routes.push(tripRoute(t, g, col)); pins.push(...tripPins(c, t, col, c.vehicle.id + ':' + ti + ':', true));
+    });
+  });
+  return { spec:{ routes, pins }, total, have, km };
+}
+const dayMapLegend = (d, busy) => d.total ? `${d.have === d.total ? `Vse vožnje (${d.total}) po cestah` : busy ? `Nalagam poti po cestah: ${d.have}/${d.total} …` : `${d.have} od ${d.total} vožnj po cestah, ostalo je črtkano (orientacijsko)`}${d.have ? ` · skupaj ${d.km.toFixed(0)} km (brez vožnje do prvega postanka)` : ''}. ${MAP_HOW} Številke so št. prevozov v knjigi; krog = pobere, poln krog = izstop, kvadrat = postaja.` : 'Ni vožnj za prikaz.';
+function dayMapCard(date, plan){
+  const open = !!UI.sect.daymap, crews = plan.crews.filter(c => c.trips.length);
+  if (!crews.length) return '';
+  let body = '';
+  if (open){
+    const d = dayMapSpec(date, plan), hide = UI.dayHide || {};
+    body = `<div class="daymap-legend" role="group" aria-label="Vozila na zemljevidu">${crews.map(c => `<button type="button" class="chip toggle" data-act="dayMapCrew" data-veh="${esc(c.vehicle.id)}" aria-pressed="${!hide[c.vehicle.id]}"><span class="sw" style="background:${crewColor(c)}"></span>${esc(c.vehicle.name)} · ${esc(c.driver.name)}</button>`).join('')}</div>
+      ${MAP.html('day|' + date, d.spec, { legend:dayMapLegend(d, !!UI.dayBusy), label:'Zemljevid vseh voženj dneva', tall:true })}`;
+  }
+  return `<details class="card card-pad sect" data-sect="daymap" ${open ? 'open' : ''}><summary><h3>Zemljevid dneva</h3><span class="chip">${crews.length} ${crews.length === 1 ? 'vozilo' : 'vozil'} · ${crews.reduce((n, c) => n + c.trips.length, 0)} vožnj</span></summary>${body}</details>`;
+}
+let DAYMAP_TAG = '';
+/* poti po cestah za zemljevid dneva se naložijo po eno in sproti osvežijo zemljevid (brez ponovnega izrisa strani) */
+async function loadDayPaths(date){
+  if (!ROUTE.enabled()) return;
+  const plan = computePlan(date), tag = date + '#' + rev + '#' + ROUTE.version;
+  if (DAYMAP_TAG === tag) return; DAYMAP_TAG = tag;
+  const todo = []; plan.crews.forEach(c => c.trips.forEach(t => { const wp = tripWaypoints(t); if (!ROUTE.pathCached(wp)) todo.push(wp); }));
+  if (!todo.length) return;
+  UI.dayBusy = true;
+  const upd = () => { if (UI.view !== 'dispecer' || UI.dDate !== date || !UI.sect.daymap) return false; const d = dayMapSpec(date, plan); MAP.update('day|' + date, d.spec); const lg = document.querySelector('.imap[data-map="day|' + date + '"]'); const rl = lg && lg.parentElement.querySelector('.rleg'); if (rl) rl.innerHTML = dayMapLegend(d, UI.dayBusy); return true; };
+  for (const wp of todo){
+    try { await ROUTE.path(wp); } catch(e){}
+    if (!upd()){ DAYMAP_TAG = ''; break; }
+  }
+  UI.dayBusy = false; upd();
 }
 function stopRow(c, t, s, L, prev){
   const ppl = (s.people || []).filter(Boolean);
@@ -3333,7 +3544,8 @@ function stopRow(c, t, s, L, prev){
     const who = ppl.map(r => `${esc(r.name)} <span class="chip mono">št. ${r.nr}</span>${t.kind === 'to' && s.type === 'do' && r.timeTxt ? ` <span class="eta">preiskava ${esc(r.timeTxt)}</span> ${etaOf(r)}` : (t.kind === 'from' && s.type === 'pu' && r.timeTxt ? ` <span class="eta">ura ${esc(r.timeTxt)}</span> ${etaOf(r)}` : '')}`).join('<br>');
     body = `<div><div class="who">${s.type === 'pu' ? 'Pobere' : 'Izstop'}: ${esc(label)}</div><div class="addr">${who}</div></div><div></div>`;
   }
-  return `${base}<li class="stop"><time>${ap}${fmtT(s.t)}</time><span class="dot ${s.type === 'do' ? 'do' : ''}"></span>${body}</li>`;
+  const mk = tripKey(c, t), mapOpen = !!UI.maps[mk] && geoOk(s.pt);
+  return `${base}<li class="stop${mapOpen ? ' mapfocus' : ''}"${mapOpen ? ` data-act="stopFocus" data-mapkey="${esc(mk)}" data-mapid="t${t.stopsAbs.indexOf(s) + 1}" title="Pokaži na zemljevidu"` : ''}><time>${ap}${fmtT(s.t)}</time><span class="dot ${s.type === 'do' ? 'do' : ''}"></span>${body}</li>`;
 }
 function renderDispatch(){
   const date = UI.dDate, today = todayStr(), tom = addDays(today, 1);
@@ -3342,6 +3554,10 @@ function renderDispatch(){
   CREWS_PIN = plan.crews.map(c => c.vehicle);
   const blocked = S.vehicles.filter(v => v.tip !== 'ostalo' && vehBlocked(date, v.id));
   const tot = plan.totals;
+  /* opozorila: težave (zamude, zgodnji štarti) na vrhu, »prilagojeno« posebej; več enakih opozoril o štartu pred izmeno postane eno */
+  const wBend = plan.warnings.filter(w => w.level === 'bend'), wMain = [], early = [];
+  plan.warnings.filter(w => w.level !== 'bend').forEach(w => { const m = /^(.+?): za pravočasen prihod .*?štartati ob (\d{1,2}:\d{2}), izmena pa se začne ob (\d{1,2}:\d{2})/.exec(w.text); if (m) early.push({ v:m[1], t:m[2], s:m[3], level:w.level }); else wMain.push(w); });
+  if (early.length) wMain.unshift({ level:early[0].level, text:`Za pravočasen prihod bi morale posadke štartati pred začetkom izmene: ${early.map(e => `${e.v} ob ${e.t}`).join(', ')} (izmena se začne ob ${early[0].s}). Nastavi zgodnejši začetek izmene.` });
   const rows = plan.crews.map(c => `<tr>
       <td><b>${esc(c.vehicle.name)}</b><div class="hint">${esc(capText(c.vehicle))}</div></td>
       <td>${esc(c.driver.name)}${c.team === 'NN' ? ' <span class="chip">NN</span>' : ''}${c.escorts.map(e => `<div class="hint">${esc(e.name)} (sp.)</div>`).join('')}${(c.helpers || []).map(h => `<div class="hint">${esc(h.name)} (${ROLE_TAG[h.role] || ''})</div>`).join('')}</td>
@@ -3349,20 +3565,20 @@ function renderDispatch(){
       <td>${c.trips.length ? `<b class="mono">Štart ${fmtT(c.firstDepart)}</b> iz postaje<div class="hint">${c.trips.map(t => `${fmtT(t.depart)} → ${esc(tripTitle(t) + (t.kind === 'to' ? '' : ' (odvoz)'))}`).join(' · ')}</div>${c.trips.some(t=>t.late>0) ? '<div><span class="chip bad">zamuda</span></div>' : ''}${c.overtime > 0 ? `<div><span class="chip accent">nadure ~${c.overtime} min</span></div>` : ''}` : '<span class="dim">Brez prevozov</span>'}</td></tr>`).join('');
   const blockedRows = blocked.map(v => { const b = vehBlocked(date, v.id); return `<tr><td><b>${esc(v.name)}</b></td><td colspan="2"><span class="chip bad">${esc(b.tip)}</span></td><td class="muted">${esc(b.note || 'Vozilo ni na voljo')}</td></tr>`; }).join('');
   const unRows = plan.unassigned.map(u => `<span class="chip bad mono" title="${esc(u.reason)}">${u.ride.nr}</span>`).join(' ');
-  const cards = plan.crews.filter(c => c.trips.length).map(c => `<section class="card crewcard">
-      <header><div><h3>${esc(c.vehicle.name)} · ${esc(crewLabel(c))}</h3><div class="timeline-note">Štart iz postaje ${fmtT(c.firstDepart)} · konec ob ${fmtT(c.trips[c.trips.length-1].end)}</div></div>
-      <div class="meta"><span class="chip mono">${c.rideNrs.length} prevozov</span><span class="chip mono">${c.km.toFixed(0)} km</span><span class="chip mono">${fmtDur(c.busy)}</span></div></header>
+  const cards = plan.crews.filter(c => c.trips.length).map(c => `<details class="card crewcard" data-sect="crew:${esc(c.vehicle.id)}" ${UI.sect['crew:' + c.vehicle.id] ? 'open' : ''}>
+      <summary><div><h3>${esc(c.vehicle.name)} · ${esc(crewLabel(c))}</h3><div class="timeline-note">Štart iz postaje ${fmtT(c.firstDepart)} · konec ob ${fmtT(c.trips[c.trips.length-1].end)}</div></div>
+      <div class="meta"><span class="chip mono">${c.rideNrs.length} prevozov</span><span class="chip mono">${c.km.toFixed(0)} km</span><span class="chip mono">${fmtDur(c.busy)}</span>${c.trips.some(t => t.late > 0) ? '<span class="chip bad">zamuda</span>' : ''}</div></summary>
       ${c.trips.map((t, ti) => `<div class="trip"><div class="trip-head">
           <span class="chip ${t.kind === 'from' ? 'ok' : 'info'}">${t.kind === 'from' ? 'ODVOZ' : 'TJA'}</span><b>${t.kind === 'to' ? esc(tripTitle(t) || 'cilj') : 'Iz: ' + esc(tripTitle(t) || 'ustanova')}</b>
           <span class="chip mono">${t.rides.length} pac.</span>${t.ev.ret ? `<span class="chip info" title="Reševalec po izstopu počaka na pregled in pacienta odpelje nazaj">počaka ~${fmtDur(t.waitMin || 0)}</span>` : ''}<span class="chip mono" title="${t.ev.nEst || t.ev.nWait ? 'Del poti je ocenjen (brez cestnih podatkov)' : 'Izračunano po cestah'}">${t.ev.nEst || t.ev.nWait ? '~' : ''}${t.ev.km.toFixed(0)} km</span><span class="chip mono">${t.ev.nEst || t.ev.nWait ? '~' : ''}${fmtDur(t.ev.dur)}</span>${new Set((t.dests || []).map(p => p.key)).size > 1 ? `<span class="chip info" title="Pacienti z blizu skupaj ležečimi cilji so v eni vožnji">${new Set(t.dests.map(p => p.key)).size} cilji</span>` : ''}
           ${t.late > 0 ? `<span class="chip bad">${t.kind === 'from' ? 'pacient čaka ~' + t.wait + ' min' : 'zamuda ~' + t.late + ' min'}</span>` : (t.kind === 'to' && t.slack != null ? `<span class="chip ok">rezerva ${t.slack} min</span>` : '')}
-          ${t.sbReturn && c.team === 'NN' ? '<span class="chip">NN ekipa</span>' : ''}<button type="button" class="btn sm" data-act="tripMap" data-trip="${esc(tripKey(c, t))}" aria-expanded="${UI.maps[tripKey(c, t)] ? 'true' : 'false'}" style="margin-left:auto">${UI.maps[tripKey(c, t)] ? 'Skrij pot' : 'Pot'}</button></div>
+          ${t.sbReturn && c.team === 'NN' ? '<span class="chip">NN ekipa</span>' : ''}<button type="button" class="btn sm" data-act="tripMap" data-trip="${esc(tripKey(c, t))}" aria-expanded="${UI.maps[tripKey(c, t)] ? 'true' : 'false'}" style="margin-left:auto">${UI.maps[tripKey(c, t)] ? 'Skrij zemljevid' : 'Pot na zemljevidu'}</button></div>
         ${tripMapHTML(c, t)}
         <ul class="stops">
           <li class="stop"><time>${fmtT(t.depart)}</time><span class="dot base"></span><div><div class="who">Štart: ${ti === 0 ? 'RP Brežice (ZD)' : 'prejšnji cilj'}</div><div class="addr">Vožnja do prvega postanka ${legKm(L(t.from, t.stopsAbs[0].pt))}</div></div><div></div></li>
           ${t.stopsAbs.map((s, i) => stopRow(c, t, s, L, i ? t.stopsAbs[i-1] : null)).join('')}
         </ul></div>`).join('')}
-    </section>`).join('');
+    </details>`).join('');
   const closeList = (date <= tom) ? filledRides(date).map(({ r, nr }) => `<div class="duty-item" style="grid-template-columns:auto minmax(0,1fr) minmax(0,1.1fr);align-items:center" data-ride="${r.id}" data-date="${date}">
         <span class="nr">${nr}</span><div class="dn" style="min-width:0"><div style="overflow:hidden;text-overflow:ellipsis">${esc(r.name || '(brez imena)')} <span class="mono dim">${esc(r.time)}</span></div><div class="hint" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.from)} → ${esc(r.to)}</div></div>
         <div class="row" style="flex-wrap:nowrap;gap:8px"><label class="row" style="gap:6px;flex-wrap:nowrap;font-weight:600"><input type="checkbox" data-f="done" ${r.done ? 'checked' : ''}> Opravljeno</label><input type="text" data-f="doneBy" list="staffList" value="${esc(r.doneBy)}" placeholder="Kdo je naredil odvoz" aria-label="Kdo je naredil odvoz, prevoz ${nr}" style="${r.done ? '' : 'visibility:hidden'}"></div></div>`).join('') : '';
@@ -3381,9 +3597,10 @@ function renderDispatch(){
         <details class="card card-pad sect" data-sect="note" ${UI.sect.note || S.dayNote[date] ? 'open' : ''}><summary><h3>Opomba dneva</h3>${S.dayNote[date] ? '<span class="chip">vpisana</span>' : ''}</summary><textarea id="dayNote" style="margin-top:10px" placeholder="npr. ob 9:00 sestanek, cesta zaprta, pacient potrebuje spremljevalca">${esc(S.dayNote[date] || '')}</textarea></details>
       </div>
       <div class="stack">
-        ${rulesBar(date, plan)}${publishBar(date, plan)}${routeBar(plan)}
-        <div class="stats"><div class="stat"><b>${tot.rides}</b><span>prevozov za razporeditev</span></div>${kms.any ? `<div class="stat" title="Vsota razdalj OD → DO po prevozih (v knjigo)"><b>${kms.all ? '' : '~'}${KM.fmtKm(kms.t)}</b><span>km prevozov${kms.all ? ' (natančno)' : ' (deloma ocena)'}</span></div>` : ''}<div class="stat"><b>${tot.vehicles}/${plan.crews.length}</b><span>vozil v uporabi</span></div><div class="stat"><b>${tot.km.toFixed(0)}</b><span>km vožnje ekip (${!ROUTE.enabled() ? 'ocena' : tot.estLegs + tot.waitLegs ? 'deloma ocena' : 'po cestah'})</span></div><div class="stat"><b style="color:${tot.late ? 'var(--bad)' : 'var(--ok)'}">${tot.late}</b><span>prevozov z zamudo</span></div></div>
-        ${plan.warnings.length ? `<details class="warnbox" ${plan.warnings.some(w => w.level === 'bad' || w.level === 'bend') ? 'open' : ''}><summary>${plan.warnings.length} opozoril in prilagoditev</summary><ul class="warnlist">${plan.warnings.map(w => `<li class="w-${w.level}">${w.level === 'bend' ? '<span class="chip accent">prilagojeno</span> ' : ''}${esc(w.text)}</li>`).join('')}</ul></details>` : ''}
+        ${publishBar(date, plan)}
+        <div class="stats compact"><div class="stat"><b>${tot.rides}</b><span>prevozov</span></div>${kms.any ? `<div class="stat" title="Vsota razdalj OD → DO po prevozih (v knjigo)"><b>${kms.all ? '' : '~'}${KM.fmtKm(kms.t)}</b><span>km prevozov${kms.all ? '' : ' (~)'}</span></div>` : ''}<div class="stat"><b>${tot.vehicles}/${plan.crews.length}</b><span>vozil</span></div><div class="stat"><b>${tot.km.toFixed(0)}</b><span>km ekip (${!ROUTE.enabled() ? 'ocena' : tot.estLegs + tot.waitLegs ? 'deloma ocena' : 'po cestah'})</span></div><div class="stat"><b style="color:${tot.late ? 'var(--bad)' : 'var(--ok)'}">${tot.late}</b><span>z zamudo</span></div></div>
+        ${wMain.length ? `<details class="warnbox" ${wMain.some(w => w.level === 'bad') ? 'open' : ''}><summary>${wMain.length} ${wMain.length === 1 ? 'opozorilo' : wMain.length < 5 ? 'opozorila' : 'opozoril'}</summary><ul class="warnlist">${wMain.map(w => `<li class="w-${w.level}">${esc(w.text)}</li>`).join('')}</ul></details>` : ''}
+        ${routeBar(plan)}
         <div class="card card-pad">
           <div class="card-head"><h3>Razpored za ${fmtShort(date)}</h3><div class="row"><button type="button" class="btn sm" data-act="copyPlan">${IC.copy} Kopiraj kot besedilo</button></div></div>
           ${plan.crews.length || blocked.length ? `<div class="tablewrap"><table><thead><tr><th>Vozilo</th><th>Voznik</th><th>Prevozi (št. v knjigi)</th><th>Posebnosti · ure štarta</th></tr></thead><tbody>${rows}${blockedRows}</tbody></table></div>`
@@ -3391,11 +3608,15 @@ function renderDispatch(){
           ${unRows ? `<p style="margin:10px 0 0"><b>Nerazporejeni prevozi:</b> ${unRows}</p>` : ''}
           <details class="hintdet" style="margin-top:10px"><summary>Kako se računa</summary><p class="hint" style="margin:6px 0 0">${ROUTE.enabled() ? 'Razdalje in časi vožnje so izračunani po dejanskih cestah (OpenStreetMap, brez prometnih zastojev' + (+S.settings.routing.factor !== 1 ? ', čas × ' + S.settings.routing.factor : '') + '); relacije brez cestnih podatkov so označene z ~ in ocenjene kot zračna razdalja × ' + S.settings.road + ' pri omejitvah ' : 'Časi so ocena: zračna razdalja × ' + S.settings.road + ', omejitve '}${S.settings.lim.naselje}/${S.settings.lim.izven}/${S.settings.lim.hitra}/${S.settings.lim.avtocesta} km/h (naselje/izven/hitra/avtocesta), dejansko ${S.settings.eff} %. Pobiranje ${S.settings.pickMin} min, izstop ${S.settings.dropMin} min na pacienta (leže ${S.settings.pickLeze}/${S.settings.dropLeze}, utila ${S.settings.pickUtila}/${S.settings.dropUtila}), rezerva ${S.settings.buffer} min pred preiskavo. Pri pregledu s čakanjem reševalec po izstopu počaka in pacienta odpelje nazaj. Razpored se vpiše tudi v mesečno knjigo.</p></details>
         </div>
+        ${rulesBar(date, plan, wBend)}
         ${suggestHTML(plan)}
+        ${dayMapCard(date, plan)}
+        ${cards ? `<div class="crewhead"><h3>Podrobnosti po posadkah</h3><span class="sp"></span><button type="button" class="btn sm ghost" data-act="crewsAll" data-open="1">Razširi vse</button><button type="button" class="btn sm ghost" data-act="crewsAll" data-open="0">Skrči vse</button></div>` : ''}
         ${cards}
-        ${closeList ? `<div class="card card-pad stack" style="gap:10px"><div class="card-head" style="margin:0"><h3>Zaključek prevozov</h3><span class="hint">Označi opravljeno in vpiši, kdo je naredil odvoz.</span></div>${closeList}</div>` : ''}
+        ${closeList ? `<details class="card card-pad sect" data-sect="close" ${UI.sect.close ? 'open' : ''}><summary><h3>Zaključek prevozov</h3><span class="hint">opravljeno in kdo je vozil</span></summary><div class="stack" style="gap:10px;margin-top:10px">${closeList}</div></details>` : ''}
       </div>
     </div>`;
+  if (UI.sect.daymap) loadDayPaths(date);
 }
 
 /* ---------- Posebnosti ---------- */
@@ -3428,6 +3649,14 @@ function renderNotices(){
 }
 
 /* ---------- Nastavitve ---------- */
+function mapCard(){
+  const c = MAP.cfg(), on = MAP.tilesOn();
+  let host = ''; try { host = c.url ? new URL(c.url.replace(/\{[a-z]\}/g, '0')).host : ''; } catch(e){}
+  return `<div class="card card-pad stack" style="gap:12px"><div class="card-head" style="margin:0"><h3>Zemljevid poti</h3><span class="chip ${!c.url ? 'warn' : on ? 'ok' : ''}">${!c.url ? 'podlaga ni nastavljena' : on ? 'podlaga vklopljena' : 'podlaga izklopljena'}</span></div>
+    <p class="hint" style="margin:0">Pot vožnje in zemljevid dneva sta interaktivna zemljevida (povleci, povečaj, klik na točko). Podlaga so ploščice zemljevida${host ? ' (<span class="mono">' + esc(host) + '</span>)' : ''}. Brez podlage se prikažeta samo pot in točke na nevtralni mreži.</p>
+    <div class="row"><button type="button" class="chip toggle" data-act="mapTiles" aria-pressed="${on}" ${c.url ? '' : 'disabled'}>Podlaga zemljevida na tej napravi: ${on ? 'vklopljena' : 'izklopljena'}</button></div>
+    <details class="hintdet"><summary>Zasebnost in pogoji uporabe ploščic</summary><p class="hint" style="margin:6px 0 0">Ko je podlaga vklopljena, brskalnik pri strežniku ploščic zahteva slike za prikazano območje. Strežnik tako vidi IP naslov naprave, izvor te strani (brez poti) in koordinate prikazanih ploščic, ne vidi pa imen, naslovov ali drugih podatkov o pacientih. Točke in poti se izrisujejo v brskalniku. Javni strežnik ploščic OpenStreetMap je namenjen zmerni rabi (pogoji: operations.osmfoundation.org/policies/tiles): za redno delo v več pisarnah uporabi lasten strežnik ploščic ali ponudnika z dogovorom (config.js → tiles.url, v CSP v build-prod.py dodaj njegov izvor v img-src). Pripis »© prispevajoči OpenStreetMap« mora ostati viden.</p></details></div>`;
+}
 function routingCard(){
   const ri = ROUTE.info(), R = S.settings.routing, tst = UI.routeTest, wm = UI.routeWarm;
   const kn = (label, path, val, step, unit = '') => `<label for="k-${path}">${label}${unit ? ' <span class="dim">(' + unit + ')</span>' : ''}</label>${field(path, val, { num:1, step, label }).replace('data-path', `id="k-${path}" data-path`)}`;
@@ -3477,7 +3706,11 @@ function diaTab(){
     <td><div class="seg" role="group" aria-label="Termin dialize">${Object.keys(DIA_TERMS).map(t => `<button type="button" data-act="diaTerm" data-id="${p.id}" data-t="${t}" aria-pressed="${p.dt.t === t}">${DIA_TERMS[t]}</button>`).join('')}</div></td>
     <td><div class="row" style="gap:4px">${[1, 2, 3, 4, 5, 6, 0].map(d => `<button type="button" class="chip toggle" data-act="diaDay" data-id="${p.id}" data-d="${d}" aria-pressed="${(p.dt.d || []).includes(d)}">${DOW_SHORT[d]}</button>`).join('')}</div></td>
     <td><button type="button" class="icon-btn" data-act="diaDel" data-id="${p.id}" aria-label="Odstrani ${esc(p.name)} iz dialize">${IC.x}</button></td></tr>`).join('');
-  return `<div class="stack"><div class="card card-pad stack"><h3>Termina dialize</h3>
+  const cur = S.settings.diaPlace || '', cands = [...POIS.filter(x => x.dia || /^SB |^ZD |dializ/i.test(x.n)).map(x => x.n), ...S.places.filter(x => /dializ/i.test(x.n) || !x.parent).map(x => x.n)];
+  const center = `<div class="card card-pad stack" style="gap:8px"><h3>Kje je dializni center?</h3>
+      <p class="hint" style="margin:0">Kratice »Dializa«, »Dializa KK«, »KK dializa« in ime dializnega centra v knjigi se vedno preberejo kot ta ustanova (cilj, koordinate in pot). Dokler ni izbrana, se uporablja Dializni center Krško (Nefrodial; v knjigi »Dializa KK«) – koordinate so približne, po potrebi izberi drugo ustanovo ali dodaj svojo.</p>
+      ${adm ? `<select data-path="settings.diaPlace" aria-label="Dializni center"><option value="">${esc(DIA_DEFAULT)} (privzeto)</option>${[...new Set(cands)].filter(n => n !== DIA_DEFAULT).map(n => `<option value="${esc(n)}" ${cur === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>` : `<b>${esc(cur || DIA_DEFAULT + ' (privzeto)')}</b>`}</div>`;
+  return `<div class="stack">${center}<div class="card card-pad stack"><h3>Termina dialize</h3>
       <p class="muted" style="margin:0">Dializni bolniki imajo dopoldanski ali popoldanski termin. Prevoz tja je ob začetku termina, prevoz nazaj ob koncu. Posadka, ki pelje na dializo, lahko po koncu dialize prevaža tudi sede paciente: razpored jim jih doda v prostem času, če to ne ovira dialize.</p>
       <div class="tablewrap"><table class="edtable"><thead><tr><th>Termin</th><th>Začetek</th><th>Konec</th></tr></thead><tbody>${terms}</tbody></table></div>
       ${adm ? '' : '<p class="hint" style="margin:0">Ure terminov spreminja skrbnik.</p>'}</div>
@@ -3546,9 +3779,9 @@ function renderSettings(){
   } else if (T === 'planiranje'){
     const k = (label, path, step=1, unit='') => `<label for="k-${path}">${label}${unit ? ' <span class="dim">(' + unit + ')</span>' : ''}</label>${field(path, S.settings[path.split('.')[1]], { num:1, step, label })}`.replace('data-path', `id="k-${path}" data-path`);
     const kl = (label, key) => `<label for="k-lim-${key}">${label} <span class="dim">(km/h)</span></label>${field('settings.lim.' + key, S.settings.lim[key], { num:1, step:1, label }).replace('data-path', 'id="k-lim-' + key + '" data-path')}`;
-    body = `<div class="stack">${googleCard()}${routingCard()}<details class="card card-pad sect" data-sect="param" ${UI.sect.param ? 'open' : ''}><summary><h3>Parametri izračuna: hitrosti, časi pobiranja, rezerve</h3></summary><div class="kv" style="margin-top:12px">
+    body = `<div class="stack">${googleCard()}${routingCard()}${mapCard()}<details class="card card-pad sect" data-sect="param" ${UI.sect.param ? 'open' : ''}><summary><h3>Parametri izračuna: hitrosti, časi pobiranja, rezerve</h3></summary><div class="kv" style="margin-top:12px">
       ${kl('Omejitev v naselju','naselje')}${kl('Omejitev izven naselij','izven')}${kl('Omejitev na hitri cesti','hitra')}${kl('Omejitev na avtocesti','avtocesta')}${k('Dejanska hitrost glede na omejitev','settings.eff',1,'%')}${k('Faktor ceste (samo za ocene brez cestnih podatkov)','settings.road',0.05)}${k('Pobiranje sede pacienta','settings.pickMin',1,'min')}${k('Odpuščanje sede pacienta','settings.dropMin',1,'min')}${k('Pobiranje leže pacienta','settings.pickLeze',1,'min')}${k('Odpuščanje leže pacienta','settings.dropLeze',1,'min')}${k('Pobiranje pacienta na vozičku','settings.pickUtila',1,'min')}${k('Odpuščanje pacienta na vozičku','settings.dropUtila',1,'min')}${k('Privzet čas pregleda (čakanje)','settings.stayDef',5,'min')}${k('Privzeta pot od vhoda do ambulante','settings.extraDef',1,'min')}
-      ${k('Rezerva pred preiskavo','settings.buffer',1,'min')}${k('Okno združevanja po uri','settings.window',5,'min')}${k('Največji dodaten čas za soprevoznika','settings.detour',5,'min')}${k('Najdaljša vožnja pacienta v vozilu','settings.maxRide',5,'min')}
+      ${k('Rezerva pred preiskavo','settings.buffer',1,'min')}${k('Okno združevanja po uri','settings.window',5,'min')}${k('Okno združevanja pri oddaljenih ciljih (Ljubljana, Novo mesto)','settings.windowFar',10,'min')}${k('NN ekipa: najdlje od postaje (0 = brez omejitve)','settings.nnMaxKm',5,'km')}${k('Največji dodaten čas za soprevoznika','settings.detour',5,'min')}${k('Najdaljša vožnja pacienta v vozilu','settings.maxRide',5,'min')}
       ${k('Čakanje pri odvozu brez zamude','settings.waitTol',1,'min')}${k('Število polj v knjigi na dan','settings.slots',1,'polj')}${k('Samodejna odjava','settings.idleMin',5,'min')}
       <label for="k-shift">Privzet začetek izmene</label><input id="k-shift" type="time" data-path="settings.shift" value="${esc(S.settings.shift)}"></div>
       <p class="hint" style="margin:0">Spremembe veljajo takoj. Razpored za današnji in jutrišnji dan se ponovno izračuna.</p></details></div>`;
@@ -3613,13 +3846,14 @@ function alertsBanner(){
 }
 
 /* ---------- Dispečer: pravila za dan in objava ---------- */
-function rulesBar(date, plan){
-  const mode = dayMode(date), own = !!(S.dayRules[date] && S.dayRules[date].mode);
-  return `<div class="card card-pad stack ctrl" style="gap:8px"><div class="ctrl-row"><span class="lbl">Pravila</span>
+function rulesBar(date, plan, wBend){
+  const mode = dayMode(date), own = !!(S.dayRules[date] && S.dayRules[date].mode), nb = (wBend || []).length;
+  return `<details class="card card-pad sect ctrl" data-sect="rules" ${UI.sect.rules ? 'open' : ''}><summary><h3>Pravila razporejanja</h3><span class="chip ${own ? 'accent' : ''}">${esc(RULE_MODES[mode])}${own ? ' · samo za ta dan' : ''}</span>${nb ? `<span class="chip accent">${nb} prilagoditev</span>` : ''}</summary>
+    <div class="stack" style="gap:8px;margin-top:10px"><div class="ctrl-row"><span class="lbl">Način</span>
     <div class="seg" role="group" aria-label="Način pravil">${Object.entries(RULE_MODES).map(([k, l]) => `<button type="button" data-act="dayMode" data-k="${k}" aria-pressed="${mode === k}">${l}</button>`).join('')}</div>
-    ${own ? '<span class="chip accent">samo za ta dan</span><button type="button" class="btn sm ghost" data-act="dayModeReset">Uporabi privzeto</button>' : `<span class="chip">privzeto</span>`}</div>
-    <details class="hintdet"><summary>${esc(RULE_MODES[mode])}: kaj to pomeni</summary><p class="hint" style="margin:6px 0 0">${RULE_DESC[mode]}</p></details>
-    ${plan.bends.length ? `<div class="banner" style="background:var(--accent-soft);color:var(--accent)"><span>${IC.info}</span><div><b>${plan.bends.length} prilagoditev pravil</b> (podrobnosti v opozorilih).</div></div>` : ''}</div>`;
+    ${own ? '<button type="button" class="btn sm ghost" data-act="dayModeReset">Uporabi privzeto</button>' : '<span class="chip">privzeto</span>'}</div>
+    <p class="hint" style="margin:0"><b>${esc(RULE_MODES[mode])}:</b> ${RULE_DESC[mode]}</p>
+    ${nb ? `<ul class="warnlist">${wBend.map(w => `<li class="w-bend"><span class="chip accent">prilagojeno</span> ${esc(w.text)}</li>`).join('')}</ul>` : ''}</div></details>`;
 }
 function publishBar(date, plan){
   const st = publishState(date), pub = S.published[date];
@@ -3662,9 +3896,9 @@ function nalogCardHTML(p, n){
       ${f('zdravnik', 'Zdravnik (ime in priimek)')}
       <div class="field"><label for="nf-zv">Zdravnik je</label><select id="nf-zv" data-nf="zdravnikVrsta">${ZDRAVNIK_VRSTE.map(z => `<option ${n.zdravnikVrsta === z ? 'selected' : ''}>${z}</option>`).join('')}</select></div>
       <div class="field"><label for="nf-razlog">Razlog prevoza</label><input id="nf-razlog" data-nf="razlog" list="razlogList" value="${esc(n.razlog || '')}" autocomplete="off"><datalist id="razlogList">${NALOG_RAZLOGI.map(r => `<option value="${esc(r)}"></option>`).join('')}</datalist></div>
-      <div class="field"><label for="nf-mode">Način prevoza</label><select id="nf-mode" data-nf="mode">${Object.entries(MODES).map(([k, v]) => `<option value="${k}" ${n.mode === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <div class="field"><label for="nf-mode">Način prevoza</label><select id="nf-mode" data-nf="mode">${Object.entries(PMODES).map(([k, v]) => `<option value="${k}" ${n.mode === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
       <div class="field"><label for="nf-od">Relacija: od</label><input id="nf-od" data-nf="od" data-suggest="from" value="${esc(n.od || '')}" autocomplete="off" placeholder="npr. domači naslov"></div>
-      <div class="field"><label for="nf-do">Relacija: do</label><input id="nf-do" data-nf="do" data-suggest="to" value="${esc(n.do || '')}" autocomplete="off" placeholder="npr. SB Brežice – dializa"></div>
+      <div class="field"><label for="nf-do">Relacija: do</label><input id="nf-do" data-nf="do" data-suggest="to" value="${esc(n.do || '')}" autocomplete="off" placeholder="npr. Dializni center Krško"></div>
       ${f('veljaOd', 'Velja od', 'date')}
       <div class="field"><label for="nf-veljaDo">Velja do ${n.auto ? '<span class="dim">(predlog)</span>' : ''}</label><input id="nf-veljaDo" data-nf="veljaDo" type="date" value="${esc(n.veljaDo || '')}"></div>
       ${f('dnevi', 'Dnevi / pogostost (npr. pon, sre, pet)')}
@@ -3684,7 +3918,7 @@ function patientDetailHTML(p){
       <div class="field"><label for="pf-name">Ime in priimek</label><input id="pf-name" data-pf="name" value="${esc(p.name)}" autocomplete="off"></div>
       <div class="field"><label for="pf-phone">Telefon / kontakt</label><input id="pf-phone" data-pf="phone" type="tel" value="${esc(p.phone)}" autocomplete="off"></div>
       <div class="field full"><label for="pf-addr">Domači naslov</label><input id="pf-addr" data-pf="addr" data-suggest="from" value="${esc(p.addr)}" autocomplete="off" placeholder="npr. Dobova 25"></div>
-      <div class="field"><span class="lbl">Običajni način prevoza</span><div class="seg" role="group">${Object.entries(MODES).map(([k, v]) => `<button type="button" data-act="pMode" data-mode="${k}" aria-pressed="${p.mode === k}">${v}</button>`).join('')}</div></div>
+      <div class="field"><span class="lbl">Običajni način prevoza</span><div class="seg" role="group">${Object.entries(PMODES).map(([k, v]) => `<button type="button" data-act="pMode" data-mode="${k}" aria-pressed="${p.mode === k}">${v}</button>`).join('')}</div></div>
       <div class="field"><label for="pf-zzzs">Št. zavarovane osebe (neobvezno)</label><input id="pf-zzzs" data-pf="zzzs" value="${esc(p.zzzs || '')}" autocomplete="off" inputmode="numeric"></div>
       <div class="field"><span class="lbl">Barva pacienta</span><div class="swatches">${sw}</div></div>
       <div class="field full"><label for="pf-note">Opomba (npr. voziček, kisik, hišni ključ)</label><textarea id="pf-note" data-pf="note" rows="2">${esc(p.note || '')}</textarea></div>
@@ -3967,8 +4201,216 @@ function printMonthHTML(){
 function printMonth(){
   let el = document.getElementById('printArea');
   if (!el){ el = document.createElement('div'); el.id = 'printArea'; document.body.appendChild(el); }
-  el.innerHTML = printMonthHTML();
+  el.className = ''; el.innerHTML = printMonthHTML();
   window.print();
+}
+
+/* ---------- Tisk knjige dneva (obrazec OBR REŠ 08: prevozi 1–10, 11–24, posadke po vozilih, posebnosti) ---------- */
+function printDayHTML(date){
+  const plan = computePlan(date), form = esc((S.settings.formCode || 'OBR REŠ 08').trim()), rides = ensureDay(date);
+  const total = Math.max(24, rides.reduce((m, r, i) => isFilled(r) ? i + 1 : m, 0)), pageSplit = [[0, 10], [10, total]];
+  const head = (n, N) => `<header class="pd-head"><div class="pd-logos">${logoInner()}</div><div class="pd-title"><b>KNJIGA REŠEVALNIH PREVOZOV</b><span>Reševalna postaja Brežice · ${form}</span></div>
+    <div class="pd-date"><div>DATUM: <b>${fmtDMY(date)}</b></div><div>DAN: <b>${DOW_LONG[dow(date)]}</b></div><div class="pd-pg">list ${n}/${N}</div></div></header>`;
+  const vehLine = plan.crews.filter(c => c.trips.length).map(c => esc(c.vehicle.name)).join(' · ') || '–';
+  const row = i => {
+    const r = rides[i], nr = i + 1;
+    if (!r || !isFilled(r)) return `<tr class="pd-empty"><td class="pd-nr">${nr}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
+    const a = plan.assign[r.id], can = r.odpovedano;
+    const pick = a && a.pickT != null ? fmtT(a.pickT) : '';
+    const ret = a && a.retPickT != null ? ` · nazaj ${fmtT(a.retPickT)}` : '';
+    const notes = [r.mode !== 'sede' ? (MODES[r.mode] || r.mode) : '', r.dia ? 'dializa' : '', +r.stay > 0 ? `čaka ${+r.stay} min` : '', r.note || ''].filter(Boolean).join(', ');
+    return `<tr class="${can ? 'p-cancel' : ''}"><td class="pd-nr">${nr}</td><td>${esc(r.name || '')}</td><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td class="pd-t">${esc(r.time || '')}</td><td class="pd-t">${can ? '' : (a && a.late > 0 ? '~' : '') + pick + ret}</td><td class="pd-v">${can ? '' : esc(a ? a.veh : '')}</td><td>${can ? '<b>ODPOVEDANO</b> ' : ''}${esc(notes)}</td></tr>`;
+  };
+  const N = 3;
+  const page = ([a, b], k) => `<section class="pd-page">${head(k + 1, N)}${k === 0 ? `<div class="pd-veh">VOZILA: <b>${vehLine}</b></div>` : ''}
+    <table class="pd-tab"><thead><tr><th class="pd-nr">Št.</th><th>Ime in priimek</th><th>Od</th><th>Do</th><th>Ura prev.</th><th>Pobere</th><th>Vozilo</th><th>Opomba</th></tr></thead><tbody>${Array.from({ length:b - a }, (_, j) => row(a + j)).join('')}</tbody></table></section>`;
+  const crewRows = plan.crews.filter(c => c.trips.length || c.vehicle.tip !== 'ostalo').map(c => `<tr><td><b>${esc(c.vehicle.name)}</b></td><td>${esc(c.driver.name)}${c.team === 'NN' ? ' <b>(NN)</b>' : ''}${c.escorts.map(e => `<div>${esc(e.name)} (sp.)</div>`).join('')}${(c.helpers || []).map(h => `<div>${esc(h.name)} (${ROLE_TAG[h.role] || ''})</div>`).join('')}</td><td>${c.rideNrs.join(', ') || '–'}</td><td>${c.trips.length ? `ob ${fmtT(c.firstDepart)}` : ''}</td></tr>`).join('');
+  const notices = S.notices.filter(n => !n.closed && n.from <= date && (!n.to || n.to >= date));
+  const posebnosti = [S.dayNote[date] || '', ...notices.map(n => `${(S.vehicles.find(v => v.id === n.vehicleId) || {}).name || ''}: ${n.tip}${n.note ? ' – ' + n.note : ''}`)].filter(Boolean);
+  const unas = plan.unassigned.length ? `<p class="pd-warn">Nerazporejeni prevozi: ${plan.unassigned.map(u => u.ride.nr).join(', ')}</p>` : '';
+  return page(pageSplit[0], 0) + page(pageSplit[1], 1) + `<section class="pd-page">${head(3, N)}
+    <table class="pd-tab pd-crew"><thead><tr><th>Vozilo</th><th>Voznik</th><th>Prevozi (št.)</th><th>Posebnosti</th></tr></thead><tbody>${crewRows || '<tr><td colspan="4">Ni posadk.</td></tr>'}</tbody></table>${unas}
+    <div class="pd-pos"><b>Posebnosti:</b>${posebnosti.length ? '<ul>' + posebnosti.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>' : '<div class="pd-lines"></div>'}</div>
+    <div class="pd-sign"><span>Dispečer: ______________________</span><span>Izpisano: ${new Date().toLocaleString('sl-SI')}</span></div>
+    <p class="pd-fine">Ure »Pobere« so ocena razporeda (cestni podatki); dejanske ure vpiše posadka.</p></section>`;
+}
+function printDay(date){
+  let el = document.getElementById('printArea');
+  if (!el){ el = document.createElement('div'); el.id = 'printArea'; document.body.appendChild(el); }
+  el.className = 'pday'; el.innerHTML = printDayHTML(date);
+  audit('knjiga.tisk', { dan:date });
+  window.print();
+}
+/* ============================================================================
+   HITRI VNOS IN PONAVLJANJE: dispečerjev žargon v prevoz, kopiranje prevozov z drugega dne, ponovitev prevoza za naslednje dni
+   Dispečer na papirju piše kratko (»Novak, Dobova 25, OI LJ, 8:00«). Hitri vnos razbere ime, naslov OD, cilj DO, uro in način;
+   ustanove prepozna po imenih in kraticah (O.I. LJ, SBB, UKC LJ, ZD KK …), pacienta po bazi pacientov (»Doma« → naslov pacienta).
+   ============================================================================ */
+const QUICK_MODES = { sede:'sede', leze:'leze', 'leže':'leze', lezece:'leze', 'ležeče':'leze', utila:'utila', utilo:'utila', vzorci:'vzorci', vzorec:'vzorci', vzorce:'vzorci' };
+/* V knjigi je pri dializi namesto ure napisano »Dop« ali »Pop«: termin dialize; uro določi Nastavitve → Dializa */
+const QUICK_DIA = { dop:'dop', dopoldne:'dop', dopoldanska:'dop', pop:'pop', popoldne:'pop', popoldanska:'pop' };
+const NOTE_CHIPS =['brez spremljevalca', 's spremljevalcem', 'invalidski voziček', 'kisik', 'počaka na pregled', 'vrne se sam', 'vzame izvide'];
+const QUICK_NOTE_RE = /^(brez|z|s)\s+spremljevalc|voziček|vozicek|kisik|izvid|\bsam\b|opomba|^javijo|^prej\s+poklic|^poklic|^dodatna\s+dializ|^sprejem|^ne\s+prej|^mrsa|^pride\s+pred|^po\s+\d{1,2}\s?h?$/i;
+const qNorm = s => norm(String(s || '')).replace(/\./g, '');
+
+function quickTime(part){
+  const m = /^(?:ob\s*)?(\d{1,2})(?:\s*[:.h]\s*(\d{2}))?\s*(?:h|uri)?$/i.exec(String(part).trim());
+  if (!m) return null;
+  const hh = +m[1], mm = m[2] == null ? 0 : +m[2];
+  if (hh > 23 || mm > 59) return null;
+  const explicit = /[:.h]|^ob\s/i.test(String(part).trim());
+  return { t:String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0'), explicit };
+}
+function quickPatient(name){
+  const q = norm(name); if (!q || q.length < 3) return null;
+  let hit = S.patients.filter(p => norm(p.name) === q);
+  if (hit.length === 1) return hit[0];
+  const toks = q.split(/\s+/);
+  hit = S.patients.filter(p => { const n = norm(p.name); return toks.every(t => n.includes(t)); });
+  return hit.length === 1 ? hit[0] : null;
+}
+const isPoiText = s => { const g = geo(s); return g.kind === 'poi'; };
+
+/* Razčleni vrstico: deli ločeni z vejico, podpičjem, | ali puščico; brez ločil se ime, naslov, cilj, ura in način poiščejo po besedah. */
+function parseQuick(text){
+  const out = { name:'', from:'', to:'', time:'', mode:'', dia:'', note:'', pid:'', ok:false };
+  let s = String(text || '').replace(/\s+/g, ' ').trim(); if (!s) return out;
+  s = s.replace(/\s*(→|->|>)\s*/g, ';');
+  const sepText = s;
+  let parts = s.split(/;|\|/.test(sepText) ? /\s*[;|]\s*/ : /\s*,\s*/).filter(Boolean);
+  const notes = [];
+  let timeLoose = null;
+  if (parts.length === 1){
+    /* brez ločil: odstrani uro in način, cilj je najdaljši končni del, ki je ustanova, ime so prve besede pred naslovom */
+    let toks = s.split(' '), keep = [];
+    for (let i = 0; i < toks.length; i++){
+      const tk = toks[i], nx = toks[i + 1];
+      if (/^ob$/i.test(tk) && nx && quickTime(nx)){ out.time = quickTime(nx).t; i++; continue; }
+      const qt = quickTime(tk); if (qt && qt.explicit && !out.time){ out.time = qt.t; continue; }
+      if (QUICK_MODES[qNorm(tk)] && !out.mode){ out.mode = QUICK_MODES[qNorm(tk)]; continue; }
+      if (QUICK_DIA[qNorm(tk)] && !out.dia){ out.dia = QUICK_DIA[qNorm(tk)]; continue; }
+      keep.push(tk);
+    }
+    if (out.mode === 'vzorci'){   // »Vzemi vzorce za IMI«: ni pacienta, cel preostanek je cilj
+      keep = keep.filter(x => !/^(vzemi|vzami|odnesi|odvoz|za|v|na|do)$/i.test(x));
+      if (keep.length && isPoiText(keep.join(' '))){ out.to = keep.join(' '); keep = []; }
+    }
+    let cut = -1;
+    for (let i = 1; i < keep.length; i++){ if (isPoiText(keep.slice(i).join(' '))){ cut = i; break; } }
+    const head = cut < 0 ? keep : keep.slice(0, cut);
+    if (cut >= 0) out.to = keep.slice(cut).join(' ');
+    let d = head.findIndex(x => /\d/.test(x));
+    let nameN = d <= 0 ? Math.min(2, head.length) : Math.max(1, d - 1);
+    if (head.length <= 1) nameN = head.length;
+    out.name = head.slice(0, nameN).join(' '); out.from = head.slice(nameN).join(' ');
+    if (cut < 0 && out.from && isPoiText(out.from)){ out.to = out.from; out.from = ''; }
+  } else {
+    const rest = [];
+    for (let raw of parts){
+      const tm = /^(.*\S)\s+(?:ob\s+)?(\d{1,2}(?:[:.]\d{2})?\s*h?)$/i.exec(raw);
+      if (tm && !out.time && isPoiText(tm[1]) && quickTime(tm[2])){ out.time = quickTime(tm[2]).t; raw = tm[1]; }
+      const n = qNorm(raw);
+      if (QUICK_MODES[n]){ if (!out.mode) out.mode = QUICK_MODES[n]; continue; }
+      if (QUICK_DIA[n]){ if (!out.dia) out.dia = QUICK_DIA[n]; continue; }
+      const qt = quickTime(raw);
+      if (qt && qt.explicit && !out.time){ out.time = qt.t; continue; }
+      if (qt && !qt.explicit && !timeLoose){ timeLoose = qt.t; continue; }
+      if (QUICK_NOTE_RE.test(raw) && !isPoiText(raw)){ notes.push(raw.replace(/^opomba:?\s*/i, '')); continue; }
+      rest.push(raw);
+    }
+    if (!out.time && timeLoose) out.time = timeLoose;
+    let name = '';
+    if (rest.length && quickPatient(rest[0])) name = rest.shift();
+    else if (rest.length && !isPoiText(rest[0]) && qNorm(rest[0]) !== 'doma' && (!/\d/.test(rest[0]) || (rest.length >= 3 && geo(rest[0]).kind === 'neznano'))) name = rest.shift();
+    out.name = name;
+    const items = rest.map(x => { const iz = /^iz\s+/i.test(x); return { t:x.replace(/^(iz|v|na|do)\s+/i, ''), poi:isPoiText(x.replace(/^(iz|v|na|do)\s+/i, '')), iz }; });
+    const pois = items.filter(i => i.poi), oth = items.filter(i => !i.poi);
+    if (pois.length >= 2){ out.from = pois[0].t; out.to = pois[1].t; oth.slice(0).forEach(o => notes.push(o.t)); }
+    else if (pois.length === 1){
+      const pi = items.indexOf(pois[0]), firstOther = oth.length ? items.indexOf(oth[0]) : -1;
+      if (firstOther >= 0 && pi < firstOther || pois[0].iz){ out.from = pois[0].t; out.to = oth.length ? oth[0].t : ''; }
+      else { out.to = pois[0].t; out.from = oth.length ? oth[0].t : ''; }
+      oth.slice(1).forEach(o => notes.push(o.t));
+    } else { out.from = oth[0] ? oth[0].t : ''; out.to = oth[1] ? oth[1].t : ''; oth.slice(2).forEach(o => notes.push(o.t)); }
+  }
+  const p = quickPatient(out.name);
+  if (p){
+    out.pid = p.id; out.name = p.name;
+    if (!out.mode) out.mode = p.mode || '';
+  }
+  if (qNorm(out.from) === 'doma' && p) out.from = p.addr || out.from;
+  if (qNorm(out.to) === 'doma' && p) out.to = p.addr || out.to;
+  out.note = notes.join('; ');
+  out.ok = !!(out.name || out.from || out.to);
+  return out;
+}
+const QUICK_HELP = 'Piši po dispečersko: ustanove in kratice (OI LJ, SBB, UKC LJ, ZD KK), »Doma« vzame naslov pacienta iz baze. Ura: 8:00 ali ob 8.30. Način: leže, utila, vzorci.';
+const MODE_LABEL = k => MODES[k] || k;
+function quickPreview(p){
+  if (!p || !p.ok) return '';
+  const bits = [p.name ? `<b>${esc(p.name)}</b>${p.pid ? ' <span class="chip ok">v bazi</span>' : ''}` : '<span class="chip warn">brez imena</span>'];
+  bits.push(`Od: ${p.from ? esc(p.from) : '<span class="dim">–</span>'}`); bits.push(`Do: ${p.to ? esc(p.to) : '<span class="dim">–</span>'}`);
+  bits.push(p.time ? `ura <b class="mono">${esc(p.time)}</b>` : '<span class="dim">brez ure</span>');
+  bits.push(esc(MODE_LABEL(p.mode || 'sede')));
+  if (p.dia) bits.push('dializa ' + (p.dia === 'pop' ? 'popoldne' : 'dopoldne'));
+  if (p.note) bits.push('opomba: ' + esc(p.note));
+  return bits.join(' · ');
+}
+/* Vpiše prevoz v prvo prosto polje dneva. Vrne vpisani prevoz. */
+function addQuickRide(date, p){
+  if (!p || !p.ok) return null;
+  const a = ensureDay(date); let r = a.find(x => !isFilled(x));
+  if (!r){ addSlots(date, 5); r = ensureDay(date).find(x => !isFilled(x)); }
+  Object.assign(r, blankRide(), { id:r.id, name:p.name, from:p.from, to:p.to, time:p.time, mode:p.mode || 'sede', dia:p.dia || '', note:p.note });
+  if (p.pid){ applyPatientToRide(date, r.id, p.pid, { keepMode:!!p.mode }); r.from = p.from || r.from; r.to = p.to || r.to; r.note = p.note; }
+  if (p.mode === 'vzorci' && !r.name) r.name = 'Vzorci';
+  save(); if (typeof afterAddressChange === 'function') afterAddressChange(date, r, 'to'); else KM.schedule(date, r.id);
+  if (r.from && typeof learnAddress === 'function') learnAddress(r.from);
+  return r;
+}
+
+/* ---------- Kopiranje in ponavljanje ---------- */
+const COPY_FIELDS = ['name', 'time', 'from', 'to', 'phone', 'mode', 'patientId', 'nalogId', 'note', 'stay', 'stayAuto', 'stayTouched', 'km', 'kmBack', 'kmSrc', 'kk', 'gf', 'gt', 'kmAt'];
+function cloneRideTo(r, date){
+  const a = ensureDay(date);
+  const dup = a.some(x => isFilled(x) && !x.odpovedano && norm(x.name) === norm(r.name) && (x.time || '') === (r.time || '') && norm(x.to) === norm(r.to) && norm(x.from) === norm(r.from));
+  if (dup) return null;
+  let t = a.find(x => !isFilled(x));
+  if (!t){ addSlots(date, 5); t = ensureDay(date).find(x => !isFilled(x)); }
+  Object.assign(t, blankRide(), { id:t.id });
+  for (const k of COPY_FIELDS) if (r[k] !== undefined) t[k] = (r[k] && typeof r[k] === 'object') ? JSON.parse(JSON.stringify(r[k])) : r[k];
+  if (r.patientId){ const p = patientById(r.patientId); const nl = p ? activeNalog(p, date) : null; t.nalogId = nl ? nl.id : ''; }
+  return t;
+}
+function prevDayWithRides(date){
+  for (let i = 1; i <= 21; i++){ const d = addDays(date, -i); if (filledRides(d).length) return d; }
+  return addDays(date, -1);
+}
+function copyRides(src, dst, ids){
+  let n = 0, skipped = 0;
+  for (const { r } of filledRides(src)){ if (ids && !ids.includes(r.id)) continue; if (r.odpovedano) continue; if (cloneRideTo(r, dst)) n++; else skipped++; }
+  if (n) save();
+  return { n, skipped };
+}
+/* Ponovi prevoz za naslednje delovne dni: how = 'next' (naslednji delovni dan), 'week' (do petka), 'five' (naslednjih 5 delovnih dni) */
+function repeatDates(date, how){
+  const out = []; let d = date;
+  const want = how === 'five' ? 5 : how === 'next' ? 1 : 99;
+  for (let i = 0; i < 28 && out.length < want; i++){
+    d = addDays(date, i + 1);
+    if (how === 'week' && dow(d) === 1) break;                      // teden se konča z nedeljo
+    if (isStandby(d)) continue;
+    out.push(d);
+    if (how === 'week' && dow(d) === 5) break;
+  }
+  return out;
+}
+function repeatRide(date, rideId, how){
+  const hit = rideById(date, rideId); if (!hit) return { n:0, dates:[] };
+  const dates = repeatDates(date, how), done = [];
+  for (const d of dates){ const t = cloneRideTo(hit.r, d); if (t){ done.push(d); KM.schedule(d, t.id); } }
+  if (done.length) save();
+  return { n:done.length, dates:done, tried:dates.length };
 }
 /* =====================================================================
    OBJAVA RAZPOREDA, STATUSI PREVOZOV (dispečer) IN APLIKACIJA ZA POSADKE (voznik, spremljevalec)
@@ -4150,6 +4592,311 @@ async function sendStatus(date, rideId, status, opts = {}){
   catch(err){ console.error(err); toast('Pošiljanje ni uspelo. Poskusi znova.'); return false; }
 }
 const navUrl = addr => 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent((addr || '') + ', Slovenija');
+/* ============================================================================
+   INTERAKTIVNI ZEMLJEVID (brez zunanjih knjižnic)
+   - povleci (miška / prst), povečaj (kolešček, dvojni klik ali dotik, dva prsta, gumba +/−, tipke), cela pot, čez cel zaslon
+   - podlaga: ploščice OpenStreetMap (config.js → tiles; po napravi izklopljivo). Brez ploščic (izklop, brez povezave, blokirano)
+     se še vedno prikaže pot in točke na nevtralni mreži.
+   - pot po cestah (geometrija OSRM), puščice smeri, oštevilčene točke z okenci (kdo, kdaj, kje), merilo, pripisovanje virov
+   Zemljevid se ob ponovnem izrisu strani znova ustvari; pogled (središče, povečava) si zapomni po ključu zemljevida.
+   ============================================================================ */
+const MAP = (() => {
+  const TS = 256, MAXLAT = 85.05112878, MINZ = 2;
+  const M = { specs:{}, views:{}, inst:new Set(), full:'' };
+  const cfg = () => {
+    const t = (window.KP_CONFIG && window.KP_CONFIG.tiles) || {};
+    let url = t.url === undefined ? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png' : String(t.url || '');
+    if (url && !(/^https:\/\//.test(url) && url.includes('{z}') && url.includes('{x}') && url.includes('{y}'))) url = '';
+    const link = String(t.link || 'https://www.openstreetmap.org/copyright');
+    return { url, attr:String(t.attribution || '© prispevajoči OpenStreetMap'), link:/^https:\/\//.test(link) ? link : '', maxZoom:Math.max(5, Math.min(20, +t.maxZoom || 19)), subs:String(t.subdomains || '') };
+  };
+  const tilesOn = () => !!cfg().url && store.get('kp.map.tiles') !== 'off';
+  const tileUrl = (c, z, x, y) => c.url.replace('{z}', z).replace('{x}', x).replace('{y}', y).replace('{s}', c.subs ? c.subs[(x + y) % c.subs.length] : '');
+  /* Web Mercator: koordinate v slikovnih točkah sveta pri povečavi z */
+  const px = (lon, lat, z) => { const s = TS * Math.pow(2, z), la = Math.max(-MAXLAT, Math.min(MAXLAT, lat)) * Math.PI / 180; return [(lon + 180) / 360 * s, (1 - Math.log(Math.tan(la) + 1 / Math.cos(la)) / Math.PI) / 2 * s]; };
+  const ll = (x, y, z) => { const s = TS * Math.pow(2, z); y = Math.max(0, Math.min(s, y)); return [x / s * 360 - 180, Math.atan(Math.sinh(Math.PI * (1 - 2 * y / s))) * 180 / Math.PI]; };
+  const ok = p => p && isFinite(p.lon) && isFinite(p.lat);
+
+  const SVGI = {
+    plus:'<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>',
+    minus:'<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>',
+    fit:'<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="10" cy="10" r="2" fill="currentColor"/></svg>',
+    full:'<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M4 8V4h4M12 4h4v4M16 12v4h-4M8 16H4v-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
+    close:'<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>',
+    layers:'<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M10 3l7 4-7 4-7-4 7-4zM3 11l7 4 7-4" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" fill="none"/></svg>'
+  };
+
+  /* HTML za mesto zemljevida. spec: { routes:[{coords:[[lon,lat],…], color, est}], pins:[{id, lon, lat, kind:'base'|'pu'|'do', label, color, html}] } */
+  function html(key, spec, o = {}){
+    M.specs[key] = spec;
+    return `<div class="rmap"><div class="imap${o.tall ? ' imap-tall' : ''}${M.full === key ? ' imap-full' : ''}" data-map="${esc(key)}"><div class="imap-vp" tabindex="0" role="application" aria-label="${esc(o.label || 'Zemljevid poti')}. Puščice premikajo, plus in minus spreminjata povečavo, 0 prilagodi na celotno pot."></div></div>${o.legend ? `<div class="rleg">${o.legend}</div>` : ''}</div>`;
+  }
+
+  function create(el, key, spec0){
+    let spec = spec0;
+    const vp = el.querySelector('.imap-vp'); if (!vp) return null;
+    const c = cfg(); let on = tilesOn();
+    const attrHtml = c.link ? `<a href="${esc(c.link)}" target="_blank" rel="noopener noreferrer">${esc(c.attr)}</a>` : esc(c.attr);
+    vp.innerHTML = `<div class="imap-tiles"></div><svg class="imap-svg" aria-hidden="true"></svg><div class="imap-pins"></div>
+      <div class="imap-ctl" role="group" aria-label="Upravljanje zemljevida"><button type="button" data-mc="in" aria-label="Povečaj" title="Povečaj">${SVGI.plus}</button><button type="button" data-mc="out" aria-label="Pomanjšaj" title="Pomanjšaj">${SVGI.minus}</button><button type="button" data-mc="fit" aria-label="Prikaži celotno pot" title="Cela pot">${SVGI.fit}</button><button type="button" data-mc="full" aria-label="Čez cel zaslon" title="Čez cel zaslon">${SVGI.full}</button><button type="button" data-mc="tiles" aria-label="Vklopi ali izklopi podlago zemljevida" aria-pressed="${on}" title="Podlaga zemljevida">${SVGI.layers}</button></div>
+      <div class="imap-pop" hidden></div><div class="imap-scale" aria-hidden="true"></div><div class="imap-note" hidden></div><div class="imap-attr">${on ? attrHtml : 'Podlaga izklopljena'}</div>`;
+    const $t = vp.querySelector('.imap-tiles'), $s = vp.querySelector('.imap-svg'), $p = vp.querySelector('.imap-pins'), $pop = vp.querySelector('.imap-pop'),
+      $note = vp.querySelector('.imap-note'), $sc = vp.querySelector('.imap-scale'), $full = vp.querySelector('[data-mc="full"]');
+    const tiles = new Map(), bad = new Set();
+    let W = 0, H = 0, okN = 0, errN = 0, openId = '', clusters = [], raf = 0, purgeT = 0, dead = false, ro = null;
+    let v = M.views[key]; if (!v) v = M.views[key] = { lon:15.59, lat:45.9, zoom:11, user:false };
+    const maxZ = () => on ? c.maxZoom : 18;
+    const clampZ = z => Math.max(MINZ, Math.min(maxZ(), z));
+    const routes = () => (spec.routes || []).filter(r => r.coords && r.coords.length > 1);
+    const allPts = () => { const a = []; routes().forEach(r => r.coords.forEach(p => a.push(p))); (spec.pins || []).forEach(p => { if (ok(p)) a.push([p.lon, p.lat]); }); return a.filter(p => isFinite(p[0]) && isFinite(p[1])); };
+
+    function fit(){
+      if (!W || !H) return;
+      const pts = allPts();
+      if (!pts.length){ v.lon = 15.59; v.lat = 45.9; v.zoom = 11; return; }
+      let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+      pts.forEach(([lo, la]) => { const [x, y] = px(lo, la, 0); x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); });
+      const pL = 40, pR = 66, pV = 44, sx = Math.max(x1 - x0, 1e-7), sy = Math.max(y1 - y0, 1e-7);   // desno je prostor za gumbe
+      const z = Math.min(Math.log2((W - pL - pR) / sx), Math.log2((H - 2 * pV) / sy));
+      v.zoom = clampZ(Math.min(15.5, isFinite(z) ? z : 14));
+      const k = Math.pow(2, v.zoom);
+      [v.lon, v.lat] = ll((x0 + x1) / 2 * k + (pR - pL) / 2, (y0 + y1) / 2 * k, v.zoom);
+      v.user = false;
+    }
+    const centerPx = () => px(v.lon, v.lat, v.zoom);
+    function pan(dx, dy){ const [cx, cy] = centerPx(); [v.lon, v.lat] = ll(cx - dx, cy - dy, v.zoom); v.user = true; }
+    function zoomAt(nz, sx, sy){
+      nz = clampZ(nz); if (nz === v.zoom) return;
+      const [cx, cy] = centerPx(), wx = cx - W / 2 + sx, wy = cy - H / 2 + sy, k = Math.pow(2, nz - v.zoom);
+      [v.lon, v.lat] = ll(wx * k - sx + W / 2, wy * k - sy + H / 2, nz); v.zoom = nz; v.user = true;
+    }
+    const schedule = () => { if (!raf && !dead) raf = requestAnimationFrame(() => { raf = 0; render(); }); };
+
+    /* ----- ploščice ----- */
+    function settle(){
+      /* ko so vse potrebne ploščice naložene (ali neuspešne), pobriši tiste izven pogleda ali stare povečave */
+      const need = [...tiles.values()].filter(t => t.need);
+      if (need.some(t => !t.img.classList.contains('ok') && !t.failed)) return false;
+      for (const [k, t] of [...tiles]) if (!t.need){ t.img.remove(); tiles.delete(k); }
+      return true;
+    }
+    function drawTiles(ox, oy){
+      if (!on){ for (const t of tiles.values()) t.img.remove(); tiles.clear(); return; }
+      const zt = Math.max(0, Math.min(c.maxZoom, Math.round(v.zoom))), n = Math.pow(2, zt), ts = TS * Math.pow(2, v.zoom - zt);
+      const tx0 = Math.floor(ox / ts), tx1 = Math.floor((ox + W) / ts), ty0 = Math.max(0, Math.floor(oy / ts)), ty1 = Math.min(n - 1, Math.floor((oy + H) / ts));
+      for (const t of tiles.values()) t.need = false;
+      if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) > 90) return;          // zaščita pred nenavadno velikim pogledom
+      for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++){
+        const k = zt + '/' + tx + '/' + ty;
+        let t = tiles.get(k);
+        if (!t){
+          if (bad.has(k)) continue;
+          const wx = ((tx % n) + n) % n, img = new Image();
+          img.className = 'imap-t'; img.alt = ''; img.draggable = false; img.decoding = 'async';
+          img.referrerPolicy = 'origin';        // pravila strežnika ploščic zahtevajo Referer (samo izvor, brez poti); stran sicer pošilja no-referrer
+          img.style.zIndex = zt;
+          t = { img, z:zt, tx, ty, need:true, failed:false };
+          img.onload = () => { img.classList.add('ok'); okN++; $note.hidden = true; if (!purgeT) purgeT = setTimeout(() => { purgeT = 0; settle(); }, 60); };
+          img.onerror = () => { t.failed = true; bad.add(k); errN++; img.remove(); tiles.delete(k); if (errN >= 3 && !okN){ $note.textContent = 'Podlaga zemljevida ni dosegljiva (brez povezave ali blokirana). Prikazana sta samo pot in točke.'; $note.hidden = false; } if (!purgeT) purgeT = setTimeout(() => { purgeT = 0; settle(); }, 60); };
+          img.src = tileUrl(c, zt, wx, ty);
+          $t.appendChild(img); tiles.set(k, t);
+        }
+        t.need = true;
+      }
+      for (const t of tiles.values()){
+        const s = TS * Math.pow(2, v.zoom - t.z);
+        t.img.style.width = t.img.style.height = (s + 0.6) + 'px';
+        t.img.style.transform = `translate(${(t.tx * s - ox).toFixed(1)}px,${(t.ty * s - oy).toFixed(1)}px)`;
+      }
+      if (!purgeT) purgeT = setTimeout(() => { purgeT = 0; settle(); }, 400);
+    }
+
+    /* ----- pot (SVG) ----- */
+    function drawRoutes(ox, oy){
+      let out = '';
+      for (const r of routes()){
+        let d = '', lx = -1e9, ly = -1e9, arrows = '', acc = 0, px0 = null;
+        r.coords.forEach(([lo, la], i) => {
+          const [x, y] = px(lo, la, v.zoom), X = x - ox, Y = y - oy;
+          if (i && Math.abs(X - lx) < 1.2 && Math.abs(Y - ly) < 1.2 && i < r.coords.length - 1) return;
+          d += (d ? 'L' : 'M') + X.toFixed(1) + ' ' + Y.toFixed(1);
+          if (px0){
+            const seg = Math.hypot(X - px0[0], Y - px0[1]); acc += seg;
+            if (acc > 130 && seg > 6 && X > -20 && X < W + 20 && Y > -20 && Y < H + 20){ acc = 0; arrows += `<path class="imap-arrow" d="M-4 -4L3 0L-4 4" transform="translate(${((X + px0[0]) / 2).toFixed(1)} ${((Y + px0[1]) / 2).toFixed(1)}) rotate(${(Math.atan2(Y - px0[1], X - px0[0]) * 180 / Math.PI).toFixed(0)})"/>`; }
+          }
+          px0 = [X, Y]; lx = X; ly = Y;
+        });
+        if (!d) continue;
+        out += `<path class="imap-casing" d="${d}"/><path class="imap-line${r.est ? ' est' : ''}" style="stroke:${r.color || 'var(--info)'}" d="${d}"/>${r.est ? '' : arrows}`;
+      }
+      $s.setAttribute('viewBox', `0 0 ${W} ${H}`); $s.setAttribute('width', W); $s.setAttribute('height', H);
+      $s.innerHTML = out;
+    }
+
+    /* ----- točke (združene, če so blizu skupaj) ----- */
+    function drawPins(ox, oy){
+      const items = (spec.pins || []).filter(ok).map(p => { const [x, y] = px(p.lon, p.lat, v.zoom); return { p, x:x - ox, y:y - oy }; }).filter(q => q.x > -30 && q.x < W + 30 && q.y > -30 && q.y < H + 30);
+      clusters = [];
+      for (const q of items){
+        let cl = clusters.find(k => Math.hypot(k.x - q.x, k.y - q.y) < 19);
+        if (!cl){ cl = { x:q.x, y:q.y, items:[] }; clusters.push(cl); }
+        cl.items.push(q.p);
+      }
+      $p.innerHTML = clusters.map((k, i) => {
+        const non = k.items.filter(p => p.kind !== 'base'), base = !non.length;
+        const labels = [...new Set(non.map(p => p.label).filter(Boolean))], lab = base ? '' : (labels.join(',').length > 9 ? labels.slice(0, 3).join(',') + '…' : labels.join(','));
+        const drop = non.some(p => p.kind === 'do'), col = (non[0] && non[0].color) || '';
+        const ids = k.items.map(p => p.id).join(',');
+        const name = k.items.map(p => p.name || p.label || '').filter(Boolean).join('; ');
+        return `<button type="button" class="imap-pin${base ? ' base' : ''}${drop ? ' do' : ''}${!base && k.items.some(p => p.kind === 'base') ? ' mixed' : ''}${openId && k.items.some(p => p.id === openId) ? ' sel' : ''}" data-ci="${i}" data-ids="${esc(ids)}" style="transform:translate(${k.x.toFixed(1)}px,${k.y.toFixed(1)}px)${col ? ';--pc:' + col : ''}" aria-label="${esc(base ? 'Postaja' : 'Postanek ' + lab)}${name ? ': ' + esc(name) : ''}">${esc(lab)}</button>`;
+      }).join('');
+      placePop();
+    }
+    function placePop(){
+      if (!openId){ $pop.hidden = true; return; }
+      const k = clusters.find(q => q.items.some(p => p.id === openId));
+      if (!k){ $pop.hidden = true; return; }
+      if ($pop.dataset.for !== openId){
+        $pop.innerHTML = `<button type="button" class="imap-x" data-mc="pop-x" aria-label="Zapri okno">${SVGI.close}</button>` + k.items.map(p => `<div class="imap-pi">${p.html || esc(p.label || '')}</div>`).join('');
+        $pop.dataset.for = openId;
+      }
+      $pop.hidden = false;
+      const w = $pop.offsetWidth, h = $pop.offsetHeight;
+      let left = Math.max(6, Math.min(W - w - 6, k.x - w / 2)), top = k.y - 20 - h;
+      if (top < 6) top = Math.min(H - h - 6, k.y + 20);
+      $pop.style.left = left + 'px'; $pop.style.top = Math.max(6, top) + 'px';
+    }
+    function scale(){
+      const mpp = 156543.03392 * Math.cos(v.lat * Math.PI / 180) / Math.pow(2, v.zoom);
+      const steps = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000], target = 90 * mpp;
+      let m = steps[0]; for (const s of steps) if (s <= target) m = s;
+      $sc.style.width = Math.max(18, m / mpp) + 'px'; $sc.textContent = m >= 1000 ? (m / 1000) + ' km' : m + ' m';
+    }
+    function render(){
+      if (dead) return;
+      W = vp.clientWidth; H = vp.clientHeight; if (!W || !H) return;
+      if (!v.user && !v.fitted){ fit(); }
+      const [cx, cy] = centerPx(), ox = cx - W / 2, oy = cy - H / 2;
+      drawTiles(ox, oy); drawRoutes(ox, oy); drawPins(ox, oy); scale();
+    }
+
+    /* ----- upravljanje ----- */
+    const ptrs = new Map(); let moved = false, downPin = null, lastTap = { t:0, x:0, y:0 }, pinch = null, travel = 0;
+    const rect = () => vp.getBoundingClientRect();
+    vp.addEventListener('pointerdown', e => {
+      if (e.target.closest('.imap-ctl, .imap-pop, .imap-attr')) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      try { vp.setPointerCapture(e.pointerId); } catch(_){}
+      ptrs.set(e.pointerId, { x:e.clientX, y:e.clientY });
+      if (ptrs.size === 1){ moved = false; travel = 0; downPin = e.target.closest('.imap-pin'); }
+      if (ptrs.size === 2){ const [a, b] = [...ptrs.values()]; pinch = { d:Math.hypot(a.x - b.x, a.y - b.y) || 1, z:v.zoom, mx:(a.x + b.x) / 2, my:(a.y + b.y) / 2 }; moved = true; downPin = null; }
+      vp.classList.add('grab');
+    });
+    vp.addEventListener('pointermove', e => {
+      const p = ptrs.get(e.pointerId); if (!p) return;
+      const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+      if (ptrs.size === 1){
+        travel += Math.abs(dx) + Math.abs(dy);
+        if (travel > 5){ moved = true; pan(dx, dy); schedule(); }
+      } else if (ptrs.size === 2 && pinch){
+        const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y) || 1, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, r = rect();
+        pan(mx - pinch.mx, my - pinch.my); pinch.mx = mx; pinch.my = my;
+        zoomAt(pinch.z + Math.log2(d / pinch.d), mx - r.left, my - r.top); schedule();
+      }
+    });
+    const up = e => {
+      if (!ptrs.has(e.pointerId)) return;
+      const wasOne = ptrs.size === 1; ptrs.delete(e.pointerId);
+      if (ptrs.size < 2) pinch = null;
+      if (!ptrs.size) vp.classList.remove('grab');
+      if (e.type === 'pointerup' && wasOne && !moved){
+        if (downPin){ openPin(downPin); }
+        else {
+          const now = Date.now(), r = rect(), x = e.clientX - r.left, y = e.clientY - r.top;
+          if (now - lastTap.t < 320 && Math.hypot(x - lastTap.x, y - lastTap.y) < 30){ zoomAt(v.zoom + 1, x, y); schedule(); lastTap.t = 0; }
+          else { lastTap = { t:now, x, y }; if (openId){ openId = ''; $pop.dataset.for = ''; placePop(); drawPins(...origin()); } }
+        }
+      }
+      downPin = null;
+    };
+    vp.addEventListener('pointerup', up); vp.addEventListener('pointercancel', up);
+    const origin = () => { const [cx, cy] = centerPx(); return [cx - W / 2, cy - H / 2]; };
+    vp.addEventListener('wheel', e => {
+      e.preventDefault();
+      const r = rect(), d = -e.deltaY * (e.deltaMode ? 0.05 : 0.0022);
+      zoomAt(v.zoom + Math.max(-0.7, Math.min(0.7, d)), e.clientX - r.left, e.clientY - r.top); schedule();
+    }, { passive:false });
+    function openPin(btn){
+      const ids = (btn.dataset.ids || '').split(','), first = ids[0]; if (!first) return;
+      openId = openId === first ? '' : first; $pop.dataset.for = '';
+      drawPins(...origin());
+    }
+    $p.addEventListener('click', e => { const b = e.target.closest('.imap-pin'); if (b && e.detail === 0) openPin(b); });   // tipkovnica (Enter/preslednica)
+    function setFull(on2){
+      M.full = on2 ? key : ''; el.classList.toggle('imap-full', on2); document.documentElement.classList.toggle('imap-lock', on2);
+      $full.setAttribute('aria-label', on2 ? 'Zapri celozaslonski prikaz' : 'Čez cel zaslon'); $full.innerHTML = on2 ? SVGI.close : SVGI.full;
+      if (on2) vp.focus(); schedule();
+    }
+    function setTiles(x){ store.set('kp.map.tiles', x ? 'on' : 'off'); on = tilesOn(); vp.querySelector('[data-mc="tiles"]').setAttribute('aria-pressed', on); vp.querySelector('.imap-attr').innerHTML = on ? attrHtml : 'Podlaga izklopljena'; if (!on){ $note.hidden = true; for (const t of tiles.values()) t.img.remove(); tiles.clear(); } v.zoom = clampZ(v.zoom); schedule(); }
+    vp.addEventListener('click', e => {
+      const b = e.target.closest('[data-mc]'); if (!b) return;
+      const a = b.dataset.mc, cxx = W / 2, cyy = H / 2;
+      if (a === 'in') zoomAt(Math.floor(v.zoom + 1e-6) + 1, cxx, cyy);
+      else if (a === 'out') zoomAt(Math.ceil(v.zoom - 1e-6) - 1, cxx, cyy);
+      else if (a === 'fit'){ v.user = false; v.fitted = false; fit(); }
+      else if (a === 'full') setFull(!el.classList.contains('imap-full'));
+      else if (a === 'tiles') setTiles(!on);
+      else if (a === 'pop-x'){ openId = ''; $pop.dataset.for = ''; }
+      schedule();
+    });
+    vp.addEventListener('keydown', e => {
+      if (e.target.closest('.imap-pin, .imap-ctl, .imap-pop')){ if (e.key === 'Escape' && openId){ openId = ''; $pop.dataset.for = ''; schedule(); e.stopPropagation(); } return; }
+      const k = e.key; let h = true;
+      if (k === 'ArrowLeft') pan(60, 0); else if (k === 'ArrowRight') pan(-60, 0); else if (k === 'ArrowUp') pan(0, 60); else if (k === 'ArrowDown') pan(0, -60);
+      else if (k === '+' || k === '=') zoomAt(v.zoom + 0.5, W / 2, H / 2); else if (k === '-' || k === '_') zoomAt(v.zoom - 0.5, W / 2, H / 2);
+      else if (k === '0' || k === 'Home'){ v.user = false; v.fitted = false; fit(); }
+      else if (k === 'Escape'){ if (openId){ openId = ''; $pop.dataset.for = ''; } else if (el.classList.contains('imap-full')) setFull(false); else h = false; }
+      else h = false;
+      if (h){ e.preventDefault(); schedule(); }
+    });
+    if (typeof ResizeObserver !== 'undefined'){ ro = new ResizeObserver(() => schedule()); ro.observe(vp); }
+    if (el.classList.contains('imap-full')){ document.documentElement.classList.add('imap-lock'); $full.innerHTML = SVGI.close; }
+    render();
+
+    const api = {
+      el, key, render, fit:() => { v.user = false; v.fitted = false; fit(); schedule(); },
+      focusPin(id, z){
+        const p = (spec.pins || []).find(q => q.id === id); if (!p || !ok(p)) return false;
+        v.zoom = clampZ(Math.max(v.zoom, z || 14)); v.lon = p.lon; v.lat = p.lat; v.user = true; openId = id; $pop.dataset.for = ''; render(); return true;
+      },
+      setSpec(sp){ spec = sp; $pop.dataset.for = ''; schedule(); },
+      destroy(){ dead = true; if (ro) ro.disconnect(); clearTimeout(purgeT); cancelAnimationFrame(raf); tiles.clear(); }
+    };
+    return api;
+  }
+
+  function mountAll(root){
+    for (const m of [...M.inst]) if (!m.el.isConnected){ m.destroy(); M.inst.delete(m); }
+    if (M.full && !document.querySelector('.imap.imap-full')){ M.full = ''; document.documentElement.classList.remove('imap-lock'); }
+    (root || document).querySelectorAll('.imap[data-map]').forEach(el => {
+      if (el.__imap) return;
+      const spec = M.specs[el.dataset.map]; if (!spec) return;
+      el.__imap = create(el, el.dataset.map, spec); if (el.__imap) M.inst.add(el.__imap);
+    });
+  }
+  /* zamenjaj vsebino že prikazanega zemljevida (npr. ko se naložijo ceste), pogled ostane */
+  function update(key, spec){
+    M.specs[key] = spec;
+    for (const m of M.inst) if (m.key === key && m.el.isConnected) m.setSpec(spec);
+  }
+  /* pomakni zemljevid na točko (klik na postanek v seznamu) */
+  function focus(key, id){
+    for (const m of M.inst) if (m.key === key && m.el.isConnected){ m.el.scrollIntoView({ block:'nearest', behavior:'smooth' }); return m.focusPin(id); }
+    return false;
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && M.full){ const m = [...M.inst].find(x => x.key === M.full); const b = m && m.el.querySelector('[data-mc="full"]'); if (b) b.click(); } });
+  return Object.assign(M, { html, mountAll, update, focus, cfg, tilesOn, px, ll });
+})();
 /* =====================================================================
    DOGODKI, PRIJAVA, ZAČETNI PODATKI, ZAGON
    ===================================================================== */
@@ -4171,8 +4918,14 @@ function render(){
   else if (UI.view === 'posebnosti') renderNotices();
   else renderSettings();
   if (UI.modal) renderModal();
+  MAP.mountAll(document);
 }
-function rerender(){ const y = window.scrollY; render(); window.scrollTo(0, y); }
+function rerender(){
+  const y = window.scrollY, a = document.activeElement;
+  const keep = a && a.id === 'quickIn' ? { v:a.value, s:a.selectionStart } : null;   // hitri vnos: besedilo in kazalec ostaneta, ko se stran osveži
+  render(); window.scrollTo(0, y);
+  if (keep){ const q = $('#quickIn'); if (q){ if (q !== a){ q.value = keep.v; q.focus(); try { q.setSelectionRange(keep.s, keep.s); } catch(e){} } } }
+}
 function go(view, push = true){
   if (isCrew()) view = 'moji';
   else if (!STAFF_VIEWS.includes(view)) view = 'knjiga';
@@ -4366,6 +5119,7 @@ document.addEventListener('click', async e => {
     case 'dDate': UI.dDate = date; render(); break;
     case 'lDate': UI.lDate = date; render(); break;
     case 'dayMode': { const d = UI.dDate; S.dayRules[d] = { ...(S.dayRules[d] || {}), mode:el.dataset.k }; audit('pravila.dan', { datum:d, nacin:el.dataset.k }); save(); rerender(); break; }
+    case 'crewsAll': { const op = el.dataset.open === '1'; document.querySelectorAll('details.crewcard').forEach(d => { d.open = op; }); break; }
     case 'dayModeReset': { const rr = S.dayRules[UI.dDate]; if (rr){ delete rr.mode; if (!Object.keys(rr).length) delete S.dayRules[UI.dDate]; } save(); rerender(); break; }
     case 'ruleMode': { S.rules.mode = el.dataset.k; audit('pravila.privzeto', { nacin:el.dataset.k }); save(); render(); break; }
     case 'publish': {
@@ -4413,6 +5167,31 @@ document.addEventListener('click', async e => {
       try { await ROUTE.path(tripWaypoints(hit)); if (UI.maps[key]) UI.maps[key] = 'ok'; } catch(err){ if (UI.maps[key]) UI.maps[key] = 'err:' + String((err && err.message) || err).slice(0, 80); }
       if (UI.maps[key]) rerender();
       break; }
+    case 'noteChip': {
+      const art = el.closest('[data-ride]'); const hit = art && rideById(art.dataset.date, art.dataset.ride); if (!hit) break;
+      const parts = String(hit.r.note || '').split(/\s*;\s*/).filter(Boolean), t = el.dataset.t, i = parts.findIndex(x => norm(x) === norm(t));
+      if (i >= 0) parts.splice(i, 1); else parts.push(t);
+      hit.r.note = parts.join('; '); save();
+      el.setAttribute('aria-pressed', String(i < 0)); const ni = $('[data-f=note]', art); if (ni) ni.value = hit.r.note;
+      refreshBox(art); break; }
+    case 'repeatRide': {
+      const art = el.closest('[data-ride]'); if (!art) break;
+      const res = repeatRide(art.dataset.date, art.dataset.ride, el.dataset.how);
+      toast(res.n ? `Prevoz dodan za ${res.n} ${res.n === 1 ? 'dan' : 'dni'}: ${res.dates.map(fmtShort).join(', ')}` : res.tried ? 'Prevoz je na teh dneh že vpisan' : 'Ni delovnih dni za ponovitev'); rerender(); break; }
+    case 'copyOpen': { const src = prevDayWithRides(UI.date); ensureRange(src, UI.date); UI.copy = { src, sel:new Set(filledRides(src).filter(x => !x.r.odpovedano).map(x => x.r.id)) }; rerender(); break; }
+    case 'copyClose': UI.copy = null; rerender(); break;
+    case 'copyStep': { const src = addDays(UI.copy.src, +el.dataset.d); ensureRange(src, UI.date); UI.copy = { src, sel:new Set(filledRides(src).filter(x => !x.r.odpovedano).map(x => x.r.id)) }; rerender(); break; }
+    case 'copyAll': UI.copy.sel = new Set(filledRides(UI.copy.src).filter(x => !x.r.odpovedano).map(x => x.r.id)); rerender(); break;
+    case 'copyNone': UI.copy.sel = new Set(); rerender(); break;
+    case 'copyDo': {
+      if (!UI.copy || !UI.copy.sel.size) break;
+      const res = copyRides(UI.copy.src, UI.date, [...UI.copy.sel]);
+      filledRides(UI.date).forEach(({ r }) => { if (r.from && r.to && !r.km && GOOGLE.auto()) KM.schedule(UI.date, r.id); });
+      UI.copy = null; rerender(); toast(res.n ? `Kopiranih prevozov: ${res.n}${res.skipped ? ' (' + res.skipped + ' že vpisanih preskočenih)' : ''}` : 'Vsi izbrani prevozi so že vpisani'); break; }
+    case 'printDay': printDay(UI.date); break;
+    case 'stopFocus': MAP.focus(el.dataset.mapkey, el.dataset.mapid); break;
+    case 'dayMapCrew': { const h = UI.dayHide || (UI.dayHide = {}); h[el.dataset.veh] = !h[el.dataset.veh]; rerender(); break; }
+    case 'mapTiles': store.set('kp.map.tiles', MAP.tilesOn() ? 'off' : 'on'); rerender(); break;
     case 'clearAddr': store.del('kp.addr'); loadAddr(); rerender(); toast('Uvoženi naslovi izbrisani'); break;
     case 'clearLearned': S.addrBook = []; save(); rerender(); toast('Naučeni naslovi izbrisani'); break;
     case 'delUser': { const u = USERS.find(x => x.id === el.dataset.id); USERS = USERS.filter(x => x.id !== el.dataset.id); S.staff.forEach(s => { if (s.userId === el.dataset.id) s.userId = ''; }); saveUsers(); audit('uporabnik.izbrisan', { uporabnik:u && u.username }); save(); rerender(); break; }
@@ -4492,6 +5271,7 @@ document.addEventListener('input', e => {
   if (el.dataset.pf && el.tagName !== 'SELECT') setPf(el);
   if (el.dataset.nf && el.tagName !== 'SELECT' && el.type !== 'date') setNf(el);
   if (el.id === 'dayNote'){ S.dayNote[UI.dDate] = el.value; if (!el.value) delete S.dayNote[UI.dDate]; save(); }
+  if (el.id === 'quickIn'){ const pv = $('#quickPrev'); if (pv) pv.innerHTML = el.value.trim() ? (quickPreview(parseQuick(el.value)) || 'Vpiši ime, naslov ali cilj') : QUICK_HELP; }
   if (el.id === 'rideSearch'){ UI.q = el.value; applyFilter(); }
   if (el.id === 'patSearch'){ UI.pq = el.value; refreshPatientList(); }
 });
@@ -4506,6 +5286,8 @@ function afterAddressChange(date, r, f){
 }
 document.addEventListener('change', async e => {
   const el = e.target;
+  if (el.dataset && el.dataset.copy && UI.copy){ if (el.checked) UI.copy.sel.add(el.dataset.copy); else UI.copy.sel.delete(el.dataset.copy); rerender(); return; }
+  if (el.id === 'copySrc' && UI.copy && el.value){ const src = el.value; ensureRange(src, UI.date); UI.copy = { src, sel:new Set(filledRides(src).filter(x => !x.r.odpovedano).map(x => x.r.id)) }; rerender(); return; }
   if (el.dataset.km === 'manual'){
     const art = el.closest('[data-ride]'); if (!art) return;
     KM.setManual(art.dataset.date, art.dataset.ride, el.value);
@@ -4583,7 +5365,13 @@ document.addEventListener('submit', async e => {
   const f = e.target; e.preventDefault();
   const fd = new FormData(f), kind = f.dataset.form || f.id;
   try {
-    if (kind === 'addDuty'){ const name = (fd.get('name') || '').trim(); if (!name) return; if (!S.staff.some(s => norm(s.name) === norm(name))) S.staff.push({ id:uid(), name, team:'redna', userId:'' }); addDuty(UI.dDate, name, (S.staff.find(s => norm(s.name) === norm(name)) || {}).team); save(); rerender(); }
+    if (kind === 'quick'){
+      const inp = $('#quickIn'), p = parseQuick(inp ? inp.value : ''); if (!p.ok){ toast('Vpiši vsaj ime, naslov ali cilj'); return; }
+      const r = addQuickRide(UI.date, p); UI.filter = 'vsi'; UI.q = ''; if (inp) inp.value = ''; rerender();
+      const i2 = $('#quickIn'); if (i2) i2.focus();
+      toast(`Vpisano (št. ${rideById(UI.date, r.id).nr}): ${r.name || r.to || r.from}${r.time ? ' ob ' + r.time : ''}`);
+    }
+    else if (kind === 'addDuty'){ const name = (fd.get('name') || '').trim(); if (!name) return; if (!S.staff.some(s => norm(s.name) === norm(name))) S.staff.push({ id:uid(), name, team:'redna', userId:'' }); addDuty(UI.dDate, name, (S.staff.find(s => norm(s.name) === norm(name)) || {}).team); save(); rerender(); }
     else if (kind === 'addNotice'){ S.notices.push({ id:uid(), vehicleId:fd.get('vehicleId'), tip:fd.get('tip'), from:fd.get('from'), to:fd.get('to') || '', note:(fd.get('note') || '').trim(), closed:false }); save(); render(); toast('Posebnost dodana'); }
     else if (kind === 'diaAdd'){ const p = patientById(fd.get('pid')); if (!p){ toast('Izberi pacienta'); return; } p.dt = { t:fd.get('t') === 'pop' ? 'pop' : 'dop', d:[1, 3, 5] }; save(); rerender(); toast(`${p.name}: dodan na dializo (pon, sre, pet). Popravi dneve po potrebi.`); }
     else if (kind === 'addStaff'){ const name = (fd.get('name') || '').trim(); if (name){ S.staff.push({ id:uid(), name, team:fd.get('team'), userId:'' }); save(); rerender(); } }
@@ -4737,7 +5525,7 @@ async function boot(){
     else if (['knjiga', 'dispecer'].includes(UI.view)) scheduleRender();
   };
   GOOGLE.onUpdate = () => { if (ME && UI.view === 'nastavitve' && UI.setTab === 'planiranje') scheduleRender(); };
-  document.addEventListener('toggle', e => { const d = e.target; if (d && d.dataset && d.dataset.sect) UI.sect[d.dataset.sect] = d.open; }, true);
+  document.addEventListener('toggle', e => { const d = e.target; if (d && d.dataset && d.dataset.sect){ const k = d.dataset.sect, was = !!UI.sect[k]; UI.sect[k] = d.open; if (k === 'daymap' && was !== d.open) rerender(); } }, true);
   ROUTE.onUpdate = () => { if (ME) scheduleRender(); }; ROUTE.init();     // cestni podatki: splošni predpomnilnik + razdalje.json; osveži prikaz, ko prispejo novi podatki
   let msg = ''; try { msg = sessionStorage.getItem('kp.msg') || ''; sessionStorage.removeItem('kp.msg'); } catch(e){}
   if (BACKEND === 'firebase'){

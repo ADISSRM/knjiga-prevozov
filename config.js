@@ -28,6 +28,17 @@ window.KP_CONFIG = {
   google: {
     key: ''
   },
+  // PODLAGA ZEMLJEVIDA (interaktivni zemljevid poti in dneva). Brskalnik pri strežniku ploščic zahteva slike za prikazano
+  // območje (strežnik vidi IP, izvor strani in koordinate ploščic; podatkov o pacientih ne). Javni strežnik OSM je za zmerno rabo
+  // (operations.osmfoundation.org/policies/tiles); za redno rabo uporabi lasten strežnik ploščic in njegov izvor dodaj v CSP
+  // (build-prod.py, img-src). Pripis (attribution) mora ostati viden.
+  //   url: ''  → podlaga izklopljena za vse (ostaneta pot in točke na nevtralni mreži)
+  tiles: {
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '© prispevajoči OpenStreetMap',
+    link: 'https://www.openstreetmap.org/copyright',
+    maxZoom: 19
+  },
   firebase: {
     apiKey: 'VSTAVI-API-KEY',
     authDomain: 'VSTAVI-PROJECT-ID.firebaseapp.com',

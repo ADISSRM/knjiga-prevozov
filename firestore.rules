@@ -47,11 +47,11 @@ service cloud.firestore {
     // ---------- nastavitve (vozila, osebje, pravila, naslovi) ----------
     match /cfg/{doc} {
       allow read: if isStaff();
-      // Prvi zapis (nastavitve) ustvari skrbnik. Dispečer lahko spreminja le osebje, obvestila, naslove in privzeti način pravil;
+      // Prvi zapis (nastavitve) ustvari skrbnik. Dispečer lahko spreminja le osebje, obvestila, naslove, klinike (places) in privzeti način pravil;
       // vozila, razdalje, dializne skupine in varnostne nastavitve lahko spreminja samo skrbnik.
       allow create: if isAdmin() && doc == 'main';
       allow update: if doc == 'main' && (isAdmin()
-        || (isStaff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['staff', 'notices', 'addrBook', 'coordOv', 'rules'])));
+        || (isStaff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['staff', 'notices', 'addrBook', 'coordOv', 'rules', 'places'])));
       allow delete: if false;
     }
 

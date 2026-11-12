@@ -4,7 +4,7 @@
 const vm = require('vm'), assert = require('assert'), path = require('path');
 const { load } = require('./load.js'), { createMock } = require('./mock-osrm.js'), { createGoogleMock } = require('./mock-google.js');
 const SRC = path.join(__dirname, '..', 'src') + path.sep;
-const FILES = ['20-data.js', '30-core.js', '35-db.js', '38-routing.js', '39-google.js', '40-planner.js', '45-pacienti.js'].map(f => SRC + f);
+const FILES = ['20-data.js', '30-core.js', '35-db.js', '38-routing.js', '39-google.js', '40-planner.js', '45-pacienti.js', '54-quick.js'].map(f => SRC + f);
 const URLS = { url:'https://osrm.test', fallback:['https://osrm2.test'] };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const DATE = '2026-11-10';   // torek
@@ -529,6 +529,169 @@ test('kilometrina: mesečno poročilo (km po prevozih, vozilih, vir), CSV z BOM 
   assert.ok(!/Ana/.test(t.ev(`KM.csv(2026, 10, false)`)), 'CSV brez imen pacientov');
   const n = boot({ google:{ key:'' } }); day(n, { routing:true, rides:[{ name:'C', from:'Dobova 25', to:'SB Brežice', time:'10:00' }] }); await n.ev('ROUTE.settle && ROUTE.settle()'); sum(n); await n.ev('ROUTE.settle()');
   const inf = n.js(`KM.info(rideById(${JSON.stringify(DATE)}, 'r0').r)`); assert.ok(inf.src === 'osrm' || inf.src === 'ocena'); assert.strictEqual(inf.exact, false);
+});
+
+/* ------------------------------------------------------------------ dispečerski žargon, hitri vnos, kopiranje in ponavljanje */
+test('hitri vnos: dispečerski žargon (OI LJ, O.I. LJ, SBB, Doma, ob 9.30, leže, vzorci) razbere ime, od, do, uro, način', async () => {
+  const t = boot();
+  t.ev(`S.patients.push(blankPatient({ name:'Ivan Novak', addr:'Dobova 25', phone:'031111111', mode:'sede' }))`);
+  const q = x => t.js(`parseQuick(${JSON.stringify(x)})`);
+  let p = q('Ivan Novak, Doma, OI LJ, 8:00');
+  assert.strictEqual(p.name, 'Ivan Novak'); assert.strictEqual(p.from, 'Dobova 25', '»Doma« → naslov pacienta iz baze'); assert.strictEqual(p.to, 'OI LJ'); assert.strictEqual(p.time, '08:00'); assert.ok(p.pid);
+  p = q('Pacient 08, Dobova 14, O.I. LJ, 08:00'); assert.deepStrictEqual([p.name, p.from, p.to, p.time], ['Pacient 08', 'Dobova 14', 'O.I. LJ', '08:00'], 'ime s številko ni naslov');
+  p = q('Marija Horvat; Brežice, Cesta svobode 10 > UKC LJ; ob 9.30; leže'); assert.deepStrictEqual([p.name, p.from, p.to, p.time, p.mode], ['Marija Horvat', 'Brežice, Cesta svobode 10', 'UKC LJ', '09:30', 'leze'], 'z ločilom ; ali > se vejice v naslovu ohranijo');
+  p = q('Pacient 10, Doma, Dializa KK, 7:00, utila'); assert.deepStrictEqual([p.name, p.from, p.to, p.time, p.mode], ['Pacient 10', 'Doma', 'Dializa KK', '07:00', 'utila']);
+  p = q('Pacient 11, Velika Dolina 2, SB B. – krg. amb., 14:00'); assert.strictEqual(p.to, 'SB B. – krg. amb.'); assert.strictEqual(p.from, 'Velika Dolina 2');
+  p = q('Novak Ivan Dobova 25 OI LJ 8:00'); assert.deepStrictEqual([p.name, p.from, p.to, p.time], ['Ivan Novak', 'Dobova 25', 'OI LJ', '08:00'], 'brez ločil: ime po bazi, cilj kot ustanova');
+  p = q('vzorci, IMI LJ, 10:00'); assert.deepStrictEqual([p.mode, p.to, p.time, p.name], ['vzorci', 'IMI LJ', '10:00', '']);
+  p = q('Pacient 02, Veliki Obrež 2, UKC LJ, 10, brez spremljevalca'); assert.deepStrictEqual([p.from, p.to, p.time, p.note], ['Veliki Obrež 2', 'UKC LJ', '10:00', 'brez spremljevalca']);
+  p = q('Pacient 12, SBB, Dobova 7, 15:00'); assert.deepStrictEqual([p.from, p.to], ['SBB', 'Dobova 7'], 'ustanova pred naslovom = odvoz');
+  p = q('Pacient 09, Levstikova 12, OI LJ 8'); assert.deepStrictEqual([p.from, p.to, p.time], ['Levstikova 12', 'OI LJ', '08:00'], 'ura na koncu cilja');
+  assert.strictEqual(q('').ok, false);
+});
+test('hitri vnos: prevoz pride v prvo prosto polje, pacient iz baze dobi telefon in nalog, ustanova je prepoznana', async () => {
+  const t = boot();
+  t.ev(`S.patients.push(blankPatient({ name:'Ivan Novak', addr:'Dobova 25', phone:'031111111', mode:'sede' }))`);
+  const r = t.js(`(() => { const r = addQuickRide('${DATE}', parseQuick('Ivan Novak, Doma, OI LJ, 8:00')); return { id:r.id, name:r.name, from:r.from, to:r.to, time:r.time, phone:r.phone, mode:r.mode, nr:rideById('${DATE}', r.id).nr, pid:r.patientId, g:geo(r.to).kind }; })()`);
+  assert.deepStrictEqual([r.name, r.from, r.to, r.time, r.phone, r.nr, r.g], ['Ivan Novak', 'Dobova 25', 'OI LJ', '08:00', '031111111', 1, 'poi']); assert.ok(r.pid);
+  t.ev(`addQuickRide('${DATE}', parseQuick('Pacient 02, Veliki Obrež 2, UKC LJ, 10:00'))`);
+  assert.strictEqual(t.js(`filledRides('${DATE}').map(x => x.nr)`).join(), '1,2');
+});
+test('kopiranje z drugega dne in ponavljanje: polja, preskok podvojenih, samo delovni dnevi, brez stanja', async () => {
+  const t = boot();
+  t.ev(`(() => { const a = ensureDay('2026-11-09'); Object.assign(a[0], blankRide(), { id:a[0].id, name:'A', from:'Dobova 25', to:'OI LJ', time:'08:00', note:'brez spremljevalca', done:true, status:'v_vozilu', odpovedano:false });
+    Object.assign(a[1], blankRide(), { id:a[1].id, name:'B', from:'Pišece 7', to:'UKC LJ', time:'10:00', odpovedano:true }); })()`);
+  let res = t.js(`copyRides('2026-11-09', '${DATE}')`); assert.strictEqual(res.n, 1, 'odpovedan prevoz se ne kopira');
+  const c = t.js(`ensureDay('${DATE}')[0]`); assert.deepStrictEqual([c.name, c.from, c.to, c.time, c.note, c.done, c.status], ['A', 'Dobova 25', 'OI LJ', '08:00', 'brez spremljevalca', false, 'nova']);
+  res = t.js(`copyRides('2026-11-09', '${DATE}')`); assert.strictEqual(res.n, 0); assert.strictEqual(res.skipped, 1, 'podvojen prevoz se preskoči');
+  // ponovi: torek 10.11. → sreda, četrtek, petek (do konca tedna), sobota/nedelja se preskočita
+  const id = c.id; let rr = t.js(`repeatRide('${DATE}', '${id}', 'week')`); assert.deepStrictEqual(rr.dates, ['2026-11-11', '2026-11-12', '2026-11-13']);
+  rr = t.js(`repeatRide('${DATE}', '${id}', 'week')`); assert.strictEqual(rr.n, 0, 'ponovitev ne podvaja');
+  const five = t.js(`repeatDates('2026-11-13', 'five')`); assert.deepStrictEqual(five, ['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20'], 'od petka: pon–pet');
+  assert.deepStrictEqual(t.js(`repeatDates('2026-11-13', 'next')`), ['2026-11-16']);
+});
+
+test('žargon ustanov: O.I. LJ, SBB, ZD KK, IMI LJ; ulice v Brežicah brez kraja; Dolenja vas', async () => {
+  const t = boot();
+  const g = x => t.js(`(() => { const p = geo(${JSON.stringify(x)}); return { kind:p.kind, label:p.label }; })()`);
+  assert.ok(/Onkolo/.test(g('O.I. LJ').label) && g('O.I. LJ').kind === 'poi', 'O.I. LJ');
+  assert.ok(/Onkolo/.test(g('OI LJ').label)); assert.ok(/Onkolo/.test(g('Lj - Onkološko').label));
+  assert.ok(/SB Bre/.test(g('SBB').label), 'SBB'); assert.ok(/SB Bre/.test(g('SB B. – krg. amb.').label), 'SB B. – krg. amb.');
+  assert.ok(/Kr[sš]ko/.test(g('ZD KK zobar').label), 'ZD KK'); assert.ok(/IMI|Mikrobiolog/.test(g('IMI LJ').label), 'IMI LJ');
+  assert.strictEqual(g('Cankarjeva 5').label, 'Brežice', 'ulica v Brežicah brez imena kraja'); assert.strictEqual(g('Levstikova 12').kind, 'naselje');
+  assert.notStrictEqual(g('Dolenja vas 2 pri Artičah').kind, 'neznano');
+  assert.ok(/Brežice|ZD/.test(g('ZD').label) && g('ZD').kind === 'poi', 'sam »ZD« je ZD Brežice');
+});
+test('vzorci: vožnja brez pacienta ne zaseda sedeža in se pripelje z istim vozilom kot pacienti v isto mesto', async () => {
+  const t = boot();
+  day(t, { vehicles:['c1'], duty:[{ name:'V1', team:'redna', role:'voznik' }], rides:[
+    { name:'Ana', from:'Dobova 25', to:'UKC Ljubljana', time:'10:00', phone:'1', mode:'sede' },
+    { name:'Vzorci IMI', from:'', to:'IMI Ljubljana', time:'', phone:'', mode:'vzorci' }] });
+  const s = sum(t); assert.strictEqual(s.un.length, 0, 'vzorci ne zasedejo sedeža (c1 ima 2 sedeža)');
+  const idA = t.js(`computePlan('${DATE}').assign['r0'].crewId`), idV = t.js(`computePlan('${DATE}').assign['r1'] && computePlan('${DATE}').assign['r1'].crewId`);
+  assert.strictEqual(idA, idV, 'ista posadka');
+});
+test('NN ekipa: dolge vožnje (nad nastavljenim polmerom) prednostno redna posadka', async () => {
+  const mk = lim => { const t = boot(); day(t, { vehicles:['v13', 'c1'], settings:{ nnMaxKm:lim }, duty:[{ name:'Redna', team:'redna', role:'voznik' }, { name:'NN1', team:'NN', role:'voznik' }, { name:'NN2', team:'NN', role:'spremljevalec' }], rides:[
+    { name:'Ana', from:'Dobova 25', to:'UKC Ljubljana', time:'09:00', phone:'1' }] }); return t; };
+  const t1 = mk(60); sum(t1); const c1 = t1.js(`computePlan('${DATE}').assign['r0'].crewId`);
+  assert.strictEqual(c1, 'v13', 'redna posadka vozi v Ljubljano, ko je prosta: ' + c1);
+});
+
+test('dializni center: »Dializa KK« je privzeto dializni center v Krškem, nastavitev ga preusmeri na izbrano ustanovo', async () => {
+  const t = boot();
+  const lab = () => t.js(`geo('Dializa KK')`).label;
+  assert.strictEqual(lab(), 'Dializni center Krško', 'privzeto: ' + lab());
+  assert.strictEqual(t.js(`geo('Nefrodial KK').label`), 'Dializni center Krško');
+  assert.strictEqual(t.js(`geo('SB Brežice – dializa').label`), 'SB Brežice – dializa', 'dializa v SB Brežice ostane na voljo');
+  t.ev(`S.settings.diaPlace = 'ZD Krško'`);
+  assert.strictEqual(lab(), 'ZD Krško', 'po nastavitvi: ' + lab());
+  assert.strictEqual(t.js(`geo('dializa').label`), 'ZD Krško');
+  t.ev(`S.settings.diaPlace = 'SB Brežice – dializa'`);
+  assert.strictEqual(lab(), 'SB Brežice – dializa');
+  t.ev(`S.settings.diaPlace = ''`); assert.strictEqual(lab(), 'Dializni center Krško');
+});
+
+/* ------------------------------------------------------------------ resnični dnevi (anonimizirano) */
+const REAL = require('./real-days.js');
+const planMap = (t, date) => t.js(`(() => { const p = computePlan('${date}'); const m = {}; p.crews.forEach(c => c.trips.forEach(tr => tr.rides.forEach(r => { m[r.nr] = c.vehicle.name; }))); return { m, un:p.unassigned.length, trips:p.crews.map(c => c.trips.length) }; })()`);
+
+test('resnični dnevi (10 dni iz papirne knjige, anonimizirano): razpored se z dispečerjevim ujema v ≥ 70 % parov (dneva 6 in 9 skoraj popolnoma), po lastni oceni pa je vsaj tako dober kot dispečerjev', async () => {
+  let ok = 0, pairs = 0; const per = {}, T = { a:0, d:0, am:0, dm:0 };
+  for (const k of Object.keys(REAL.DAYS)){
+    const day = REAL.DAYS[k], t = boot();
+    REAL.setup(t.ev, day);
+    const r = planMap(t, day.date); assert.strictEqual(r.un, 0, `dan ${day.date}: nerazporejeni prevozi`);
+    const a = REAL.agreement(day, r.m); per[k] = a.share; ok += a.ok; pairs += a.pairs;
+    const sa = REAL.planStats(t.ev, day.date), t2 = boot(); REAL.setup(t2.ev, day); REAL.pinReal(t2.ev, day); const sd = REAL.planStats(t2.ev, day.date);
+    if (!sd.un){ T.a += sa.obj; T.d += sd.obj; T.am += sa.lateMin; T.dm += sd.lateMin; }
+  }
+  assert.ok(ok / pairs >= 0.7, 'ujemanje ' + (100 * ok / pairs).toFixed(1) + ' % (' + JSON.stringify(per) + ')');
+  assert.ok(per[6] >= 0.95 && per[9] >= 0.95, 'dneva 6 in 9: ' + JSON.stringify(per));
+  assert.ok(Object.values(per).every(x => x >= 0.5), 'dan z ujemanjem pod 50 %: ' + JSON.stringify(per));
+  assert.ok(T.a <= T.d && T.am <= T.dm, `ocena aplikacije ${T.a} (zamude ${T.am} min) proti dispečerjevi ${T.d} (zamude ${T.dm} min)`);
+});
+
+test('žargon s strani knjige: Stara vas, Zakot, Ginekolog LJ, Poliklinika LJ, SB Trbovlje, ZD Sevnica, KT, ITP, Carlos/Spar; kratice dobijo tudi že shranjene klinike', async () => {
+  const t = boot(); const g = s => t.js(`geo(${JSON.stringify(s)})`);
+  assert.ok(/Bizeljsko/.test(g('Stara vas 4').label), 'Stara vas'); assert.strictEqual(g('Zakot').label, 'Brežice', 'Zakot je del Brežic');
+  assert.ok(/Ginekolo/.test(g('Ginekolog LJ').label), 'Ginekolog LJ: ' + g('Ginekolog LJ').label); assert.ok(/UKC/.test(g('Poliklinika LJ').label), 'Poliklinika LJ');
+  assert.ok(/Trbovlje/.test(g('SB Trbovlje UZ AVF').label) && g('SB Trbovlje').kind === 'poi', 'SB Trbovlje'); assert.ok(/Sevnica/.test(g('ZD Sevnica kardiolog').label), 'ZD Sevnica');
+  assert.ok(/SB Bre/.test(g('KT').label) && /SB Bre/.test(g('ITP').label), 'KT, ITP');
+  assert.ok(g('Carlos/Spar').kind === 'poi' && /Spar/.test(g('Carlos/Spar').label), 'Carlos/Spar');
+  assert.ok(/Ginekolo/.test(g('ORL klinika LJ').label) === false && /ORL/.test(g('ORL klinika LJ').label), 'ORL klinika LJ ostane ORL');
+  t.ev(`S.places.find(x => x.n === 'Ginekološka klinika').al = ['ginekologija']; delete S.settings.v4; normalizeState();`);
+  assert.ok(t.js(`S.places.find(x => x.n === 'Ginekološka klinika').al`).includes('ginekolog'), 'migracija doda kratico že shranjeni kliniki');
+});
+
+test('dializa brez ure (v knjigi »Dop« / »Pop«): ura termina iz Nastavitve → Dializa, tja = začetek, nazaj = konec', async () => {
+  const t = boot();
+  day(t, { vehicles:['v13'], rides:[
+    { name:'A', from:'Dobova', to:'Dializa KK', time:'', dia:'dop', phone:'1' }, { name:'B', from:'Dobova', to:'Dializa KK', time:'', dia:'pop', phone:'1' },
+    { name:'C', from:'Dializa KK', to:'Dobova', time:'', dia:'dop', phone:'1' }] });
+  const T = t.js(`computePlan('${DATE}').pending.map(r => [r.name, r.time, r.timeTxt])`);
+  assert.deepStrictEqual(T.map(x => x[1]), [390, 690, 630], JSON.stringify(T));
+  assert.deepStrictEqual(T.map(x => x[2]), ['06:30', '11:30', '10:30']);
+});
+
+test('oddaljeni cilji: ena vožnja v Ljubljano tudi pri razponu ur do 180 min, če ni prostega drugega vozila (windowFar); brez tega dve vožnji', async () => {
+  const rides = [['A', '08:00'], ['B', '08:45'], ['C', '09:30'], ['D', '11:00']].map(([n, h]) => ({ name:n, from:'Dobova', to:'O.I. LJ', time:h, phone:'1' }));
+  const mk = far => { const t = boot(); day(t, { vehicles:['v13'], settings:{ windowFar:far }, rides }); return t.js(`computePlan('${DATE}').crews.map(c => c.trips.length)`); };
+  assert.deepStrictEqual(mk(180).filter(x => x), [1], 'z oknom 180: ena vožnja');
+  assert.deepStrictEqual(mk(0).filter(x => x), [2], 'brez okna: dve vožnji');
+});
+
+test('hitri vnos: Dop / Pop (termin dialize), Vzemi vzorce za IMI, opombe javijo uro / prej pokliči', async () => {
+  const t = boot(); const q = x => t.js(`parseQuick(${JSON.stringify(x)})`);
+  let p = q('Pacient 49, Doma, Dializa KK, pop, utila'); assert.deepStrictEqual([p.dia, p.time, p.mode, p.to], ['pop', '', 'utila', 'Dializa KK']);
+  p = q('Vzemi vzorce za IMI LJ'); assert.deepStrictEqual([p.mode, p.to, p.name], ['vzorci', 'IMI LJ', '']);
+  p = q('Pacient 95, KT, Stara vas, javijo uro'); assert.deepStrictEqual([p.from, p.to, p.note], ['KT', 'Stara vas', 'javijo uro']);
+  p = q('Pacient 73, Carlos/Spar, O.I. LJ, 11:00, prej pokliči'); assert.deepStrictEqual([p.from, p.to, p.time, p.note], ['Carlos/Spar', 'O.I. LJ', '11:00', 'prej pokliči']);
+  t.ev(`S.settings.routing.on = false`); const r = t.js(`(() => { const x = addQuickRide('${DATE}', parseQuick('Pacient 49, Doma, Dializa KK, pop, utila')); return { dia:x.dia, mode:x.mode, time:x.time }; })()`);
+  assert.deepStrictEqual([r.dia, r.mode, r.time], ['pop', 'utila', '']);
+});
+
+test('besedišče iz knjige (7.–22. 10., 12. 11.): DSO Loka ≠ DSO Brežice, zdravilišča, kliniki v Ljubljani, naselja z drugačnim zapisom', async () => {
+  const t = boot(); const g = x => t.js(`geo(${JSON.stringify(x)}).label`);
+  assert.strictEqual(g('DSO Loka'), 'DSO Loka'); assert.strictEqual(g('DSO BR'), 'DSO Brežice'); assert.strictEqual(g('DSO'), 'DSO Brežice');
+  assert.strictEqual(g('Šmarješke Toplice'), 'Šmarješke Toplice'); assert.strictEqual(g('Zdravilišče Laško'), 'Zdravilišče Laško'); assert.strictEqual(g('Terme Čatež'), 'Terme Čatež');
+  assert.strictEqual(g('Stomatološka klinika LJ'), 'Stomatološka klinika Ljubljana');
+  assert.ok(/Dermatovenerološka/.test(g('Dermatološka klinika LJ')), g('Dermatološka klinika LJ'));
+  assert.strictEqual(g('UKC Maribor'), 'UKC Maribor');
+  assert.strictEqual(g('Orešje'), 'Orešje na Bizeljskem'); assert.strictEqual(g('Gornje Skopice'), 'Gorenje Skopice');
+  const p = t.js(`parseQuick('Pacient 5, Globoko, Dializa KK, dop, utila, dodatna dializa')`);
+  assert.deepStrictEqual([p.dia, p.mode, p.note], ['dop', 'utila', 'dodatna dializa']);
+});
+
+test('dializa ob 6.30 je pravočasna in prva v dnevu vozila (pred drugimi vožnjami istega vozila)', async () => {
+  const t = boot(); const d = DATE;
+  t.ev(`S.settings.routing.on = false; S.vehicles = [{ id:'vN', name:'N1', tip:'resevalni', ns:'oboje', sede:2, leze:1, utila:2, skupaj:4, sedeMax:3, lezeMax:1, utilaMax:2, skupajMax:4, aktiv:true }]; S.duty['${d}'] = [{ id:'d1', staffId:'', name:'Voznik N', team:'redna', role:'voznik', from:'', to:'', ot:0, vehicleId:'' }]; S.dayRules['${d}'] = { mode:'samodejno' };
+    const a = ensureDay('${d}'); const add = (i, o) => Object.assign(a[i], blankRide(), o, { id:'r' + i });
+    add(0, { name:'Pacient 1', from:'Brežice', to:'SB Novo mesto', time:'08:20', mode:'sede' }); add(1, { name:'Pacient 2', from:'Doma', to:'Dializa KK', time:'', mode:'utila', dia:'dop' }); add(2, { name:'Pacient 3', from:'Doma', to:'Dializa KK', time:'', mode:'utila', dia:'dop' }); rev++; PLAN_CACHE.clear();`);
+  const r = JSON.parse(t.js(`JSON.stringify(computePlan('${d}').crews.flatMap(c => c.trips.map(x => ({ dia:x.rides.some(r => r.dia), late:x.late || 0, start:x.start }))))`));
+  const dia = r.filter(x => x.dia), other = r.filter(x => !x.dia);
+  assert.ok(dia.length && dia.every(x => x.late <= 30), 'dializa zamuja: ' + JSON.stringify(r));
+  assert.ok(dia.every(x => other.every(o => x.start <= o.start)), 'dializa ni prva: ' + JSON.stringify(r));
 });
 
 /* ------------------------------------------------------------------ zagon */

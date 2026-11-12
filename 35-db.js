@@ -142,8 +142,16 @@ function normalizeState(){
     if (d.D2 && d.D2.start) T.pop = { start:d.D2.start, end:d.D2.end };
     delete S.settings.dia;
   }
+  if (S.settings.nnMaxKm == null) S.settings.nnMaxKm = 60;
+  if (!S.settings.v3){ if (S.settings.window === 60) S.settings.window = 90; S.settings.v3 = 1; }   // dispečer v praksi združuje ure v ~90 min oknu
   S.settings.google = Object.assign({ on:true, auto:true, traffic:false }, S.settings.google || {});
   S.places = Array.isArray(S.places) ? S.places : defaultState().places;
+  if (S.settings.windowFar == null) S.settings.windowFar = 180;   // oddaljeni cilji: skupna vožnja kljub večjemu razponu ur (glej Nastavitve → Izračun)
+  if (S.settings.farMin == null) S.settings.farMin = 40;
+  if (!S.settings.v4){   // enkratno: kratice, ki jih dispečer uporablja v praksi (npr. »ginekolog«), dodaj tudi v že shranjene klinike
+    CLINIC_SEED.forEach(c => { const p = S.places.find(x => x.parent === c.p && x.n === c.n); if (p){ p.al = Array.isArray(p.al) ? p.al : []; (c.al || []).forEach(a => { if (!p.al.includes(a)) p.al.push(a); }); } });
+    S.settings.v4 = 1;
+  }
   if (S.diaPatients && S.diaPatients.length){
     S.diaPatients.forEach(dp => { if (!S.patients.some(p => norm(p.name) === norm(dp.name))) S.patients.push(migratePatient(blankPatient({ name:dp.name, addr:dp.from, phone:dp.phone, mode:dp.mode, dia:dp.group, demo:dp.demo }))); });
     S.diaPatients = [];

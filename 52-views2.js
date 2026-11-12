@@ -18,13 +18,14 @@ function alertsBanner(){
 }
 
 /* ---------- Dispečer: pravila za dan in objava ---------- */
-function rulesBar(date, plan){
-  const mode = dayMode(date), own = !!(S.dayRules[date] && S.dayRules[date].mode);
-  return `<div class="card card-pad stack ctrl" style="gap:8px"><div class="ctrl-row"><span class="lbl">Pravila</span>
+function rulesBar(date, plan, wBend){
+  const mode = dayMode(date), own = !!(S.dayRules[date] && S.dayRules[date].mode), nb = (wBend || []).length;
+  return `<details class="card card-pad sect ctrl" data-sect="rules" ${UI.sect.rules ? 'open' : ''}><summary><h3>Pravila razporejanja</h3><span class="chip ${own ? 'accent' : ''}">${esc(RULE_MODES[mode])}${own ? ' · samo za ta dan' : ''}</span>${nb ? `<span class="chip accent">${nb} prilagoditev</span>` : ''}</summary>
+    <div class="stack" style="gap:8px;margin-top:10px"><div class="ctrl-row"><span class="lbl">Način</span>
     <div class="seg" role="group" aria-label="Način pravil">${Object.entries(RULE_MODES).map(([k, l]) => `<button type="button" data-act="dayMode" data-k="${k}" aria-pressed="${mode === k}">${l}</button>`).join('')}</div>
-    ${own ? '<span class="chip accent">samo za ta dan</span><button type="button" class="btn sm ghost" data-act="dayModeReset">Uporabi privzeto</button>' : `<span class="chip">privzeto</span>`}</div>
-    <details class="hintdet"><summary>${esc(RULE_MODES[mode])}: kaj to pomeni</summary><p class="hint" style="margin:6px 0 0">${RULE_DESC[mode]}</p></details>
-    ${plan.bends.length ? `<div class="banner" style="background:var(--accent-soft);color:var(--accent)"><span>${IC.info}</span><div><b>${plan.bends.length} prilagoditev pravil</b> (podrobnosti v opozorilih).</div></div>` : ''}</div>`;
+    ${own ? '<button type="button" class="btn sm ghost" data-act="dayModeReset">Uporabi privzeto</button>' : '<span class="chip">privzeto</span>'}</div>
+    <p class="hint" style="margin:0"><b>${esc(RULE_MODES[mode])}:</b> ${RULE_DESC[mode]}</p>
+    ${nb ? `<ul class="warnlist">${wBend.map(w => `<li class="w-bend"><span class="chip accent">prilagojeno</span> ${esc(w.text)}</li>`).join('')}</ul>` : ''}</div></details>`;
 }
 function publishBar(date, plan){
   const st = publishState(date), pub = S.published[date];
@@ -67,9 +68,9 @@ function nalogCardHTML(p, n){
       ${f('zdravnik', 'Zdravnik (ime in priimek)')}
       <div class="field"><label for="nf-zv">Zdravnik je</label><select id="nf-zv" data-nf="zdravnikVrsta">${ZDRAVNIK_VRSTE.map(z => `<option ${n.zdravnikVrsta === z ? 'selected' : ''}>${z}</option>`).join('')}</select></div>
       <div class="field"><label for="nf-razlog">Razlog prevoza</label><input id="nf-razlog" data-nf="razlog" list="razlogList" value="${esc(n.razlog || '')}" autocomplete="off"><datalist id="razlogList">${NALOG_RAZLOGI.map(r => `<option value="${esc(r)}"></option>`).join('')}</datalist></div>
-      <div class="field"><label for="nf-mode">Način prevoza</label><select id="nf-mode" data-nf="mode">${Object.entries(MODES).map(([k, v]) => `<option value="${k}" ${n.mode === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <div class="field"><label for="nf-mode">Način prevoza</label><select id="nf-mode" data-nf="mode">${Object.entries(PMODES).map(([k, v]) => `<option value="${k}" ${n.mode === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
       <div class="field"><label for="nf-od">Relacija: od</label><input id="nf-od" data-nf="od" data-suggest="from" value="${esc(n.od || '')}" autocomplete="off" placeholder="npr. domači naslov"></div>
-      <div class="field"><label for="nf-do">Relacija: do</label><input id="nf-do" data-nf="do" data-suggest="to" value="${esc(n.do || '')}" autocomplete="off" placeholder="npr. SB Brežice – dializa"></div>
+      <div class="field"><label for="nf-do">Relacija: do</label><input id="nf-do" data-nf="do" data-suggest="to" value="${esc(n.do || '')}" autocomplete="off" placeholder="npr. Dializni center Krško"></div>
       ${f('veljaOd', 'Velja od', 'date')}
       <div class="field"><label for="nf-veljaDo">Velja do ${n.auto ? '<span class="dim">(predlog)</span>' : ''}</label><input id="nf-veljaDo" data-nf="veljaDo" type="date" value="${esc(n.veljaDo || '')}"></div>
       ${f('dnevi', 'Dnevi / pogostost (npr. pon, sre, pet)')}
@@ -89,7 +90,7 @@ function patientDetailHTML(p){
       <div class="field"><label for="pf-name">Ime in priimek</label><input id="pf-name" data-pf="name" value="${esc(p.name)}" autocomplete="off"></div>
       <div class="field"><label for="pf-phone">Telefon / kontakt</label><input id="pf-phone" data-pf="phone" type="tel" value="${esc(p.phone)}" autocomplete="off"></div>
       <div class="field full"><label for="pf-addr">Domači naslov</label><input id="pf-addr" data-pf="addr" data-suggest="from" value="${esc(p.addr)}" autocomplete="off" placeholder="npr. Dobova 25"></div>
-      <div class="field"><span class="lbl">Običajni način prevoza</span><div class="seg" role="group">${Object.entries(MODES).map(([k, v]) => `<button type="button" data-act="pMode" data-mode="${k}" aria-pressed="${p.mode === k}">${v}</button>`).join('')}</div></div>
+      <div class="field"><span class="lbl">Običajni način prevoza</span><div class="seg" role="group">${Object.entries(PMODES).map(([k, v]) => `<button type="button" data-act="pMode" data-mode="${k}" aria-pressed="${p.mode === k}">${v}</button>`).join('')}</div></div>
       <div class="field"><label for="pf-zzzs">Št. zavarovane osebe (neobvezno)</label><input id="pf-zzzs" data-pf="zzzs" value="${esc(p.zzzs || '')}" autocomplete="off" inputmode="numeric"></div>
       <div class="field"><span class="lbl">Barva pacienta</span><div class="swatches">${sw}</div></div>
       <div class="field full"><label for="pf-note">Opomba (npr. voziček, kisik, hišni ključ)</label><textarea id="pf-note" data-pf="note" rows="2">${esc(p.note || '')}</textarea></div>
@@ -372,6 +373,43 @@ function printMonthHTML(){
 function printMonth(){
   let el = document.getElementById('printArea');
   if (!el){ el = document.createElement('div'); el.id = 'printArea'; document.body.appendChild(el); }
-  el.innerHTML = printMonthHTML();
+  el.className = ''; el.innerHTML = printMonthHTML();
+  window.print();
+}
+
+/* ---------- Tisk knjige dneva (obrazec OBR REŠ 08: prevozi 1–10, 11–24, posadke po vozilih, posebnosti) ---------- */
+function printDayHTML(date){
+  const plan = computePlan(date), form = esc((S.settings.formCode || 'OBR REŠ 08').trim()), rides = ensureDay(date);
+  const total = Math.max(24, rides.reduce((m, r, i) => isFilled(r) ? i + 1 : m, 0)), pageSplit = [[0, 10], [10, total]];
+  const head = (n, N) => `<header class="pd-head"><div class="pd-logos">${logoInner()}</div><div class="pd-title"><b>KNJIGA REŠEVALNIH PREVOZOV</b><span>Reševalna postaja Brežice · ${form}</span></div>
+    <div class="pd-date"><div>DATUM: <b>${fmtDMY(date)}</b></div><div>DAN: <b>${DOW_LONG[dow(date)]}</b></div><div class="pd-pg">list ${n}/${N}</div></div></header>`;
+  const vehLine = plan.crews.filter(c => c.trips.length).map(c => esc(c.vehicle.name)).join(' · ') || '–';
+  const row = i => {
+    const r = rides[i], nr = i + 1;
+    if (!r || !isFilled(r)) return `<tr class="pd-empty"><td class="pd-nr">${nr}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
+    const a = plan.assign[r.id], can = r.odpovedano;
+    const pick = a && a.pickT != null ? fmtT(a.pickT) : '';
+    const ret = a && a.retPickT != null ? ` · nazaj ${fmtT(a.retPickT)}` : '';
+    const notes = [r.mode !== 'sede' ? (MODES[r.mode] || r.mode) : '', r.dia ? 'dializa' : '', +r.stay > 0 ? `čaka ${+r.stay} min` : '', r.note || ''].filter(Boolean).join(', ');
+    return `<tr class="${can ? 'p-cancel' : ''}"><td class="pd-nr">${nr}</td><td>${esc(r.name || '')}</td><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td class="pd-t">${esc(r.time || '')}</td><td class="pd-t">${can ? '' : (a && a.late > 0 ? '~' : '') + pick + ret}</td><td class="pd-v">${can ? '' : esc(a ? a.veh : '')}</td><td>${can ? '<b>ODPOVEDANO</b> ' : ''}${esc(notes)}</td></tr>`;
+  };
+  const N = 3;
+  const page = ([a, b], k) => `<section class="pd-page">${head(k + 1, N)}${k === 0 ? `<div class="pd-veh">VOZILA: <b>${vehLine}</b></div>` : ''}
+    <table class="pd-tab"><thead><tr><th class="pd-nr">Št.</th><th>Ime in priimek</th><th>Od</th><th>Do</th><th>Ura prev.</th><th>Pobere</th><th>Vozilo</th><th>Opomba</th></tr></thead><tbody>${Array.from({ length:b - a }, (_, j) => row(a + j)).join('')}</tbody></table></section>`;
+  const crewRows = plan.crews.filter(c => c.trips.length || c.vehicle.tip !== 'ostalo').map(c => `<tr><td><b>${esc(c.vehicle.name)}</b></td><td>${esc(c.driver.name)}${c.team === 'NN' ? ' <b>(NN)</b>' : ''}${c.escorts.map(e => `<div>${esc(e.name)} (sp.)</div>`).join('')}${(c.helpers || []).map(h => `<div>${esc(h.name)} (${ROLE_TAG[h.role] || ''})</div>`).join('')}</td><td>${c.rideNrs.join(', ') || '–'}</td><td>${c.trips.length ? `ob ${fmtT(c.firstDepart)}` : ''}</td></tr>`).join('');
+  const notices = S.notices.filter(n => !n.closed && n.from <= date && (!n.to || n.to >= date));
+  const posebnosti = [S.dayNote[date] || '', ...notices.map(n => `${(S.vehicles.find(v => v.id === n.vehicleId) || {}).name || ''}: ${n.tip}${n.note ? ' – ' + n.note : ''}`)].filter(Boolean);
+  const unas = plan.unassigned.length ? `<p class="pd-warn">Nerazporejeni prevozi: ${plan.unassigned.map(u => u.ride.nr).join(', ')}</p>` : '';
+  return page(pageSplit[0], 0) + page(pageSplit[1], 1) + `<section class="pd-page">${head(3, N)}
+    <table class="pd-tab pd-crew"><thead><tr><th>Vozilo</th><th>Voznik</th><th>Prevozi (št.)</th><th>Posebnosti</th></tr></thead><tbody>${crewRows || '<tr><td colspan="4">Ni posadk.</td></tr>'}</tbody></table>${unas}
+    <div class="pd-pos"><b>Posebnosti:</b>${posebnosti.length ? '<ul>' + posebnosti.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>' : '<div class="pd-lines"></div>'}</div>
+    <div class="pd-sign"><span>Dispečer: ______________________</span><span>Izpisano: ${new Date().toLocaleString('sl-SI')}</span></div>
+    <p class="pd-fine">Ure »Pobere« so ocena razporeda (cestni podatki); dejanske ure vpiše posadka.</p></section>`;
+}
+function printDay(date){
+  let el = document.getElementById('printArea');
+  if (!el){ el = document.createElement('div'); el.id = 'printArea'; document.body.appendChild(el); }
+  el.className = 'pday'; el.innerHTML = printDayHTML(date);
+  audit('knjiga.tisk', { dan:date });
   window.print();
 }

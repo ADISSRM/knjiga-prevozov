@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
   cat src/00-head.html
   cat src/10-body.html
   echo '<script>'
-  cat src/20-data.js src/30-core.js src/35-db.js src/38-routing.js src/39-google.js src/40-planner.js src/45-pacienti.js src/50-views.js src/52-views2.js src/55-live.js src/60-main.js
+  cat src/20-data.js src/30-core.js src/35-db.js src/38-routing.js src/39-google.js src/40-planner.js src/45-pacienti.js src/50-views.js src/52-views2.js src/54-quick.js src/55-live.js src/56-map.js src/60-main.js
   echo '</script>'
 } > app.html
 {
@@ -24,7 +24,7 @@ cd "$(dirname "$0")"
   echo '<body>'
   cat src/10-body.html
   echo '<script>'
-  cat src/20-data.js src/30-core.js src/35-db.js src/38-routing.js src/39-google.js src/40-planner.js src/45-pacienti.js src/50-views.js src/52-views2.js src/55-live.js src/60-main.js
+  cat src/20-data.js src/30-core.js src/35-db.js src/38-routing.js src/39-google.js src/40-planner.js src/45-pacienti.js src/50-views.js src/52-views2.js src/54-quick.js src/55-live.js src/56-map.js src/60-main.js
   echo '</script>'
   echo '</body>'
   echo '</html>'

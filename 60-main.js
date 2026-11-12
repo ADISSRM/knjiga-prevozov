@@ -19,8 +19,14 @@ function render(){
   else if (UI.view === 'posebnosti') renderNotices();
   else renderSettings();
   if (UI.modal) renderModal();
+  MAP.mountAll(document);
 }
-function rerender(){ const y = window.scrollY; render(); window.scrollTo(0, y); }
+function rerender(){
+  const y = window.scrollY, a = document.activeElement;
+  const keep = a && a.id === 'quickIn' ? { v:a.value, s:a.selectionStart } : null;   // hitri vnos: besedilo in kazalec ostaneta, ko se stran osveži
+  render(); window.scrollTo(0, y);
+  if (keep){ const q = $('#quickIn'); if (q){ if (q !== a){ q.value = keep.v; q.focus(); try { q.setSelectionRange(keep.s, keep.s); } catch(e){} } } }
+}
 function go(view, push = true){
   if (isCrew()) view = 'moji';
   else if (!STAFF_VIEWS.includes(view)) view = 'knjiga';
@@ -214,6 +220,7 @@ document.addEventListener('click', async e => {
     case 'dDate': UI.dDate = date; render(); break;
     case 'lDate': UI.lDate = date; render(); break;
     case 'dayMode': { const d = UI.dDate; S.dayRules[d] = { ...(S.dayRules[d] || {}), mode:el.dataset.k }; audit('pravila.dan', { datum:d, nacin:el.dataset.k }); save(); rerender(); break; }
+    case 'crewsAll': { const op = el.dataset.open === '1'; document.querySelectorAll('details.crewcard').forEach(d => { d.open = op; }); break; }
     case 'dayModeReset': { const rr = S.dayRules[UI.dDate]; if (rr){ delete rr.mode; if (!Object.keys(rr).length) delete S.dayRules[UI.dDate]; } save(); rerender(); break; }
     case 'ruleMode': { S.rules.mode = el.dataset.k; audit('pravila.privzeto', { nacin:el.dataset.k }); save(); render(); break; }
     case 'publish': {
@@ -261,6 +268,31 @@ document.addEventListener('click', async e => {
       try { await ROUTE.path(tripWaypoints(hit)); if (UI.maps[key]) UI.maps[key] = 'ok'; } catch(err){ if (UI.maps[key]) UI.maps[key] = 'err:' + String((err && err.message) || err).slice(0, 80); }
       if (UI.maps[key]) rerender();
       break; }
+    case 'noteChip': {
+      const art = el.closest('[data-ride]'); const hit = art && rideById(art.dataset.date, art.dataset.ride); if (!hit) break;
+      const parts = String(hit.r.note || '').split(/\s*;\s*/).filter(Boolean), t = el.dataset.t, i = parts.findIndex(x => norm(x) === norm(t));
+      if (i >= 0) parts.splice(i, 1); else parts.push(t);
+      hit.r.note = parts.join('; '); save();
+      el.setAttribute('aria-pressed', String(i < 0)); const ni = $('[data-f=note]', art); if (ni) ni.value = hit.r.note;
+      refreshBox(art); break; }
+    case 'repeatRide': {
+      const art = el.closest('[data-ride]'); if (!art) break;
+      const res = repeatRide(art.dataset.date, art.dataset.ride, el.dataset.how);
+      toast(res.n ? `Prevoz dodan za ${res.n} ${res.n === 1 ? 'dan' : 'dni'}: ${res.dates.map(fmtShort).join(', ')}` : res.tried ? 'Prevoz je na teh dneh že vpisan' : 'Ni delovnih dni za ponovitev'); rerender(); break; }
+    case 'copyOpen': { const src = prevDayWithRides(UI.date); ensureRange(src, UI.date); UI.copy = { src, sel:new Set(filledRides(src).filter(x => !x.r.odpovedano).map(x => x.r.id)) }; rerender(); break; }
+    case 'copyClose': UI.copy = null; rerender(); break;
+    case 'copyStep': { const src = addDays(UI.copy.src, +el.dataset.d); ensureRange(src, UI.date); UI.copy = { src, sel:new Set(filledRides(src).filter(x => !x.r.odpovedano).map(x => x.r.id)) }; rerender(); break; }
+    case 'copyAll': UI.copy.sel = new Set(filledRides(UI.copy.src).filter(x => !x.r.odpovedano).map(x => x.r.id)); rerender(); break;
+    case 'copyNone': UI.copy.sel = new Set(); rerender(); break;
+    case 'copyDo': {
+      if (!UI.copy || !UI.copy.sel.size) break;
+      const res = copyRides(UI.copy.src, UI.date, [...UI.copy.sel]);
+      filledRides(UI.date).forEach(({ r }) => { if (r.from && r.to && !r.km && GOOGLE.auto()) KM.schedule(UI.date, r.id); });
+      UI.copy = null; rerender(); toast(res.n ? `Kopiranih prevozov: ${res.n}${res.skipped ? ' (' + res.skipped + ' že vpisanih preskočenih)' : ''}` : 'Vsi izbrani prevozi so že vpisani'); break; }
+    case 'printDay': printDay(UI.date); break;
+    case 'stopFocus': MAP.focus(el.dataset.mapkey, el.dataset.mapid); break;
+    case 'dayMapCrew': { const h = UI.dayHide || (UI.dayHide = {}); h[el.dataset.veh] = !h[el.dataset.veh]; rerender(); break; }
+    case 'mapTiles': store.set('kp.map.tiles', MAP.tilesOn() ? 'off' : 'on'); rerender(); break;
     case 'clearAddr': store.del('kp.addr'); loadAddr(); rerender(); toast('Uvoženi naslovi izbrisani'); break;
     case 'clearLearned': S.addrBook = []; save(); rerender(); toast('Naučeni naslovi izbrisani'); break;
     case 'delUser': { const u = USERS.find(x => x.id === el.dataset.id); USERS = USERS.filter(x => x.id !== el.dataset.id); S.staff.forEach(s => { if (s.userId === el.dataset.id) s.userId = ''; }); saveUsers(); audit('uporabnik.izbrisan', { uporabnik:u && u.username }); save(); rerender(); break; }
@@ -340,6 +372,7 @@ document.addEventListener('input', e => {
   if (el.dataset.pf && el.tagName !== 'SELECT') setPf(el);
   if (el.dataset.nf && el.tagName !== 'SELECT' && el.type !== 'date') setNf(el);
   if (el.id === 'dayNote'){ S.dayNote[UI.dDate] = el.value; if (!el.value) delete S.dayNote[UI.dDate]; save(); }
+  if (el.id === 'quickIn'){ const pv = $('#quickPrev'); if (pv) pv.innerHTML = el.value.trim() ? (quickPreview(parseQuick(el.value)) || 'Vpiši ime, naslov ali cilj') : QUICK_HELP; }
   if (el.id === 'rideSearch'){ UI.q = el.value; applyFilter(); }
   if (el.id === 'patSearch'){ UI.pq = el.value; refreshPatientList(); }
 });
@@ -354,6 +387,8 @@ function afterAddressChange(date, r, f){
 }
 document.addEventListener('change', async e => {
   const el = e.target;
+  if (el.dataset && el.dataset.copy && UI.copy){ if (el.checked) UI.copy.sel.add(el.dataset.copy); else UI.copy.sel.delete(el.dataset.copy); rerender(); return; }
+  if (el.id === 'copySrc' && UI.copy && el.value){ const src = el.value; ensureRange(src, UI.date); UI.copy = { src, sel:new Set(filledRides(src).filter(x => !x.r.odpovedano).map(x => x.r.id)) }; rerender(); return; }
   if (el.dataset.km === 'manual'){
     const art = el.closest('[data-ride]'); if (!art) return;
     KM.setManual(art.dataset.date, art.dataset.ride, el.value);
@@ -431,7 +466,13 @@ document.addEventListener('submit', async e => {
   const f = e.target; e.preventDefault();
   const fd = new FormData(f), kind = f.dataset.form || f.id;
   try {
-    if (kind === 'addDuty'){ const name = (fd.get('name') || '').trim(); if (!name) return; if (!S.staff.some(s => norm(s.name) === norm(name))) S.staff.push({ id:uid(), name, team:'redna', userId:'' }); addDuty(UI.dDate, name, (S.staff.find(s => norm(s.name) === norm(name)) || {}).team); save(); rerender(); }
+    if (kind === 'quick'){
+      const inp = $('#quickIn'), p = parseQuick(inp ? inp.value : ''); if (!p.ok){ toast('Vpiši vsaj ime, naslov ali cilj'); return; }
+      const r = addQuickRide(UI.date, p); UI.filter = 'vsi'; UI.q = ''; if (inp) inp.value = ''; rerender();
+      const i2 = $('#quickIn'); if (i2) i2.focus();
+      toast(`Vpisano (št. ${rideById(UI.date, r.id).nr}): ${r.name || r.to || r.from}${r.time ? ' ob ' + r.time : ''}`);
+    }
+    else if (kind === 'addDuty'){ const name = (fd.get('name') || '').trim(); if (!name) return; if (!S.staff.some(s => norm(s.name) === norm(name))) S.staff.push({ id:uid(), name, team:'redna', userId:'' }); addDuty(UI.dDate, name, (S.staff.find(s => norm(s.name) === norm(name)) || {}).team); save(); rerender(); }
     else if (kind === 'addNotice'){ S.notices.push({ id:uid(), vehicleId:fd.get('vehicleId'), tip:fd.get('tip'), from:fd.get('from'), to:fd.get('to') || '', note:(fd.get('note') || '').trim(), closed:false }); save(); render(); toast('Posebnost dodana'); }
     else if (kind === 'diaAdd'){ const p = patientById(fd.get('pid')); if (!p){ toast('Izberi pacienta'); return; } p.dt = { t:fd.get('t') === 'pop' ? 'pop' : 'dop', d:[1, 3, 5] }; save(); rerender(); toast(`${p.name}: dodan na dializo (pon, sre, pet). Popravi dneve po potrebi.`); }
     else if (kind === 'addStaff'){ const name = (fd.get('name') || '').trim(); if (name){ S.staff.push({ id:uid(), name, team:fd.get('team'), userId:'' }); save(); rerender(); } }
@@ -585,7 +626,7 @@ async function boot(){
     else if (['knjiga', 'dispecer'].includes(UI.view)) scheduleRender();
   };
   GOOGLE.onUpdate = () => { if (ME && UI.view === 'nastavitve' && UI.setTab === 'planiranje') scheduleRender(); };
-  document.addEventListener('toggle', e => { const d = e.target; if (d && d.dataset && d.dataset.sect) UI.sect[d.dataset.sect] = d.open; }, true);
+  document.addEventListener('toggle', e => { const d = e.target; if (d && d.dataset && d.dataset.sect){ const k = d.dataset.sect, was = !!UI.sect[k]; UI.sect[k] = d.open; if (k === 'daymap' && was !== d.open) rerender(); } }, true);
   ROUTE.onUpdate = () => { if (ME) scheduleRender(); }; ROUTE.init();     // cestni podatki: splošni predpomnilnik + razdalje.json; osveži prikaz, ko prispejo novi podatki
   let msg = ''; try { msg = sessionStorage.getItem('kp.msg') || ''; sessionStorage.removeItem('kp.msg'); } catch(e){}
   if (BACKEND === 'firebase'){

@@ -1,7 +1,7 @@
 /* =====================================================================
    ZASLONI
    ===================================================================== */
-const UI = { view:'knjiga', month:null, date:null, dDate:null, lDate:null, cDate:null, filter:'vsi', q:'', setTab:'vozila', bookRev:'', pid:'', nid:'', pf:'vsi', pq:'', modal:null, stale:false, selfTest:null, maps:{}, routeBusy:'', sect:{}, openRide:'', kmRep:false, gTest:null, kmTried:{} };
+const UI = { copy:null, view:'knjiga', month:null, date:null, dDate:null, lDate:null, cDate:null, filter:'vsi', q:'', setTab:'vozila', bookRev:'', pid:'', nid:'', pf:'vsi', pq:'', modal:null, stale:false, selfTest:null, maps:{}, routeBusy:'', sect:{}, openRide:'', kmRep:false, gTest:null, kmTried:{} };
 const IC = {
   book:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 5.5v16M9 8h6M9 12h6"/></svg>',
   day:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
@@ -199,6 +199,7 @@ function boxHTML(date, r, nr, plan){
       <div class="field full kmrow" data-role="km">${kmBoxHTML(r)}</div>
       <div class="field"><label for="p-${r.id}">Telefon</label><input id="p-${r.id}" type="tel" data-f="phone" value="${esc(r.phone)}" autocomplete="off"></div>
       <div class="field"><label for="x-${r.id}" title="npr. voziček, kisik, spremljevalec">Opomba</label><input id="x-${r.id}" type="text" data-f="note" value="${esc(r.note || '')}" autocomplete="off"></div>
+      <div class="field full notechips" role="group" aria-label="Hitre opombe">${NOTE_CHIPS.map(c => `<button type="button" class="chip toggle" data-act="noteChip" data-t="${esc(c)}" aria-pressed="${noteHas(r.note, c)}">${esc(c)}</button>`).join('')}</div>
     </div>
     ${pinfoHTML(date, r)}
     ${r.status && r.status !== 'nova' && r.times && Object.keys(r.times).length ? `<div class="row" style="gap:4px">${timesChips(r)}</div>` : ''}
@@ -209,7 +210,11 @@ function boxHTML(date, r, nr, plan){
       <details class="menu"><summary class="btn sm ghost">Več</summary><div class="menupop">
         <label class="check" title="Prevoz je odpovedan: označen je rdeče in ni v razporedu"><input type="checkbox" data-f="odpovedano" ${r.odpovedano ? 'checked' : ''}> Odpovedano</label>
         <label class="check" title="Dovoli, da se za ta prevoz pravila prilagodijo (npr. več pacientov v vozilu, daljša pot)"><input type="checkbox" data-f="exc" ${r.exc ? 'checked' : ''}> Izjema pravil</label>
-        ${filled ? `<button type="button" class="btn sm" data-act="rideView">${IC.eye} Predogled za kopiranje</button>` : ''}
+        ${filled ? `<button type="button" class="btn sm" data-act="rideView">${IC.eye} Predogled za kopiranje</button>
+        <div class="menulbl">Ponovi prevoz (npr. obsevanje)</div>
+        <button type="button" class="btn sm" data-act="repeatRide" data-how="next">Naslednji delovni dan</button>
+        <button type="button" class="btn sm" data-act="repeatRide" data-how="week">Do konca tedna (pon–pet)</button>
+        <button type="button" class="btn sm" data-act="repeatRide" data-how="five">Naslednjih 5 delovnih dni</button>` : ''}
         <button type="button" class="btn sm danger" data-act="clearRide" title="Počisti polje ${nr}">Počisti prevoz</button></div></details>
       <button type="button" class="btn sm" data-act="closeRide">Zapri</button>
     </div></div>`;
@@ -220,6 +225,21 @@ function refreshStaffList(date){
   $('#staffList').innerHTML = [...names].map(n => `<option value="${esc(n)}"></option>`).join('');
 }
 const kmSum = date => { let t = 0, all = true, any = false; filledRides(date).forEach(({ r }) => { if (r.odpovedano) return; const i = KM.info(r); if (i.total == null) return; any = true; t += i.total; if (!(i.exact && i.backExact)) all = false; }); return { t, all, any }; };
+const noteHas = (note, c) => String(note || '').split(/\s*;\s*/).some(x => norm(x) === norm(c));
+function quickFormHTML(date){
+  return `<form class="quick" data-form="quick" autocomplete="off"><input id="quickIn" type="text" autocomplete="off" spellcheck="false" placeholder="Hitri vnos: ime, od, do, ura  (npr. Novak Ivan, Dobova 25, OI LJ, 8:00)" aria-label="Hitri vnos prevoza"><button type="submit" class="btn primary">${IC.plus} Dodaj</button></form>
+    <div class="hint quickprev" id="quickPrev" aria-live="polite">${QUICK_HELP}</div>`;
+}
+function copyPanelHTML(date){
+  const c = UI.copy, src = c.src, list = filledRides(src).filter(x => !x.r.odpovedano), n = c.sel.size;
+  const loaded = typeof dayLoaded === 'function' ? dayLoaded(src) : true;
+  return `<section class="card card-pad stack copypanel" style="gap:10px"><div class="card-head" style="margin:0"><h3>Kopiraj prevoze z drugega dne na ${fmtShort(date)}</h3><button type="button" class="icon-btn" data-act="copyClose" aria-label="Zapri">${IC.x}</button></div>
+    <div class="row"><label for="copySrc" style="font-weight:600">Z dne</label><input type="date" id="copySrc" value="${src}" style="width:auto"><button type="button" class="btn sm" data-act="copyStep" data-d="-1">${IC.left}</button><button type="button" class="btn sm" data-act="copyStep" data-d="1">${IC.right}</button><span class="hint">${fmtShort(src)} · ${list.length} prevozov</span></div>
+    ${list.length ? `<div class="copylist">${list.map(({ r, nr }) => `<label class="copyrow"><input type="checkbox" data-copy="${r.id}" ${c.sel.has(r.id) ? 'checked' : ''}><span class="nr">${nr}</span><span class="cn"><b>${esc(r.name || '(brez imena)')}</b> <span class="mono dim">${esc(r.time)}</span><span class="hint"> ${esc(r.from)} → ${esc(r.to)}</span></span></label>`).join('')}</div>`
+      : `<div class="empty-state">${loaded ? 'Ta dan nima vpisanih prevozov.' : 'Ta dan še ni naložen iz baze. Počakaj trenutek ali izberi drug datum.'}</div>`}
+    <div class="row"><button type="button" class="btn sm" data-act="copyAll">Označi vse</button><button type="button" class="btn sm" data-act="copyNone">Odznači vse</button><span class="sp" style="flex:1"></span><button type="button" class="btn primary" data-act="copyDo" ${n ? '' : 'disabled'}>Kopiraj izbrane (${n})</button></div>
+    <p class="hint" style="margin:0">Kopirajo se ime, ura, naslova, način prevoza in opomba. Opravljeno, stanje in posadka se ne kopirajo. Prevozi, ki so tega dne že vpisani, se preskočijo.</p></section>`;
+}
 function renderDay(){
   const date = UI.date, today = todayStr(), a = ensureDay(date), plan = computePlan(date);
   refreshStaffList(date);
@@ -241,12 +261,15 @@ function renderDay(){
         <button type="button" class="btn primary" data-act="gotoDisp" data-date="${date}">${IC.route} Razpored</button>
         <details class="menu right"><summary class="btn" aria-label="Več možnosti">Več</summary><div class="menupop">
           ${terms.length ? `<button type="button" class="btn sm" data-act="loadDia">${IC.kidney.replace('<svg', '<svg width="14" height="14"')} Naloži dializne paciente</button>` : ''}
+          <button type="button" class="btn sm" data-act="copyOpen">Kopiraj prevoze z drugega dne …</button>
+          <button type="button" class="btn sm" data-act="printDay">Natisni knjigo dneva (OBR REŠ 08)</button>
           <button type="button" class="btn sm" data-act="kmDay" ${GOOGLE.enabled() ? '' : 'disabled title="Najprej vnesi ključ Google (Nastavitve → Izračun)"'}>Preračunaj kilometrino z Googlom</button></div></details>
       </div>
     </div>
     <div class="sumline" id="daySum"><span><b class="mono">${filled}</b> ${filled === 1 ? 'prevoz' : 'prevozov'}</span><span><b class="mono">${done}</b> opravljenih</span>${ks.any ? `<span title="${ks.all ? 'Vse razdalje so natančne (Google ali ročno)' : 'Del razdalj je ocena (~)'}"><b class="mono">${ks.all ? '' : '~'}${KM.fmtKm(ks.t)}</b> km</span>` : ''}${terms.map(t => `<span class="chip">${IC.kidney.replace('<svg', '<svg width="12" height="12"')} dializa ${t === 'dop' ? 'dopoldne' : 'popoldne'}</span>`).join('')}${warns.length ? `<details class="warnbox inline"><summary>${warns.length} opozoril</summary><ul class="warnlist">${warns.slice(0, 40).map(w => `<li>${esc(w.text)}</li>`).join('')}</ul></details>` : ''}</div>
     ${blocked.length ? `<div class="banner bad"><span>${IC.alert}</span><div>${blocked.map(v => `<b>${esc(v.name)}</b>: ${esc(vehBlocked(date, v.id).tip)}${vehBlocked(date, v.id).note ? ' (' + esc(vehBlocked(date, v.id).note) + ')' : ''}`).join(' · ')}. Vozilo ni v razporedu.</div></div>` : ''}
     ${S.dayNote[date] ? `<div class="banner warn"><span>${IC.info}</span><div><b>Opomba dneva:</b> ${esc(S.dayNote[date])}</div></div>` : ''}
+    ${quickFormHTML(date)}${UI.copy ? copyPanelHTML(date) : ''}
     ${tools ? `<div class="toolbar"><div class="seg inline" role="group" aria-label="Filter">${[['vsi', 'Vsi'], ['cakajo', 'Čakajo'], ['opravljeni', 'Opravljeni']].map(([k, l]) => `<button type="button" data-act="filter" data-k="${k}" aria-pressed="${UI.filter === k}">${l}</button>`).join('')}</div>
       <input type="search" id="rideSearch" placeholder="Išči po imenu ali naslovu" value="${esc(UI.q)}" aria-label="Išči"></div>` : ''}
     <div class="boxes" id="boxes">${list.map(({ r, nr }) => boxHTML(date, r, nr, plan)).join('')}${openEmpty ? boxHTML(date, openEmpty.r, openEmpty.nr, plan) : ''}</div>
@@ -386,31 +409,82 @@ function suggestHTML(plan){
     ${eff ? `<p class="hint" style="margin:0">${eff}</p>` : ''}
     ${sg.length ? `<ul class="sugg">${sg.map(x => `<li><span class="chip ${x.tone || ''}">${esc(SUG_LABEL[x.k] || 'predlog')}</span><span>${esc(x.text)}</span></li>`).join('')}</ul>` : ''}</section>`;
 }
-function tripMapHTML(c, t){
-  const st = UI.maps[tripKey(c, t)]; if (!st) return '';
-  const pts = tripWaypoints(t), g = ROUTE.pathCached(pts);
-  if (st === 'load' && !g) return '<div class="rmap"><div class="rleg">Nalaganje poti …</div></div>';
-  const stops = [t.from, ...t.stopsAbs.map(x => x.pt)].filter(p => p && isFinite(p.lat) && isFinite(p.lon));
-  const all = (g && g.coords.length ? g.coords : []).concat(stops.map(p => [p.lon, p.lat]));
-  if (all.length < 2) return '<div class="rmap"><div class="rleg">Za to vožnjo ni koordinat za prikaz.</div></div>';
-  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
-  all.forEach(([x, y]) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); });
-  const W = 640, H = 320, pad = 30, kx = Math.cos((y0 + y1) / 2 * Math.PI / 180);
-  const sc = Math.min((W - 2 * pad) / (((x1 - x0) * kx) || 1e-6), (H - 2 * pad) / ((y1 - y0) || 1e-6));
-  const ox = (W - (x1 - x0) * kx * sc) / 2, oy = (H - (y1 - y0) * sc) / 2;
-  const X = lon => (ox + (lon - x0) * kx * sc).toFixed(1), Y = lat => (H - oy - (lat - y0) * sc).toFixed(1);
-  const line = g && g.coords.length > 1 ? g.coords : stops.map(p => [p.lon, p.lat]);
-  const cl = [];   // postanki na isti točki (npr. več bolnišnic v istem mestu) se združijo v eno oznako s skupnimi številkami
-  stops.forEach((p, i) => {
-    const x = +X(p.lon), y = +Y(p.lat), s = i ? t.stopsAbs[i - 1] : null;
-    let c = cl.find(q => Math.hypot(q.x - x, q.y - y) < 11);
-    if (!c){ c = { x, y, nums:[], base:!i, drop:false }; cl.push(c); }
-    if (i) c.nums.push(i); if (s && s.type === 'do') c.drop = true;
+/* ---------- Zemljevid: pot vožnje in zemljevid dneva (interaktivni zemljevid, 56-map.js) ---------- */
+const MAP_COLORS = ['#1d4ed8', '#c2410c', '#15803d', '#7e22ce', '#be123c', '#0f766e', '#a16207', '#475569'];
+const crewColor = c => { const i = (typeof CREWS_PIN !== 'undefined' ? CREWS_PIN : []).findIndex(v => v.id === c.vehicle.id); return MAP_COLORS[(i < 0 ? 0 : i) % MAP_COLORS.length]; };
+const geoOk = p => p && isFinite(p.lat) && isFinite(p.lon);
+function stopPopHTML(t, s, i, tag){
+  const ppl = (s.people || []).filter(Boolean), pt = s.pt;
+  const personRow = (t.kind === 'to' && s.type === 'pu') || (t.kind === 'from' && s.type === 'do');
+  const label = pt.label || (s.type === 'do' && t.kind === 'to' ? (t.anchor.label || '') : ''), ap = t.ev && (t.ev.nEst || t.ev.nWait) ? '~' : '';
+  const addr = personRow && ppl[0] ? (ppl[0].kind === 'to' ? ppl[0].fromTxt : ppl[0].toTxt) || label : label;
+  const who = ppl.map(r => `${esc(r.name)} <span class="mp-t">št. ${r.nr}</span>${r.timeTxt ? ` · ura ${esc(r.timeTxt)}` : ''}`).join('<br>');
+  return `${tag || ''}<b>${i}. ${s.type === 'pu' ? 'Pobere' : 'Izstop'}</b> <span class="mp-t">${ap}${fmtT(s.t)}</span><div>${esc(addr || '')}</div>${who ? `<div class="mp-p">${who}</div>` : ''}`;
+}
+/* točke ene vožnje: postaja (ali prejšnji cilj) in postanki; pri zemljevidu dneva je oznaka številka prevoza, pri vožnji vrstni red postankov */
+function tripPins(c, t, color, idp, byRide){
+  const pins = [], tag = byRide ? `<span class="chip mono" style="margin-right:6px">${esc(c.vehicle.name)}</span>` : '';
+  if (geoOk(t.from)) pins.push({ id:idp + '0', lon:t.from.lon, lat:t.from.lat, kind:'base', label:'', name:'Štart', color, html:`${tag}<b>Štart</b> <span class="mp-t">${fmtT(t.depart)}</span><div>${esc(t.from.label || 'RP Brežice (ZD)')}</div>` });
+  t.stopsAbs.forEach((s, i) => {
+    if (!geoOk(s.pt)) return;
+    const ppl = (s.people || []).filter(Boolean);
+    pins.push({ id:idp + (i + 1), lon:s.pt.lon, lat:s.pt.lat, kind:s.type === 'do' ? 'do' : 'pu', label:byRide && ppl.length ? ppl.map(r => r.nr).join(',') : String(i + 1), name:ppl.map(r => r.name).join(', '), color, html:stopPopHTML(t, s, i + 1, tag) });
   });
-  const marks = cl.map(c => (c.base ? `<rect class="rp base" x="${c.x - 6}" y="${c.y - 6}" width="12" height="12" rx="2"/>` : '') + (c.nums.length ? `<circle class="rp ${c.drop ? 'do' : ''}" cx="${c.x}" cy="${c.y}" r="6.5"/><text x="${c.x + 9}" y="${c.y - 7}">${c.nums.join(',')}</text>` : '')).join('');
-  const legend = g ? `Pot po cestah: ${g.km.toFixed(1)} km, ${fmtDur(g.min)} (brez postankov).` : (st && String(st).startsWith('err') ? 'Cestna geometrija ni na voljo (' + esc(String(st).slice(4)) + '); črtkana črta je samo orientacija med točkami, ne razdalja.' : 'Cestna geometrija ni na voljo; črtkana črta je samo orientacija med točkami, ne razdalja.');
-  return `<div class="rmap"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pot vožnje: ${stops.length - 1} postankov"><polyline class="rl ${g ? '' : 'est'}" points="${line.map(([x, y]) => X(x) + ',' + Y(y)).join(' ')}"/>${marks}</svg>
-    <div class="rleg">${legend} Kvadrat = postaja ali prejšnji cilj, polni krog = izstop, številke = vrstni red postankov. Podatki cest: © prispevajoči OpenStreetMap.</div></div>`;
+  return pins;
+}
+function tripRoute(t, g, color){
+  const pts = [t.from, ...t.stopsAbs.map(x => x.pt)].filter(geoOk);
+  return { coords:g && g.coords.length > 1 ? g.coords : pts.map(p => [p.lon, p.lat]), color, est:!g };
+}
+const MAP_HOW = 'Povleci za premik, kolešček ali dva prsta za povečavo, klik na točko za podrobnosti.';
+function tripMapHTML(c, t){
+  const key = tripKey(c, t), st = UI.maps[key]; if (!st) return '';
+  const g = ROUTE.pathCached(tripWaypoints(t)), col = crewColor(c);
+  const pins = tripPins(c, t, col, 't', false);
+  if (pins.length < 2) return '<div class="rmap"><div class="rleg">Za to vožnjo ni koordinat za prikaz.</div></div>';
+  const legend = (g ? `Pot po cestah: ${g.km.toFixed(1)} km, ${fmtDur(g.min)} (brez postankov).` : st === 'load' ? 'Nalaganje cestne poti …' : (String(st).startsWith('err') ? 'Cestna geometrija ni na voljo (' + esc(String(st).slice(4)) + '); črtkana črta je samo orientacija med točkami, ne razdalja.' : 'Cestna geometrija ni na voljo; črtkana črta je samo orientacija med točkami, ne razdalja.'))
+    + ` ${MAP_HOW} Kvadrat = postaja ali prejšnji cilj, polni krog = izstop, številke = vrstni red postankov (klik na postanek v seznamu ga pokaže na zemljevidu).${MAP.tilesOn() ? '' : ' Podlaga zemljevida je izklopljena (Nastavitve → Izračun).'}`;
+  return MAP.html(key, { routes:[tripRoute(t, g, col)], pins }, { legend, label:'Zemljevid poti vožnje, ' + c.vehicle.name });
+}
+/* Zemljevid dneva: vse vožnje vseh vozil na enem zemljevidu; barva = vozilo */
+function dayMapSpec(date, plan){
+  const hide = UI.dayHide || (UI.dayHide = {}), routes = [], pins = []; let total = 0, have = 0, km = 0;
+  plan.crews.filter(c => c.trips.length && !hide[c.vehicle.id]).forEach(c => {
+    const col = crewColor(c);
+    c.trips.forEach((t, ti) => {
+      const g = ROUTE.pathCached(tripWaypoints(t)); total++; if (g){ have++; km += g.km; }
+      routes.push(tripRoute(t, g, col)); pins.push(...tripPins(c, t, col, c.vehicle.id + ':' + ti + ':', true));
+    });
+  });
+  return { spec:{ routes, pins }, total, have, km };
+}
+const dayMapLegend = (d, busy) => d.total ? `${d.have === d.total ? `Vse vožnje (${d.total}) po cestah` : busy ? `Nalagam poti po cestah: ${d.have}/${d.total} …` : `${d.have} od ${d.total} vožnj po cestah, ostalo je črtkano (orientacijsko)`}${d.have ? ` · skupaj ${d.km.toFixed(0)} km (brez vožnje do prvega postanka)` : ''}. ${MAP_HOW} Številke so št. prevozov v knjigi; krog = pobere, poln krog = izstop, kvadrat = postaja.` : 'Ni vožnj za prikaz.';
+function dayMapCard(date, plan){
+  const open = !!UI.sect.daymap, crews = plan.crews.filter(c => c.trips.length);
+  if (!crews.length) return '';
+  let body = '';
+  if (open){
+    const d = dayMapSpec(date, plan), hide = UI.dayHide || {};
+    body = `<div class="daymap-legend" role="group" aria-label="Vozila na zemljevidu">${crews.map(c => `<button type="button" class="chip toggle" data-act="dayMapCrew" data-veh="${esc(c.vehicle.id)}" aria-pressed="${!hide[c.vehicle.id]}"><span class="sw" style="background:${crewColor(c)}"></span>${esc(c.vehicle.name)} · ${esc(c.driver.name)}</button>`).join('')}</div>
+      ${MAP.html('day|' + date, d.spec, { legend:dayMapLegend(d, !!UI.dayBusy), label:'Zemljevid vseh voženj dneva', tall:true })}`;
+  }
+  return `<details class="card card-pad sect" data-sect="daymap" ${open ? 'open' : ''}><summary><h3>Zemljevid dneva</h3><span class="chip">${crews.length} ${crews.length === 1 ? 'vozilo' : 'vozil'} · ${crews.reduce((n, c) => n + c.trips.length, 0)} vožnj</span></summary>${body}</details>`;
+}
+let DAYMAP_TAG = '';
+/* poti po cestah za zemljevid dneva se naložijo po eno in sproti osvežijo zemljevid (brez ponovnega izrisa strani) */
+async function loadDayPaths(date){
+  if (!ROUTE.enabled()) return;
+  const plan = computePlan(date), tag = date + '#' + rev + '#' + ROUTE.version;
+  if (DAYMAP_TAG === tag) return; DAYMAP_TAG = tag;
+  const todo = []; plan.crews.forEach(c => c.trips.forEach(t => { const wp = tripWaypoints(t); if (!ROUTE.pathCached(wp)) todo.push(wp); }));
+  if (!todo.length) return;
+  UI.dayBusy = true;
+  const upd = () => { if (UI.view !== 'dispecer' || UI.dDate !== date || !UI.sect.daymap) return false; const d = dayMapSpec(date, plan); MAP.update('day|' + date, d.spec); const lg = document.querySelector('.imap[data-map="day|' + date + '"]'); const rl = lg && lg.parentElement.querySelector('.rleg'); if (rl) rl.innerHTML = dayMapLegend(d, UI.dayBusy); return true; };
+  for (const wp of todo){
+    try { await ROUTE.path(wp); } catch(e){}
+    if (!upd()){ DAYMAP_TAG = ''; break; }
+  }
+  UI.dayBusy = false; upd();
 }
 function stopRow(c, t, s, L, prev){
   const ppl = (s.people || []).filter(Boolean);
@@ -448,7 +522,8 @@ function stopRow(c, t, s, L, prev){
     const who = ppl.map(r => `${esc(r.name)} <span class="chip mono">št. ${r.nr}</span>${t.kind === 'to' && s.type === 'do' && r.timeTxt ? ` <span class="eta">preiskava ${esc(r.timeTxt)}</span> ${etaOf(r)}` : (t.kind === 'from' && s.type === 'pu' && r.timeTxt ? ` <span class="eta">ura ${esc(r.timeTxt)}</span> ${etaOf(r)}` : '')}`).join('<br>');
     body = `<div><div class="who">${s.type === 'pu' ? 'Pobere' : 'Izstop'}: ${esc(label)}</div><div class="addr">${who}</div></div><div></div>`;
   }
-  return `${base}<li class="stop"><time>${ap}${fmtT(s.t)}</time><span class="dot ${s.type === 'do' ? 'do' : ''}"></span>${body}</li>`;
+  const mk = tripKey(c, t), mapOpen = !!UI.maps[mk] && geoOk(s.pt);
+  return `${base}<li class="stop${mapOpen ? ' mapfocus' : ''}"${mapOpen ? ` data-act="stopFocus" data-mapkey="${esc(mk)}" data-mapid="t${t.stopsAbs.indexOf(s) + 1}" title="Pokaži na zemljevidu"` : ''}><time>${ap}${fmtT(s.t)}</time><span class="dot ${s.type === 'do' ? 'do' : ''}"></span>${body}</li>`;
 }
 function renderDispatch(){
   const date = UI.dDate, today = todayStr(), tom = addDays(today, 1);
@@ -457,6 +532,10 @@ function renderDispatch(){
   CREWS_PIN = plan.crews.map(c => c.vehicle);
   const blocked = S.vehicles.filter(v => v.tip !== 'ostalo' && vehBlocked(date, v.id));
   const tot = plan.totals;
+  /* opozorila: težave (zamude, zgodnji štarti) na vrhu, »prilagojeno« posebej; več enakih opozoril o štartu pred izmeno postane eno */
+  const wBend = plan.warnings.filter(w => w.level === 'bend'), wMain = [], early = [];
+  plan.warnings.filter(w => w.level !== 'bend').forEach(w => { const m = /^(.+?): za pravočasen prihod .*?štartati ob (\d{1,2}:\d{2}), izmena pa se začne ob (\d{1,2}:\d{2})/.exec(w.text); if (m) early.push({ v:m[1], t:m[2], s:m[3], level:w.level }); else wMain.push(w); });
+  if (early.length) wMain.unshift({ level:early[0].level, text:`Za pravočasen prihod bi morale posadke štartati pred začetkom izmene: ${early.map(e => `${e.v} ob ${e.t}`).join(', ')} (izmena se začne ob ${early[0].s}). Nastavi zgodnejši začetek izmene.` });
   const rows = plan.crews.map(c => `<tr>
       <td><b>${esc(c.vehicle.name)}</b><div class="hint">${esc(capText(c.vehicle))}</div></td>
       <td>${esc(c.driver.name)}${c.team === 'NN' ? ' <span class="chip">NN</span>' : ''}${c.escorts.map(e => `<div class="hint">${esc(e.name)} (sp.)</div>`).join('')}${(c.helpers || []).map(h => `<div class="hint">${esc(h.name)} (${ROLE_TAG[h.role] || ''})</div>`).join('')}</td>
@@ -464,20 +543,20 @@ function renderDispatch(){
       <td>${c.trips.length ? `<b class="mono">Štart ${fmtT(c.firstDepart)}</b> iz postaje<div class="hint">${c.trips.map(t => `${fmtT(t.depart)} → ${esc(tripTitle(t) + (t.kind === 'to' ? '' : ' (odvoz)'))}`).join(' · ')}</div>${c.trips.some(t=>t.late>0) ? '<div><span class="chip bad">zamuda</span></div>' : ''}${c.overtime > 0 ? `<div><span class="chip accent">nadure ~${c.overtime} min</span></div>` : ''}` : '<span class="dim">Brez prevozov</span>'}</td></tr>`).join('');
   const blockedRows = blocked.map(v => { const b = vehBlocked(date, v.id); return `<tr><td><b>${esc(v.name)}</b></td><td colspan="2"><span class="chip bad">${esc(b.tip)}</span></td><td class="muted">${esc(b.note || 'Vozilo ni na voljo')}</td></tr>`; }).join('');
   const unRows = plan.unassigned.map(u => `<span class="chip bad mono" title="${esc(u.reason)}">${u.ride.nr}</span>`).join(' ');
-  const cards = plan.crews.filter(c => c.trips.length).map(c => `<section class="card crewcard">
-      <header><div><h3>${esc(c.vehicle.name)} · ${esc(crewLabel(c))}</h3><div class="timeline-note">Štart iz postaje ${fmtT(c.firstDepart)} · konec ob ${fmtT(c.trips[c.trips.length-1].end)}</div></div>
-      <div class="meta"><span class="chip mono">${c.rideNrs.length} prevozov</span><span class="chip mono">${c.km.toFixed(0)} km</span><span class="chip mono">${fmtDur(c.busy)}</span></div></header>
+  const cards = plan.crews.filter(c => c.trips.length).map(c => `<details class="card crewcard" data-sect="crew:${esc(c.vehicle.id)}" ${UI.sect['crew:' + c.vehicle.id] ? 'open' : ''}>
+      <summary><div><h3>${esc(c.vehicle.name)} · ${esc(crewLabel(c))}</h3><div class="timeline-note">Štart iz postaje ${fmtT(c.firstDepart)} · konec ob ${fmtT(c.trips[c.trips.length-1].end)}</div></div>
+      <div class="meta"><span class="chip mono">${c.rideNrs.length} prevozov</span><span class="chip mono">${c.km.toFixed(0)} km</span><span class="chip mono">${fmtDur(c.busy)}</span>${c.trips.some(t => t.late > 0) ? '<span class="chip bad">zamuda</span>' : ''}</div></summary>
       ${c.trips.map((t, ti) => `<div class="trip"><div class="trip-head">
           <span class="chip ${t.kind === 'from' ? 'ok' : 'info'}">${t.kind === 'from' ? 'ODVOZ' : 'TJA'}</span><b>${t.kind === 'to' ? esc(tripTitle(t) || 'cilj') : 'Iz: ' + esc(tripTitle(t) || 'ustanova')}</b>
           <span class="chip mono">${t.rides.length} pac.</span>${t.ev.ret ? `<span class="chip info" title="Reševalec po izstopu počaka na pregled in pacienta odpelje nazaj">počaka ~${fmtDur(t.waitMin || 0)}</span>` : ''}<span class="chip mono" title="${t.ev.nEst || t.ev.nWait ? 'Del poti je ocenjen (brez cestnih podatkov)' : 'Izračunano po cestah'}">${t.ev.nEst || t.ev.nWait ? '~' : ''}${t.ev.km.toFixed(0)} km</span><span class="chip mono">${t.ev.nEst || t.ev.nWait ? '~' : ''}${fmtDur(t.ev.dur)}</span>${new Set((t.dests || []).map(p => p.key)).size > 1 ? `<span class="chip info" title="Pacienti z blizu skupaj ležečimi cilji so v eni vožnji">${new Set(t.dests.map(p => p.key)).size} cilji</span>` : ''}
           ${t.late > 0 ? `<span class="chip bad">${t.kind === 'from' ? 'pacient čaka ~' + t.wait + ' min' : 'zamuda ~' + t.late + ' min'}</span>` : (t.kind === 'to' && t.slack != null ? `<span class="chip ok">rezerva ${t.slack} min</span>` : '')}
-          ${t.sbReturn && c.team === 'NN' ? '<span class="chip">NN ekipa</span>' : ''}<button type="button" class="btn sm" data-act="tripMap" data-trip="${esc(tripKey(c, t))}" aria-expanded="${UI.maps[tripKey(c, t)] ? 'true' : 'false'}" style="margin-left:auto">${UI.maps[tripKey(c, t)] ? 'Skrij pot' : 'Pot'}</button></div>
+          ${t.sbReturn && c.team === 'NN' ? '<span class="chip">NN ekipa</span>' : ''}<button type="button" class="btn sm" data-act="tripMap" data-trip="${esc(tripKey(c, t))}" aria-expanded="${UI.maps[tripKey(c, t)] ? 'true' : 'false'}" style="margin-left:auto">${UI.maps[tripKey(c, t)] ? 'Skrij zemljevid' : 'Pot na zemljevidu'}</button></div>
         ${tripMapHTML(c, t)}
         <ul class="stops">
           <li class="stop"><time>${fmtT(t.depart)}</time><span class="dot base"></span><div><div class="who">Štart: ${ti === 0 ? 'RP Brežice (ZD)' : 'prejšnji cilj'}</div><div class="addr">Vožnja do prvega postanka ${legKm(L(t.from, t.stopsAbs[0].pt))}</div></div><div></div></li>
           ${t.stopsAbs.map((s, i) => stopRow(c, t, s, L, i ? t.stopsAbs[i-1] : null)).join('')}
         </ul></div>`).join('')}
-    </section>`).join('');
+    </details>`).join('');
   const closeList = (date <= tom) ? filledRides(date).map(({ r, nr }) => `<div class="duty-item" style="grid-template-columns:auto minmax(0,1fr) minmax(0,1.1fr);align-items:center" data-ride="${r.id}" data-date="${date}">
         <span class="nr">${nr}</span><div class="dn" style="min-width:0"><div style="overflow:hidden;text-overflow:ellipsis">${esc(r.name || '(brez imena)')} <span class="mono dim">${esc(r.time)}</span></div><div class="hint" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.from)} → ${esc(r.to)}</div></div>
         <div class="row" style="flex-wrap:nowrap;gap:8px"><label class="row" style="gap:6px;flex-wrap:nowrap;font-weight:600"><input type="checkbox" data-f="done" ${r.done ? 'checked' : ''}> Opravljeno</label><input type="text" data-f="doneBy" list="staffList" value="${esc(r.doneBy)}" placeholder="Kdo je naredil odvoz" aria-label="Kdo je naredil odvoz, prevoz ${nr}" style="${r.done ? '' : 'visibility:hidden'}"></div></div>`).join('') : '';
@@ -496,9 +575,10 @@ function renderDispatch(){
         <details class="card card-pad sect" data-sect="note" ${UI.sect.note || S.dayNote[date] ? 'open' : ''}><summary><h3>Opomba dneva</h3>${S.dayNote[date] ? '<span class="chip">vpisana</span>' : ''}</summary><textarea id="dayNote" style="margin-top:10px" placeholder="npr. ob 9:00 sestanek, cesta zaprta, pacient potrebuje spremljevalca">${esc(S.dayNote[date] || '')}</textarea></details>
       </div>
       <div class="stack">
-        ${rulesBar(date, plan)}${publishBar(date, plan)}${routeBar(plan)}
-        <div class="stats"><div class="stat"><b>${tot.rides}</b><span>prevozov za razporeditev</span></div>${kms.any ? `<div class="stat" title="Vsota razdalj OD → DO po prevozih (v knjigo)"><b>${kms.all ? '' : '~'}${KM.fmtKm(kms.t)}</b><span>km prevozov${kms.all ? ' (natančno)' : ' (deloma ocena)'}</span></div>` : ''}<div class="stat"><b>${tot.vehicles}/${plan.crews.length}</b><span>vozil v uporabi</span></div><div class="stat"><b>${tot.km.toFixed(0)}</b><span>km vožnje ekip (${!ROUTE.enabled() ? 'ocena' : tot.estLegs + tot.waitLegs ? 'deloma ocena' : 'po cestah'})</span></div><div class="stat"><b style="color:${tot.late ? 'var(--bad)' : 'var(--ok)'}">${tot.late}</b><span>prevozov z zamudo</span></div></div>
-        ${plan.warnings.length ? `<details class="warnbox" ${plan.warnings.some(w => w.level === 'bad' || w.level === 'bend') ? 'open' : ''}><summary>${plan.warnings.length} opozoril in prilagoditev</summary><ul class="warnlist">${plan.warnings.map(w => `<li class="w-${w.level}">${w.level === 'bend' ? '<span class="chip accent">prilagojeno</span> ' : ''}${esc(w.text)}</li>`).join('')}</ul></details>` : ''}
+        ${publishBar(date, plan)}
+        <div class="stats compact"><div class="stat"><b>${tot.rides}</b><span>prevozov</span></div>${kms.any ? `<div class="stat" title="Vsota razdalj OD → DO po prevozih (v knjigo)"><b>${kms.all ? '' : '~'}${KM.fmtKm(kms.t)}</b><span>km prevozov${kms.all ? '' : ' (~)'}</span></div>` : ''}<div class="stat"><b>${tot.vehicles}/${plan.crews.length}</b><span>vozil</span></div><div class="stat"><b>${tot.km.toFixed(0)}</b><span>km ekip (${!ROUTE.enabled() ? 'ocena' : tot.estLegs + tot.waitLegs ? 'deloma ocena' : 'po cestah'})</span></div><div class="stat"><b style="color:${tot.late ? 'var(--bad)' : 'var(--ok)'}">${tot.late}</b><span>z zamudo</span></div></div>
+        ${wMain.length ? `<details class="warnbox" ${wMain.some(w => w.level === 'bad') ? 'open' : ''}><summary>${wMain.length} ${wMain.length === 1 ? 'opozorilo' : wMain.length < 5 ? 'opozorila' : 'opozoril'}</summary><ul class="warnlist">${wMain.map(w => `<li class="w-${w.level}">${esc(w.text)}</li>`).join('')}</ul></details>` : ''}
+        ${routeBar(plan)}
         <div class="card card-pad">
           <div class="card-head"><h3>Razpored za ${fmtShort(date)}</h3><div class="row"><button type="button" class="btn sm" data-act="copyPlan">${IC.copy} Kopiraj kot besedilo</button></div></div>
           ${plan.crews.length || blocked.length ? `<div class="tablewrap"><table><thead><tr><th>Vozilo</th><th>Voznik</th><th>Prevozi (št. v knjigi)</th><th>Posebnosti · ure štarta</th></tr></thead><tbody>${rows}${blockedRows}</tbody></table></div>`
@@ -506,11 +586,15 @@ function renderDispatch(){
           ${unRows ? `<p style="margin:10px 0 0"><b>Nerazporejeni prevozi:</b> ${unRows}</p>` : ''}
           <details class="hintdet" style="margin-top:10px"><summary>Kako se računa</summary><p class="hint" style="margin:6px 0 0">${ROUTE.enabled() ? 'Razdalje in časi vožnje so izračunani po dejanskih cestah (OpenStreetMap, brez prometnih zastojev' + (+S.settings.routing.factor !== 1 ? ', čas × ' + S.settings.routing.factor : '') + '); relacije brez cestnih podatkov so označene z ~ in ocenjene kot zračna razdalja × ' + S.settings.road + ' pri omejitvah ' : 'Časi so ocena: zračna razdalja × ' + S.settings.road + ', omejitve '}${S.settings.lim.naselje}/${S.settings.lim.izven}/${S.settings.lim.hitra}/${S.settings.lim.avtocesta} km/h (naselje/izven/hitra/avtocesta), dejansko ${S.settings.eff} %. Pobiranje ${S.settings.pickMin} min, izstop ${S.settings.dropMin} min na pacienta (leže ${S.settings.pickLeze}/${S.settings.dropLeze}, utila ${S.settings.pickUtila}/${S.settings.dropUtila}), rezerva ${S.settings.buffer} min pred preiskavo. Pri pregledu s čakanjem reševalec po izstopu počaka in pacienta odpelje nazaj. Razpored se vpiše tudi v mesečno knjigo.</p></details>
         </div>
+        ${rulesBar(date, plan, wBend)}
         ${suggestHTML(plan)}
+        ${dayMapCard(date, plan)}
+        ${cards ? `<div class="crewhead"><h3>Podrobnosti po posadkah</h3><span class="sp"></span><button type="button" class="btn sm ghost" data-act="crewsAll" data-open="1">Razširi vse</button><button type="button" class="btn sm ghost" data-act="crewsAll" data-open="0">Skrči vse</button></div>` : ''}
         ${cards}
-        ${closeList ? `<div class="card card-pad stack" style="gap:10px"><div class="card-head" style="margin:0"><h3>Zaključek prevozov</h3><span class="hint">Označi opravljeno in vpiši, kdo je naredil odvoz.</span></div>${closeList}</div>` : ''}
+        ${closeList ? `<details class="card card-pad sect" data-sect="close" ${UI.sect.close ? 'open' : ''}><summary><h3>Zaključek prevozov</h3><span class="hint">opravljeno in kdo je vozil</span></summary><div class="stack" style="gap:10px;margin-top:10px">${closeList}</div></details>` : ''}
       </div>
     </div>`;
+  if (UI.sect.daymap) loadDayPaths(date);
 }
 
 /* ---------- Posebnosti ---------- */
@@ -543,6 +627,14 @@ function renderNotices(){
 }
 
 /* ---------- Nastavitve ---------- */
+function mapCard(){
+  const c = MAP.cfg(), on = MAP.tilesOn();
+  let host = ''; try { host = c.url ? new URL(c.url.replace(/\{[a-z]\}/g, '0')).host : ''; } catch(e){}
+  return `<div class="card card-pad stack" style="gap:12px"><div class="card-head" style="margin:0"><h3>Zemljevid poti</h3><span class="chip ${!c.url ? 'warn' : on ? 'ok' : ''}">${!c.url ? 'podlaga ni nastavljena' : on ? 'podlaga vklopljena' : 'podlaga izklopljena'}</span></div>
+    <p class="hint" style="margin:0">Pot vožnje in zemljevid dneva sta interaktivna zemljevida (povleci, povečaj, klik na točko). Podlaga so ploščice zemljevida${host ? ' (<span class="mono">' + esc(host) + '</span>)' : ''}. Brez podlage se prikažeta samo pot in točke na nevtralni mreži.</p>
+    <div class="row"><button type="button" class="chip toggle" data-act="mapTiles" aria-pressed="${on}" ${c.url ? '' : 'disabled'}>Podlaga zemljevida na tej napravi: ${on ? 'vklopljena' : 'izklopljena'}</button></div>
+    <details class="hintdet"><summary>Zasebnost in pogoji uporabe ploščic</summary><p class="hint" style="margin:6px 0 0">Ko je podlaga vklopljena, brskalnik pri strežniku ploščic zahteva slike za prikazano območje. Strežnik tako vidi IP naslov naprave, izvor te strani (brez poti) in koordinate prikazanih ploščic, ne vidi pa imen, naslovov ali drugih podatkov o pacientih. Točke in poti se izrisujejo v brskalniku. Javni strežnik ploščic OpenStreetMap je namenjen zmerni rabi (pogoji: operations.osmfoundation.org/policies/tiles): za redno delo v več pisarnah uporabi lasten strežnik ploščic ali ponudnika z dogovorom (config.js → tiles.url, v CSP v build-prod.py dodaj njegov izvor v img-src). Pripis »© prispevajoči OpenStreetMap« mora ostati viden.</p></details></div>`;
+}
 function routingCard(){
   const ri = ROUTE.info(), R = S.settings.routing, tst = UI.routeTest, wm = UI.routeWarm;
   const kn = (label, path, val, step, unit = '') => `<label for="k-${path}">${label}${unit ? ' <span class="dim">(' + unit + ')</span>' : ''}</label>${field(path, val, { num:1, step, label }).replace('data-path', `id="k-${path}" data-path`)}`;
@@ -592,7 +684,11 @@ function diaTab(){
     <td><div class="seg" role="group" aria-label="Termin dialize">${Object.keys(DIA_TERMS).map(t => `<button type="button" data-act="diaTerm" data-id="${p.id}" data-t="${t}" aria-pressed="${p.dt.t === t}">${DIA_TERMS[t]}</button>`).join('')}</div></td>
     <td><div class="row" style="gap:4px">${[1, 2, 3, 4, 5, 6, 0].map(d => `<button type="button" class="chip toggle" data-act="diaDay" data-id="${p.id}" data-d="${d}" aria-pressed="${(p.dt.d || []).includes(d)}">${DOW_SHORT[d]}</button>`).join('')}</div></td>
     <td><button type="button" class="icon-btn" data-act="diaDel" data-id="${p.id}" aria-label="Odstrani ${esc(p.name)} iz dialize">${IC.x}</button></td></tr>`).join('');
-  return `<div class="stack"><div class="card card-pad stack"><h3>Termina dialize</h3>
+  const cur = S.settings.diaPlace || '', cands = [...POIS.filter(x => x.dia || /^SB |^ZD |dializ/i.test(x.n)).map(x => x.n), ...S.places.filter(x => /dializ/i.test(x.n) || !x.parent).map(x => x.n)];
+  const center = `<div class="card card-pad stack" style="gap:8px"><h3>Kje je dializni center?</h3>
+      <p class="hint" style="margin:0">Kratice »Dializa«, »Dializa KK«, »KK dializa« in ime dializnega centra v knjigi se vedno preberejo kot ta ustanova (cilj, koordinate in pot). Dokler ni izbrana, se uporablja Dializni center Krško (Nefrodial; v knjigi »Dializa KK«) – koordinate so približne, po potrebi izberi drugo ustanovo ali dodaj svojo.</p>
+      ${adm ? `<select data-path="settings.diaPlace" aria-label="Dializni center"><option value="">${esc(DIA_DEFAULT)} (privzeto)</option>${[...new Set(cands)].filter(n => n !== DIA_DEFAULT).map(n => `<option value="${esc(n)}" ${cur === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>` : `<b>${esc(cur || DIA_DEFAULT + ' (privzeto)')}</b>`}</div>`;
+  return `<div class="stack">${center}<div class="card card-pad stack"><h3>Termina dialize</h3>
       <p class="muted" style="margin:0">Dializni bolniki imajo dopoldanski ali popoldanski termin. Prevoz tja je ob začetku termina, prevoz nazaj ob koncu. Posadka, ki pelje na dializo, lahko po koncu dialize prevaža tudi sede paciente: razpored jim jih doda v prostem času, če to ne ovira dialize.</p>
       <div class="tablewrap"><table class="edtable"><thead><tr><th>Termin</th><th>Začetek</th><th>Konec</th></tr></thead><tbody>${terms}</tbody></table></div>
       ${adm ? '' : '<p class="hint" style="margin:0">Ure terminov spreminja skrbnik.</p>'}</div>
@@ -661,9 +757,9 @@ function renderSettings(){
   } else if (T === 'planiranje'){
     const k = (label, path, step=1, unit='') => `<label for="k-${path}">${label}${unit ? ' <span class="dim">(' + unit + ')</span>' : ''}</label>${field(path, S.settings[path.split('.')[1]], { num:1, step, label })}`.replace('data-path', `id="k-${path}" data-path`);
     const kl = (label, key) => `<label for="k-lim-${key}">${label} <span class="dim">(km/h)</span></label>${field('settings.lim.' + key, S.settings.lim[key], { num:1, step:1, label }).replace('data-path', 'id="k-lim-' + key + '" data-path')}`;
-    body = `<div class="stack">${googleCard()}${routingCard()}<details class="card card-pad sect" data-sect="param" ${UI.sect.param ? 'open' : ''}><summary><h3>Parametri izračuna: hitrosti, časi pobiranja, rezerve</h3></summary><div class="kv" style="margin-top:12px">
+    body = `<div class="stack">${googleCard()}${routingCard()}${mapCard()}<details class="card card-pad sect" data-sect="param" ${UI.sect.param ? 'open' : ''}><summary><h3>Parametri izračuna: hitrosti, časi pobiranja, rezerve</h3></summary><div class="kv" style="margin-top:12px">
       ${kl('Omejitev v naselju','naselje')}${kl('Omejitev izven naselij','izven')}${kl('Omejitev na hitri cesti','hitra')}${kl('Omejitev na avtocesti','avtocesta')}${k('Dejanska hitrost glede na omejitev','settings.eff',1,'%')}${k('Faktor ceste (samo za ocene brez cestnih podatkov)','settings.road',0.05)}${k('Pobiranje sede pacienta','settings.pickMin',1,'min')}${k('Odpuščanje sede pacienta','settings.dropMin',1,'min')}${k('Pobiranje leže pacienta','settings.pickLeze',1,'min')}${k('Odpuščanje leže pacienta','settings.dropLeze',1,'min')}${k('Pobiranje pacienta na vozičku','settings.pickUtila',1,'min')}${k('Odpuščanje pacienta na vozičku','settings.dropUtila',1,'min')}${k('Privzet čas pregleda (čakanje)','settings.stayDef',5,'min')}${k('Privzeta pot od vhoda do ambulante','settings.extraDef',1,'min')}
-      ${k('Rezerva pred preiskavo','settings.buffer',1,'min')}${k('Okno združevanja po uri','settings.window',5,'min')}${k('Največji dodaten čas za soprevoznika','settings.detour',5,'min')}${k('Najdaljša vožnja pacienta v vozilu','settings.maxRide',5,'min')}
+      ${k('Rezerva pred preiskavo','settings.buffer',1,'min')}${k('Okno združevanja po uri','settings.window',5,'min')}${k('Okno združevanja pri oddaljenih ciljih (Ljubljana, Novo mesto)','settings.windowFar',10,'min')}${k('NN ekipa: najdlje od postaje (0 = brez omejitve)','settings.nnMaxKm',5,'km')}${k('Največji dodaten čas za soprevoznika','settings.detour',5,'min')}${k('Najdaljša vožnja pacienta v vozilu','settings.maxRide',5,'min')}
       ${k('Čakanje pri odvozu brez zamude','settings.waitTol',1,'min')}${k('Število polj v knjigi na dan','settings.slots',1,'polj')}${k('Samodejna odjava','settings.idleMin',5,'min')}
       <label for="k-shift">Privzet začetek izmene</label><input id="k-shift" type="time" data-path="settings.shift" value="${esc(S.settings.shift)}"></div>
       <p class="hint" style="margin:0">Spremembe veljajo takoj. Razpored za današnji in jutrišnji dan se ponovno izračuna.</p></details></div>`;
