@@ -206,6 +206,35 @@ const ROUTE = (() => {
   }
   const pathCached = points => { const pts = points.filter(routable).filter((p, i, a) => !i || key(p) !== key(a[i - 1])); return geoCache.get(pts.map(key).join('|')) || null; };
 
+  /* ---------- Natančna pot med dvema točkama (kilometrina prevoza OD → DO) ----------
+     Neposreden zahtevek /route za ta par točk (ne iz matrike naselij): točki sta lahko hišna naslova. Če sta obe splošni točki in je razdalja že
+     v predpomnilniku ali v razdalje.json, se ne kliče strežnik. Zahtevki gredo po vrsti (razmik R.gap), da javni strežnik ni preobremenjen.
+     Vrne { km, min, snap:[m, m] }; snap = razdalja od točke do najbližje ceste (velika vrednost pomeni, da točka ni ob cesti). */
+  const exactCache = new Map();
+  let exactChain = Promise.resolve();
+  function exact(a, b){
+    if (!enabled()) return Promise.reject(Object.assign(new Error('Cestni podatki so izklopljeni (Nastavitve → Planiranje).'), { code:'off' }));
+    if (!routable(a) || !routable(b)) return Promise.reject(Object.assign(new Error('Točka ni znana.'), { code:'point' }));
+    const ka = key(a), kb = key(b); if (ka === kb) return Promise.resolve({ km:0, min:0, snap:[0, 0] });
+    const ck = ka + '>' + kb; if (exactCache.has(ck)) return Promise.resolve(exactCache.get(ck));
+    const v = (a.kind !== 'addr' && b.kind !== 'addr' && !a.exact && !b.exact) ? lookup(a, b) : null;
+    if (v && v !== NONE) return Promise.resolve({ km:v.m / 1000, min:v.s / 60, snap:[0, 0] });
+    const job = async () => {
+      if (exactCache.has(ck)) return exactCache.get(ck);
+      const res = await http('/route/v1/driving/' + a.lon.toFixed(5) + ',' + a.lat.toFixed(5) + ';' + b.lon.toFixed(5) + ',' + b.lat.toFixed(5) + '?overview=false&alternatives=false&steps=false');
+      if (res.code === 'NoRoute' || (res.code === 'Ok' && !(res.routes && res.routes[0]))) throw Object.assign(new Error('Med naslovoma ni poti po cestah.'), { code:'noroute' });
+      if (res.code !== 'Ok' || !res.routes || !res.routes[0]) throw new Error('OSRM: ' + (res.code || 'neveljaven odgovor') + (res.message ? ' – ' + res.message : ''));
+      const r0 = res.routes[0], w = res.waypoints || [];
+      const out = { km:r0.distance / 1000, min:r0.duration / 60, snap:[(w[0] && w[0].distance) || 0, (w[1] && w[1].distance) || 0] };
+      exactCache.set(ck, out); if (exactCache.size > 400) exactCache.delete(exactCache.keys().next().value);
+      R.lastOk = Date.now(); setStatus('ok');
+      return out;
+    };
+    const run = exactChain.then(job);
+    exactChain = run.catch(() => {}).then(() => (R.gap ? sleep(R.gap) : null));
+    return run;
+  }
+
   /* ---------- Preizkus povezave: ZD Brežice → UKC Ljubljana ---------- */
   async function test(){
     const a = BASE_POI, b = POIS.find(p => p.n === 'UKC Ljubljana'), t0 = Date.now();
@@ -223,16 +252,16 @@ const ROUTE = (() => {
     return out;
   }
 
-  function clear(){ cache.clear(); gen.clear(); pending.clear(); snapFar.clear(); geoCache.clear(); coolUntil = 0; backoff = 0; store.del('kp.route.v1'); R.version++; if (typeof PLAN_CACHE !== 'undefined') PLAN_CACHE.clear(); notify('data'); }
+  function clear(){ cache.clear(); gen.clear(); pending.clear(); snapFar.clear(); geoCache.clear(); exactCache.clear(); coolUntil = 0; backoff = 0; store.del('kp.route.v1'); R.version++; if (typeof PLAN_CACHE !== 'undefined') PLAN_CACHE.clear(); notify('data'); }
   /* Ob odjavi: pozabi vse, kar ni splošna točka (npr. hišni naslovi pacientov), in geometrije poti. Splošne točke ostanejo v predpomnilniku. */
   function forget(){
     for (const k of [...cache.keys()]){ const [a, b] = k.split('>'); if (!gen.has(a) || !gen.has(b)) cache.delete(k); }
     for (const k of [...snapFar.keys()]) if (!gen.has(k)) snapFar.delete(k);
     for (const [k, v] of [...pending]) if (!v.gen) pending.delete(k);
-    geoCache.clear(); R.version++; if (typeof PLAN_CACHE !== 'undefined') PLAN_CACHE.clear();
+    geoCache.clear(); exactCache.clear(); R.version++; if (typeof PLAN_CACHE !== 'undefined') PLAN_CACHE.clear();
   }
   const info = () => ({ on:enabled(), configured:urls().length > 0, urls:urls(), status:R.status, err:R.err, url:R.url, cached:cache.size, shared:shared ? shared.n : 0, sharedBuilt:shared ? shared.built : '', pending:pending.size, busy, cooling:Math.max(0, coolUntil - Date.now()) });
 
-  Object.assign(R, { enabled, routable, key, leg, lookup, init, settle, flush, warm, warmPoints, exportShared, setShared, path, pathCached, test, clear, forget, info, snapFar:p => snapFar.get(key(p)) || 0, fetchMatrix, persist, retry:() => { coolUntil = 0; backoff = 0; if (pending.size) flush(); } });
+  Object.assign(R, { enabled, routable, key, leg, lookup, exact, init, settle, flush, warm, warmPoints, exportShared, setShared, path, pathCached, test, clear, forget, info, snapFar:p => snapFar.get(key(p)) || 0, fetchMatrix, persist, retry:() => { coolUntil = 0; backoff = 0; if (pending.size) flush(); } });
   return R;
 })();

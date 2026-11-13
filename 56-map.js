@@ -217,7 +217,10 @@ const MAP = (() => {
       if (!ptrs.size) vp.classList.remove('grab');
       if (e.type === 'pointerup' && wasOne && !moved){
         if (downPin){ openPin(downPin); }
-        else {
+        else if (spec.pick && typeof spec.pick.cb === 'function'){      // način izbire točke: en dotik postavi točko (dvojni dotik za povečavo ni na voljo, povečaj z +/− ali koleščkom)
+          const r = rect(), [cx, cy] = centerPx(), [lo, la] = ll(cx - W / 2 + (e.clientX - r.left), cy - H / 2 + (e.clientY - r.top), v.zoom);
+          spec.pick.cb(lo, la);
+        } else {
           const now = Date.now(), r = rect(), x = e.clientX - r.left, y = e.clientY - r.top;
           if (now - lastTap.t < 320 && Math.hypot(x - lastTap.x, y - lastTap.y) < 30){ zoomAt(v.zoom + 1, x, y); schedule(); lastTap.t = 0; }
           else { lastTap = { t:now, x, y }; if (openId){ openId = ''; $pop.dataset.for = ''; placePop(); drawPins(...origin()); } }
@@ -267,6 +270,7 @@ const MAP = (() => {
     });
     if (typeof ResizeObserver !== 'undefined'){ ro = new ResizeObserver(() => schedule()); ro.observe(vp); }
     if (el.classList.contains('imap-full')){ document.documentElement.classList.add('imap-lock'); $full.innerHTML = SVGI.close; }
+    el.classList.toggle('picking', !!spec.pick);
     render();
 
     const api = {
@@ -275,7 +279,7 @@ const MAP = (() => {
         const p = (spec.pins || []).find(q => q.id === id); if (!p || !ok(p)) return false;
         v.zoom = clampZ(Math.max(v.zoom, z || 14)); v.lon = p.lon; v.lat = p.lat; v.user = true; openId = id; $pop.dataset.for = ''; render(); return true;
       },
-      setSpec(sp){ spec = sp; $pop.dataset.for = ''; schedule(); },
+      setSpec(sp){ spec = sp; el.classList.toggle('picking', !!sp.pick); $pop.dataset.for = ''; schedule(); },
       destroy(){ dead = true; if (ro) ro.disconnect(); clearTimeout(purgeT); cancelAnimationFrame(raf); tiles.clear(); }
     };
     return api;

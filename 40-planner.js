@@ -8,7 +8,7 @@
 const PLAN_CACHE = new Map();
 
 /* ---------- Knjiga: polja ---------- */
-const blankRide = () => ({ id:uid(), name:'', time:'', from:'', to:'', phone:'', mode:'sede', dia:'', diaKey:'', stay:0, km:null, kmBack:null, kmSrc:'', kk:'', gf:null, gt:null, kmAt:'', done:false, doneBy:'', doneAt:'', pin:'', demo:false,
+const blankRide = () => ({ id:uid(), name:'', time:'', from:'', to:'', phone:'', mode:'sede', dia:'', diaKey:'', stay:0, km:null, kmBack:null, kmSrc:'', kk:'', gf:null, gt:null, gp:null, kmWarn:'', kmAt:'', done:false, doneBy:'', doneAt:'', pin:'', demo:false,
   patientId:'', nalogId:'', note:'', exc:false, odpovedano:false, prevStatus:'', status:'nova', times:{}, statusBy:'', runKey:'' });
 const isFilled = r => !!((r.name||'').trim() || (r.from||'').trim() || (r.to||'').trim());
 function ensureDay(date){

@@ -2,9 +2,9 @@
 /* Preizkusi cestnega usmerjanja in planerja. Zagon: node tests/run.js  (Node 18+, brez omrežja, brez namestitve paketov)
    Strežnik OSRM je posnetek dokumentiranega API-ja (tests/mock-osrm.js). Prava povezava: v aplikaciji Nastavitve → Planiranje → »Preveri cestne podatke«. */
 const vm = require('vm'), assert = require('assert'), path = require('path');
-const { load } = require('./load.js'), { createMock } = require('./mock-osrm.js'), { createGoogleMock } = require('./mock-google.js');
+const { load } = require('./load.js'), { createMock } = require('./mock-osrm.js'), { createGoogleMock } = require('./mock-google.js'), { createNominatimMock } = require('./mock-nominatim.js');
 const SRC = path.join(__dirname, '..', 'src') + path.sep;
-const FILES = ['20-data.js', '30-core.js', '35-db.js', '38-routing.js', '39-google.js', '40-planner.js', '45-pacienti.js', '54-quick.js'].map(f => SRC + f);
+const FILES = ['20-data.js', '30-core.js', '35-db.js', '37-geocode.js', '38-routing.js', '39-google.js', '40-planner.js', '45-pacienti.js', '54-quick.js'].map(f => SRC + f);
 const URLS = { url:'https://osrm.test', fallback:['https://osrm2.test'] };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const DATE = '2026-11-10';   // torek
@@ -12,12 +12,13 @@ const DATE = '2026-11-10';   // torek
 function boot(o = {}){
   const mock = createMock(o.mock || {});
   const gm = createGoogleMock(o.gmock || {});
-  const ctx = load(FILES, { config:{ routing:o.routing || URLS, google:o.google }, mem:o.mem, fetch:mock.fetch });
-  ctx.__mock = mock.fetch; ctx.__gmock = gm.fetch;
+  const nm = createNominatimMock(o.nmock || {});
+  const ctx = load(FILES, { config:{ routing:o.routing || URLS, google:o.google, geocode:o.geocode || { url:'https://nominatim.test' } }, mem:o.mem, fetch:mock.fetch });
+  ctx.__mock = mock.fetch; ctx.__gmock = gm.fetch; ctx.__nmock = nm.fetch;
   const ev = code => vm.runInContext(code, ctx);
   const js = code => JSON.parse(ev('JSON.stringify(' + code + ')'));
-  ev('ROUTE.fetch = __mock; ROUTE.gap = 0; GOOGLE.fetch = __gmock; GOOGLE.minGap = 0; S = defaultState(); normalizeState();');
-  return { ctx, ev, js, mock, gm };
+  ev('ROUTE.fetch = __mock; ROUTE.gap = 0; GOOGLE.fetch = __gmock; GOOGLE.minGap = 0; GEOC.fetch = __nmock; GEOC.minGap = 0; S = defaultState(); normalizeState();');
+  return { ctx, ev, js, mock, gm, nm };
 }
 const VEH = [
   { id:'v04', name:'Avto 04', tip:'sanitetno', ns:'redna', sede:3, leze:1, utila:0, skupaj:4, sedeMax:3, lezeMax:1, utilaMax:0, skupajMax:4, aktiv:true },
@@ -692,6 +693,141 @@ test('dializa ob 6.30 je pravočasna in prva v dnevu vozila (pred drugimi vožnj
   const dia = r.filter(x => x.dia), other = r.filter(x => !x.dia);
   assert.ok(dia.length && dia.every(x => x.late <= 30), 'dializa zamuja: ' + JSON.stringify(r));
   assert.ok(dia.every(x => other.every(o => x.start <= o.start)), 'dializa ni prva: ' + JSON.stringify(r));
+});
+
+/* ------------------------------------------------------------------ brezplačna natančna kilometrina (OSM naslovi + OSRM) */
+const D = JSON.stringify(DATE);
+test('Naslovi: zahtevek Nominatim vsebuje samo besedilo naslova (brez imen, telefona, ure); omejitev na kraj, brez piškotkov; točka je hišna', async () => {
+  const t = boot();
+  day(t, { rides:[{ name:'Ana Novak', from:'Dobova 25', to:'SB Brežice', time:'10:00', phone:'031 111 222' }] });
+  const res = await t.ev(`GEOC.resolve('Dobova 25')`);
+  assert.strictEqual(res.prec, 'hisna'); assert.ok(Math.abs(res.lat - 45.8991) < 1e-6 && Math.abs(res.lon - 15.6572) < 1e-6);
+  assert.strictEqual(t.nm.log.length, 1);
+  const L = t.nm.log[0], u = new URL(L.url);
+  assert.strictEqual(u.origin + u.pathname, 'https://nominatim.test/search');
+  assert.strictEqual(u.searchParams.get('q'), 'Dobova 25'); assert.strictEqual(u.searchParams.get('format'), 'jsonv2'); assert.strictEqual(u.searchParams.get('countrycodes'), 'si');
+  assert.strictEqual(u.searchParams.get('bounded'), '1', 'prepoznan kraj → iskanje samo v njegovi okolici');
+  assert.strictEqual(L.init.credentials, 'omit'); assert.strictEqual(L.init.referrerPolicy, 'strict-origin-when-cross-origin', 'Referer je potreben po pravilih Nominatim'); assert.ok(!L.init.headers, 'brez posebnih glav');
+  assert.ok(!/Ana|Novak|031|10:00|Brežice/.test(decodeURIComponent(L.url.split('q=')[1])), 'v poizvedbi ni osebnih podatkov: ' + L.url);
+});
+test('Naslovi: natančnost točke (hišna, samo ulica, zadetek v drugem kraju, kraj ni naveden, naselje brez številke, ustanova brez klica)', async () => {
+  const t = boot();
+  const get = async a => JSON.parse(await t.ev(`GEOC.resolve(${JSON.stringify(a)}).then(r => JSON.stringify(r))`));
+  assert.strictEqual((await get('Cesta prvih borcev 18, Brežice')).prec, 'hisna');
+  const ul = await get('Dobova 99'); assert.strictEqual(ul.prec, 'ulica'); assert.ok(/hišne številke/.test(ul.warn));
+  const far = await get('Prešernova 5, Brežice');      // isto ime ulice v Mariboru: zavrnjeno, ostane središče naselja
+  assert.strictEqual(far.prec, 'naselje'); assert.ok(/ni v OSM/.test(far.warn)); assert.ok(Math.abs(far.lat - 45.9) < 0.05, 'središče Brežic, ne Maribor');
+  const unc = await get('Selice 3'); assert.strictEqual(unc.prec, 'nejasno', 'kraj ni prepoznan: ni zaupanja'); assert.ok(/preveri točko/.test(unc.warn));
+  const n0 = t.nm.log.length;
+  assert.strictEqual((await get('Dobova')).prec, 'naselje');
+  const poi = await get('SB Brežice'); assert.strictEqual(poi.prec, 'ustanova'); assert.strictEqual(poi.src, 'poi');
+  assert.strictEqual(t.nm.log.length, n0, 'naselje brez številke in ustanova ne zahtevata iskanja');
+  await assert.rejects(t.ev(`GEOC.resolve('Doma')`), /ni prepoznan/);
+  assert.strictEqual(t.js(`GEOC.analyse('Doma').mode`), 'unknown'); assert.strictEqual(t.nm.log.length, n0);
+  // hrvaški naslov: countrycodes=hr
+  const hr = await get('Ulica 5, Zagreb'); assert.strictEqual(hr.prec, 'hisna'); assert.strictEqual(new URL(t.nm.log[t.nm.log.length - 1].url).searchParams.get('countrycodes'), 'hr');
+});
+test('Naslovi: vrsta (1 zahtevek naenkrat, razmik), pomnilnik seje, pacient shrani točko in je ne išče znova, ročni popravek ima prednost', async () => {
+  const t = boot({ nmock:{ delay:5 } }); t.ev('GEOC.minGap = 60');
+  const t0 = Date.now();
+  const all = await Promise.all(['Dobova 25', 'Dobova 30', 'Mostec 4', 'Dobova 25'].map(a => t.ev(`GEOC.resolve(${JSON.stringify(a)})`)));
+  assert.strictEqual(t.nm.log.length, 3, 'podvojen naslov se išče enkrat (isti čas, ista vrsta)'); assert.strictEqual(t.nm.maxLive, 1, 'nikoli dva zahtevka hkrati');
+  const gaps = t.nm.log.slice(1).map((l, i) => l.t - t.nm.log[i].t); assert.ok(gaps.every(g => g >= 55), 'razmik med zahtevki: ' + gaps);
+  assert.strictEqual(all[0].lat, all[3].lat);
+  await t.ev(`GEOC.resolve('Dobova 25')`); assert.strictEqual(t.nm.log.length, 3, 'pomnilnik seje');
+  // pacient z naslovom: točka se zapiše v p.gc; nova seja jo prebere brez zahtevka
+  t.ev(`S.patients.push(blankPatient({ name:'Pacient 1', addr:'Mostec 4' }))`);
+  const mem = new Map(); const t2 = boot({ mem });
+  t2.ev(`S.patients.push(blankPatient({ name:'Pacient 1', addr:'Dobova 30' })); S.patients[0].id = 'p1'`);
+  await t2.ev(`GEOC.resolve('Dobova 30')`);
+  const gc = t2.js('S.patients[0].gc'); assert.ok(gc && gc.k === 'dobova 30' && gc.prec === 'hisna' && Math.abs(gc.lat - 45.9002) < 1e-6, JSON.stringify(gc));
+  const t3 = boot({ nmock:{ fail:'throw' } });
+  t3.ev(`S.patients.push(Object.assign(blankPatient({ name:'Pacient 1', addr:'Dobova 30' }), { gc:${JSON.stringify(gc)} }))`);
+  const r3 = JSON.parse(await t3.ev(`GEOC.resolve('Dobova 30').then(r => JSON.stringify(r))`)); assert.strictEqual(t3.nm.log.length, 0, 'brez zahtevka, točka je pri pacientu'); assert.ok(Math.abs(r3.lat - 45.9002) < 1e-6);
+  t3.ev(`S.patients[0].addr = 'Dobova 25'`); await assert.rejects(t3.ev(`GEOC.resolve('Dobova 25')`), /povezave|strežnik/i, 'spremenjen naslov ne uporabi stare točke');
+  // ročni popravek
+  t.ev(`GEOC.setFix('Dobova 25', 45.9, 15.65)`);
+  const fx = await t.ev(`GEOC.resolve('Dobova 25')`); assert.strictEqual(fx.prec, 'rocno'); assert.strictEqual(fx.lat, 45.9);
+  assert.ok(t.ev(`GEOC.hasFix('dobova 25')`)); assert.strictEqual(t.ev(`GEOC.clearFix('Dobova 25')`), true);
+  assert.notStrictEqual((await t.ev(`GEOC.resolve('Dobova 25')`)).prec, 'rocno');
+});
+test('Naslovi: napake – 429 (premor, brez novih zahtevkov), 403, brez povezave, izklopljeno; neznan naslov se 10 min ne išče znova', async () => {
+  const t = boot({ nmock:{ fail:n => n === 1 ? 429 : 0 } });
+  await assert.rejects(t.ev(`GEOC.resolve('Dobova 25')`), /429/);
+  assert.ok(t.ev('GEOC.info().cooling') > 30000); assert.strictEqual(t.ev('GEOC.auto()'), false, 'samodejni izračun počiva');
+  await assert.rejects(t.ev(`GEOC.resolve('Dobova 30')`)); assert.strictEqual(t.nm.log.length, 1, 'med premorom ni novih zahtevkov');
+  const t2 = boot({ nmock:{ fail:403 } }); await assert.rejects(t2.ev(`GEOC.resolve('Dobova 25')`), /zavrnil/); assert.ok(t2.ev('GEOC.info().cooling') > 300000);
+  const t3 = boot({ nmock:{ fail:'throw' } }); await assert.rejects(t3.ev(`GEOC.resolve('Dobova 25')`), /povezave/); assert.strictEqual(t3.ev('GEOC.info().status'), 'error');
+  const t4 = boot({ geocode:{ url:'' } }); assert.strictEqual(t4.ev('GEOC.enabled()'), false); await assert.rejects(t4.ev(`GEOC.resolve('Dobova 25')`), /izklopljeno/); assert.strictEqual(t4.nm.log.length, 0);
+  const t5 = boot(); t5.ev('S.settings.geocode.on = false'); assert.strictEqual(t5.ev('GEOC.enabled()'), false);
+  const t6 = boot(); const g6 = JSON.parse(await t6.ev(`GEOC.resolve('Gradišče 12, Brežice').then(r => JSON.stringify(r))`));
+  assert.strictEqual(g6.prec, 'naselje'); assert.ok(/ni v OSM/.test(g6.warn)); assert.strictEqual(t6.nm.log.length, 2, 'omejeno in nato neomejeno iskanje');
+  const t7 = boot(); await assert.rejects(t7.ev(`GEOC.resolve('Neznana 5, Nekje')`), /ni mogoče najti/); const n7 = t7.nm.log.length;
+  await assert.rejects(t7.ev(`GEOC.resolve('Neznana 5, Nekje')`)); assert.strictEqual(t7.nm.log.length, n7, 'negativni predpomnilnik');
+});
+test('Kilometrina OSM: točka naslova + cestna pot OSRM; vir »osm«, natančnost, čakanje na pregled šteje pot nazaj, ročni vnos ima prednost', async () => {
+  const t = boot();
+  assert.strictEqual(t.ev('KM.engine()'), 'osm'); assert.strictEqual(t.ev('KM.can()'), true);
+  day(t, { routing:true, rides:[{ name:'Ana Novak', from:'Dobova 25', to:'UKC LJ - očesna klinika', time:'10:00', phone:'031 111 222', stay:45 }, { name:'Boris', from:'Dobova 99', to:'SB Brežice', time:'11:00' }, { name:'Cene', from:'Dobova', to:'SB Brežice', time:'12:00' }] });
+  const r = await t.ev(`KM.ensure(${D}, 'r0')`);
+  assert.strictEqual(r.kmSrc, 'osm'); assert.deepStrictEqual(JSON.parse(JSON.stringify(r.gp)), ['hisna', 'ustanova']);
+  const ukc = t.js(`geo('UKC LJ - očesna klinika')`);
+  const exp = t.mock.roadKm([15.6572, 45.8991], [ukc.lon, ukc.lat]);
+  assert.ok(Math.abs(r.km - Math.round(exp * 10) / 10) < 0.06, `km ${r.km} vs ${exp}`); assert.ok(r.kmBack > 50, 'pot nazaj (DO → OD)');
+  assert.ok(Math.abs(r.gf[0] - 45.8991) < 1e-6, 'točka OD je hiša, ne središče naselja');
+  const rl = t.mock.log.filter(l => /\/route\//.test(l.url)); assert.strictEqual(rl.length, 2); assert.ok(rl.every(l => l.init.referrerPolicy === 'no-referrer' && l.init.credentials === 'omit'));
+  assert.ok(!/Ana|Novak|031|Dobova|Ljubljana/.test(rl.map(l => l.url).join(' ')), 'cestni strežnik dobi samo koordinate');
+  assert.ok(!/Ana|Novak|031|10:00/.test(t.nm.log.map(l => decodeURIComponent(l.url)).join(' ')));
+  const inf = t.js(`KM.info(rideById(${D}, 'r0').r)`); assert.ok(inf.exact && inf.src === 'osm' && Math.abs(inf.total - (inf.km + inf.back)) < 1e-9);
+  // samo ulica / središče naselja: približno (~)
+  const r1 = await t.ev(`KM.ensure(${D}, 'r1')`); assert.deepStrictEqual(JSON.parse(JSON.stringify(r1.gp)), ['ulica', 'ustanova']);
+  assert.strictEqual(t.js(`KM.info(rideById(${D}, 'r1').r)`).exact, false); assert.ok(/hišne številke/.test(r1.kmWarn));
+  const r2 = await t.ev(`KM.ensure(${D}, 'r2')`); assert.strictEqual(r2.gp[0], 'naselje'); assert.strictEqual(t.js(`KM.info(rideById(${D}, 'r2').r)`).exact, false);
+  // zastaranje, ročni vnos
+  t.ev(`rideById(${D}, 'r0').r.to = 'SB Brežice'`); assert.strictEqual(t.js(`KM.info(rideById(${D}, 'r0').r)`).exact, false);
+  t.ev(`KM.setManual(${D}, 'r0', '12,5')`); const m = t.js(`KM.info(rideById(${D}, 'r0').r)`); assert.strictEqual(m.km, 12.5); assert.strictEqual(m.src, 'rocno');
+  assert.strictEqual(t.gm.log.length, 0, 'Google ni bil poklican');
+  // ročni vnos med tekočim izračunom ni prepisan z rezultatom izračuna
+  const t3 = boot(); day(t3, { routing:true, rides:[{ name:'M', from:'Dobova 30', to:'SB Brežice', time:'10:00' }] });
+  const pm = t3.ev(`KM.ensure(${D}, 'r0')`); t3.ev(`KM.setManual(${D}, 'r0', '7,5')`); assert.strictEqual(await pm, null);
+  assert.strictEqual(t3.js(`rideById(${D}, 'r0').r.km`), 7.5); assert.strictEqual(t3.js(`rideById(${D}, 'r0').r.kmSrc`), 'rocno');
+  // rezultat se zavrže, če se je naslov med izračunom spremenil
+  const t2 = boot(); day(t2, { routing:true, rides:[{ name:'C', from:'Dobova 25', to:'SB Brežice', time:'10:00' }] });
+  const pr = t2.ev(`KM.ensure(${D}, 'r0')`); t2.ev(`rideById(${D}, 'r0').r.to = 'SB Novo mesto'`); assert.strictEqual(await pr, null); assert.strictEqual(t2.js(`rideById(${D}, 'r0').r.km`), null);
+});
+test('Kilometrina OSM: popravek točke preračuna prevoze z istim naslovom od včeraj naprej; km se spremeni; stari dnevi ostanejo', async () => {
+  const t = boot(); const today = t.ev('todayStr()'), old = '2026-01-05';
+  const mk = (id, from) => ({ name:'P' + id, from, to:'SB Brežice', time:'10:00' });
+  day(t, { routing:true, date:today, rides:[mk(0, 'Dobova 25'), mk(1, 'Dobova 30')] }); day(t, { routing:true, date:old, rides:[mk(0, 'Dobova 25')] });
+  await t.ev(`KM.ensure('${today}', 'r0')`); await t.ev(`KM.ensure('${today}', 'r1')`); await t.ev(`KM.ensure('${old}', 'r0')`);
+  const k0 = t.js(`rideById('${today}', 'r0').r.km`), kOld = t.js(`rideById('${old}', 'r0').r.km`);
+  t.ev(`GEOC.setFix('Dobova 25', 45.93, 15.70)`); const n = t.ev(`KM.refix('Dobova 25')`); assert.strictEqual(n, 1, 'samo današnji prevoz z tem naslovom');
+  assert.strictEqual(t.ev(`KM.fresh(rideById('${today}', 'r0').r)`), false);
+  const r = await t.ev(`KM.ensure('${today}', 'r0')`); assert.deepStrictEqual(JSON.parse(JSON.stringify(r.gp)), ['rocno', 'ustanova']); assert.notStrictEqual(r.km, k0);
+  assert.ok(Math.abs(r.gf[0] - 45.93) < 1e-6); assert.ok(t.js(`KM.info(rideById('${today}', 'r0').r)`).exact, 'ročna točka je natančna');
+  assert.strictEqual(t.js(`rideById('${old}', 'r0').r.km`), kOld, 'pretekli dan ostane, kot je bil zapisan');
+  // popravki se prenesejo prek nastavitev (cfg/main) na druge naprave
+  const doc = t.js('cfgDoc()'); assert.ok(doc.geoFix.some(x => x.k === 'dobova 25' && x.lat === 45.93));
+  const t2 = boot(); t2.ev(`applyCfg(${JSON.stringify(doc)})`); assert.deepStrictEqual(t2.js(`S.geoFix['dobova 25'].slice(0, 2)`), [45.93, 15.7]);
+});
+test('Kilometrina: Google ima prednost, če je ključ vnesen; brez iskanja naslovov in brez ključa je izračun izklopljen', async () => {
+  const t = boot({ google:GKEY }); assert.strictEqual(t.ev('KM.engine()'), 'google');
+  day(t, { rides:[{ name:'A', from:'Dobova 25', to:'SB Brežice', time:'10:00' }] });
+  const r = await t.ev(`KM.ensure(${D}, 'r0')`); assert.strictEqual(r.kmSrc, 'google'); assert.strictEqual(t.nm.log.length, 0, 'Nominatim ni poklican');
+  const t2 = boot({ geocode:{ url:'' } }); assert.strictEqual(t2.ev('KM.engine()'), ''); assert.strictEqual(t2.ev('KM.can()'), false); assert.strictEqual(t2.ev('KM.auto()'), false);
+  day(t2, { rides:[{ name:'A', from:'Dobova 25', to:'SB Brežice', time:'10:00' }] }); assert.strictEqual(await t2.ev(`KM.ensure(${D}, 'r0')`), null);
+  assert.strictEqual(t2.nm.log.length + t2.gm.log.length, 0);
+  const t3 = boot(); const tt = await t3.ev('GEOC.test()'); assert.ok(tt.ok && tt.d < 400, JSON.stringify(tt));
+});
+test('Kilometrina OSM: planer uporabi točko naslova (hiša, ne središče naselja); hišne točke niso v trajnem predpomnilniku poti', async () => {
+  const mem = new Map(); const t = boot({ mem });
+  day(t, { routing:true, vehicles:['v13'], rides:[{ name:'Ana', from:'Dobova 25', to:'SB Brežice', time:'10:00', phone:'1' }, { name:'Boris', from:'Dobova 30', to:'SB Brežice', time:'10:00', phone:'1' }] });
+  await t.ev(`KM.day(${D})`);
+  const after = t.js(`computePlan(${D}).pending.map(r => ({ k:r.from.key, ex:r.from.exact }))`);
+  assert.ok(after.every(x => /^g:45\.[89]/.test(x.k) && x.ex), JSON.stringify(after)); assert.notStrictEqual(after[0].k, after[1].k);
+  sum(t); await t.ev('ROUTE.settle()'); t.ev('ROUTE.persist()');
+  const stored = mem.get('kp.route.v1'); assert.ok(stored && stored.length > 20);
+  assert.ok(!/45\.8991|45\.9002|15\.6572|15\.6590/.test(stored), 'hišna točka ni v trajnem predpomnilniku');
 });
 
 /* ------------------------------------------------------------------ zagon */

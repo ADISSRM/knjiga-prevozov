@@ -46,6 +46,14 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
     const r = await gmock.fetch(rq.url(), { method: 'POST', headers: { 'X-Goog-Api-Key': hd['x-goog-api-key'], 'X-Goog-FieldMask': hd['x-goog-fieldmask'] }, body: rq.postData() });
     route.fulfill({ status: r.status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(await r.json()) });
   });
+  const { createNominatimMock } = require(SRC + '/tests/mock-nominatim.js');
+  const nmock = createNominatimMock({});
+  const nseen = [];
+  await ctx.route(/^https:\/\/nominatim\.openstreetmap\.org\//, async route => {
+    const rq = route.request(); nseen.push({ url: rq.url(), headers: rq.headers() });
+    const r = await nmock.fetch(rq.url(), {});
+    route.fulfill({ status: r.status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(await r.json()) });
+  });
   const page = await ctx.newPage();
   const errors = [], csp = [];
   const notFound = []; page.on('response', r => { if (r.status() === 404) notFound.push(r.url().replace(/^http:\/\/127\.0\.0\.1:\d+/, '')); });
@@ -229,7 +237,7 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   ok('knjiga: odpre se samo en urejevalnik hkrati', (await page.$$('.editor')).length === 1 && await page.$('.box[data-ride="br1"] .editor') !== null);
   ok('knjiga: ni izbirnika dialize pri prevozu', (await page.$('.editor select[data-f="dia"]')) === null && !/D1|D2|SaD4/.test(await page.$eval('.editor', e => e.textContent)));
   const kmTxt = await page.$eval('.box[data-ride="br1"] [data-role="km"]', e => e.textContent.replace(/\s+/g, ' ').trim());
-  ok('km brez Googla: ocena/ceste OSM + namig za ključ', /Natančen izračun|Google/.test(kmTxt) && /km/.test(kmTxt), kmTxt);
+  ok('km brez Googla: brezplačni izračun (naslov + ceste OSM) ali ocena, z gumboma »Izračunaj znova« in »Točka na zemljevidu«', /\d km/.test(kmTxt) && /naslov \+ ceste OSM|ocena po cestah/.test(kmTxt) && /Izračunaj znova/.test(kmTxt) && /Točka na zemljevidu/.test(kmTxt) && !/ključ/i.test(kmTxt), kmTxt);
   // ročni vnos km
   await page.fill('.box[data-ride="br1"] input[data-km="manual"]', '97,4'); await page.dispatchEvent('.box[data-ride="br1"] input[data-km="manual"]', 'change');
   const man = await page.evaluate(() => { const r = rideById(UI.date, 'br1').r; return { km: r.km, src: r.kmSrc }; });
@@ -271,6 +279,40 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   const tagTxt = await page.$eval('.box[data-ride="br0"] [data-role="rtags"]', e => e.textContent);
   ok('vrstica kaže oznako »čaka 90 min«', /čaka 90 min/.test(tagTxt), tagTxt);
 
+  /* ================= Brezplačna natančna kilometrina: naslov (Nominatim) + cesta (OSRM) + točka na zemljevidu ================= */
+  await settle();
+  ok('naslovi: zahtevki Nominatim imajo samo besedilo naslova in Referer (izvor strani) ter ne pošiljajo piškotkov', nseen.length > 0 && nseen.every(x => /^http:\/\/127\.0\.0\.1:\d+\/?$/.test(x.headers['referer'] || '') && !x.headers['cookie'] && !/Pacient|Novak|Horvat|031/.test(decodeURIComponent(x.url))), nseen.length + ' zahtevkov: ' + (nseen[0] ? decodeURIComponent(nseen[0].url).slice(0, 140) : ''));
+  await page.evaluate(() => { const x = filledRides(UI.date).find(y => y.r.name === 'Pacient 71'); UI.openRide = x.r.id; rerender(); });
+  await page.waitForSelector('.editor [data-act="pickPt"]');
+  const p71 = await page.evaluate(() => { const r = filledRides(UI.date).find(y => y.r.name === 'Pacient 71').r; return { id:r.id, from:r.from, km:r.km, src:r.kmSrc, gp:r.gp }; });
+  ok('pacient na hišnem naslovu (Dobova 25): km iz točke naslova in cest OSM, natančnost hišna številka', p71.src === 'osm' && p71.gp && p71.gp[0] === 'hisna' && p71.gp[1] === 'ustanova', JSON.stringify(p71));
+  await page.click('.editor [data-act="pickPt"]');
+  await page.waitForSelector('.modal .imap .imap-vp'); await page.waitForFunction(() => /Trenutna točka/.test(document.querySelector('[data-role=pickst]').textContent), null, { timeout: 10000 });
+  const pk0 = await page.evaluate(() => ({ title:document.querySelector('#mTitle').textContent, st:document.querySelector('[data-role=pickst]').textContent, save:document.querySelector('[data-act="pickSave"]').disabled, side:document.querySelector('.modal .seg [aria-pressed="true"]').textContent, pins:document.querySelectorAll('.modal .imap .pin, .modal .imap [data-pin]').length }));
+  ok('točka na zemljevidu: odpre se okno s točko naslova (OD: Dobova 25), »Shrani« je onemogočen do izbire', /Točka naslova/.test(pk0.title) && /hišna številka/.test(pk0.st) && pk0.save === true && /^OD: Dobova 25/.test(pk0.side), JSON.stringify(pk0));
+  await page.screenshot({ path: OUT + '/10-pick-modal.png' });
+  const bb = await page.locator('.modal .imap-vp').boundingBox();
+  await page.mouse.click(bb.x + bb.width / 2 + 60, bb.y + bb.height / 2 + 40); await page.waitForTimeout(150);
+  const pk1 = await page.evaluate(() => ({ save:document.querySelector('[data-act="pickSave"]').disabled, st:document.querySelector('[data-role=pickst]').textContent, pick:!!UI.modal.pick }));
+  ok('točka na zemljevidu: dotik izbere novo točko in omogoči shranjevanje', pk1.pick && pk1.save === false && /Nova točka/.test(pk1.st), JSON.stringify(pk1));
+  const picked = await page.evaluate(() => UI.modal.pick.slice());
+  await page.screenshot({ path: OUT + '/10b-pick-picked.png' });
+  await page.click('[data-act="pickSave"]'); await page.waitForFunction(() => !UI.modal, null, { timeout: 10000 }); await settle();
+  const pk2 = await page.evaluate(() => { const r = filledRides(UI.date).find(y => y.r.name === 'Pacient 71').r; return { gp:r.gp, gf:r.gf, km:r.km, fix:S.geoFix['dobova 25'] }; });
+  ok('točka na zemljevidu: shranjena kot popravek naslova, prevoz preračunan s točko, natančnost »rocno«', pk2.fix && Math.abs(pk2.fix[1] - picked[0]) < 1e-5 && Math.abs(pk2.fix[0] - picked[1]) < 1e-5 && pk2.gp && pk2.gp[0] === 'rocno' && Math.abs(pk2.gf[0] - picked[1]) < 1e-5 && pk2.km !== p71.km, JSON.stringify(pk2));
+  const nBefore = nseen.length;
+  await page.evaluate(() => { const x = filledRides(UI.date).find(y => y.r.name === 'Pacient 71'); UI.openRide = x.r.id; rerender(); });
+  await page.click('.editor [data-act="kmRecalc"]'); await page.waitForTimeout(600); await settle();
+  ok('ponovni izračun uporabi ročno točko (brez novega iskanja naslova)', nseen.length === nBefore && (await page.evaluate(() => filledRides(UI.date).find(y => y.r.name === 'Pacient 71').r.gp[0])) === 'rocno', nseen.length + ' vs ' + nBefore);
+  await page.evaluate(() => { UI.openRide = ''; rerender(); });
+  // nastavitve: kartica brezplačnega iskanja naslovov in preizkus
+  await page.click('[data-nav="nastavitve"]'); await page.click('[data-act="setTab"][data-k="planiranje"]'); await page.waitForSelector('[data-act="geoTest"]');
+  await page.click('[data-act="geoTest"]'); await page.waitForFunction(() => /Iskanje naslovov deluje|Preizkus ni uspel/.test(document.body.textContent), null, { timeout: 10000 });
+  const gcard = await page.$$eval('.card', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()).find(t => /Natančna kilometrina: naslovi OD → DO \(brezplačno\)/.test(t)) || '');
+  ok('nastavitve: kartica »brezplačno« s preizkusom iskanja naslovov (Google je neobvezen)', /Iskanje naslovov deluje/.test(gcard) && /kilometrina se računa brezplačno/.test(gcard) && /Google Zemljevidi \(neobvezno/.test(await page.evaluate(() => document.body.textContent)), gcard.slice(0, 200));
+  await page.screenshot({ path: OUT + '/10c-geocode-card.png', fullPage: true });
+  await page.click('[data-nav="dan"]'); await page.waitForSelector('.rrow');
+
   /* ================= Google kilometrina (lažni Routes API na omrežni ravni) ================= */
   await page.click('[data-nav="nastavitve"]'); await page.click('[data-act="setTab"][data-k="planiranje"]');
   await page.waitForSelector('#gkey');
@@ -287,7 +329,7 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   // km prevoza z Googlom
   await page.click('[data-nav="dan"]'); await page.waitForSelector('.rrow');
   await page.waitForFunction(() => document.querySelectorAll('.rrow .kmchip.ex, .rrow .kmchip').length > 0);
-  await page.waitForTimeout(2500);   // samodejni izračun
+  await page.evaluate(() => KM.day(UI.date, { force:true })); await page.waitForTimeout(2500);   // ključ je dodan kasneje: obstoječi vpisi se preračunajo na gumb »Preračunaj kilometrino dneva«
   const kmSrc = await page.evaluate(() => filledRides(UI.date).map(({ r }) => ({ id: r.id, km: r.km, src: r.kmSrc })));
   const googled = kmSrc.filter(x => x.src === 'google');
   ok('samodejni izračun: prevozi dobijo km iz Googla, ročni ostane', googled.length >= 3 && kmSrc.find(x => x.id === 'br1').src === 'rocno' && kmSrc.find(x => x.id === 'br1').km === 97.4, JSON.stringify(kmSrc));

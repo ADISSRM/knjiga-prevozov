@@ -18,7 +18,8 @@ Interna aplikacija Reševalne postaje ZD Brežice: **dispečerski del** (knjiga 
 | Dostop po vlogah | `firestore.rules` | 0 € | Strežnik sam zavrne vse, kar vloga ne sme (glej razdelek 9). |
 | Cestno usmerjanje | OSRM nad podatki OpenStreetMap (javni strežnik ali lasten) | 0 € | Prave razdalje in časi vožnje po cestah, tudi do Ljubljane in Novega mesta (razdelek 10.2). Strežnik dobi samo koordinate. |
 | Podlaga zemljevida | Ploščice OpenStreetMap (javni strežnik ali lasten) | 0 € (zmerna raba) | Interaktivni zemljevid poti in dneva (razdelek 10.7, 11.8). Strežnik ploščic vidi IP naprave, izvor strani in koordinate prikazanega območja, **ne pa podatkov o pacientih**. Izklopljivo; brez podlage ostaneta pot in točke. |
-| Natančna kilometrina (neobvezno) | Google Maps Platform, Routes API | **plačljivo po zahtevku** (preveri trenutni cenik in brezplačno kvoto) | Kilometrina vsakega prevoza OD → DO po najboljši poti kot v Google Zemljevidih (razdelek 10.3). Google dobi samo besedilo naslova OD in DO. Brez ključa deluje aplikacija po cestah OSM ali z oceno. |
+| Iskanje naslovov (ulica + hišna številka) | Nominatim nad podatki OpenStreetMap (javni strežnik ali lasten) | 0 € (zmerna raba: največ 1 zahtevek/s) | Za naslov, kot ga vpišeš (»Cesta prvih borcev 18, Brežice«, »Dobova 25«), najde točko; z njo in cestami OSRM je kilometrina OD → DO točna brez Google Zemljevidov (razdelek 10.3, 11.9). Strežnik dobi samo besedilo naslova. |
+| Kilometrina z Googlom (neobvezno) | Google Maps Platform, Routes API | **plačljivo po zahtevku** (preveri trenutni cenik in brezplačno kvoto) | Kilometrina vsakega prevoza OD → DO po najboljši poti kot v Google Zemljevidih (razdelek 10.3). Google dobi samo besedilo naslova OD in DO. Brez ključa deluje aplikacija po cestah OSM ali z oceno. |
 
 Kvote načrta Spark po podatkih na strani firebase.google.com/pricing (preveri tudi sam, ker se lahko spremenijo): Firestore 1 GiB podatkov, **50.000 branj/dan, 20.000 pisanj/dan, 20.000 brisanj/dan**; Authentication 50.000 aktivnih uporabnikov na mesec. Načrt Spark ne zahteva plačilnega sredstva. Moja ocena (ni merjeno): pri 3–5 napravah dispečerja in 6–10 telefonih posadk je dnevna poraba pod 10 % kvote. Porabo vidiš v Firebase konzoli → Firestore Database → zavihek **Usage**.
 
@@ -353,20 +354,30 @@ Za vsak dan in za vsak prevoz posebej izbereš, kako strogo naj aplikacija ravna
 
 ---
 
-### 10.3 Kilometrina (Google Zemljevidi)
+### 10.3 Kilometrina OD → DO (brezplačno: naslov OSM + ceste OSM; Google je neobvezen)
 
-**Kaj je kilometrina prevoza:** razdalja **OD → DO** po najboljši cestni poti za osebni avto, kot jo pokažejo Google Zemljevidi. Če reševalec na cilju **čaka na pregled**, se prišteje še pot nazaj, zato je »skupaj« = tja + nazaj. Vožnja reševalca od postaje do pacienta in nazaj na postajo **ni všteta** (to ni »OD → DO« prevoza). Če knjiga prevozov zahteva drugače, mi povej: to je en sam izračun, ki ga je lahko spremeniti.
+**Kaj je kilometrina prevoza:** razdalja **OD → DO** po cestah za osebni avto. Če reševalec na cilju **čaka na pregled**, se prišteje še pot nazaj, zato je »skupaj« = tja + nazaj. Vožnja reševalca od postaje do pacienta in nazaj na postajo **ni všteta** (to ni »OD → DO« prevoza). Če knjiga prevozov zahteva drugače, mi povej: to je ena vrstica v izračunu.
 
-**Kako deluje v vsakdanjem delu**
-1. Vpiši **OD** in **DO** (ali izberi pacienta). Ko je naslov končan, aplikacija sama izračuna kilometrino. Ob odprtju dneva (od včeraj do 14 dni naprej) dopolni še prevozom, ki km še nimajo; starejše vpise dopolni gumb **Izračunaj manjkajoče z Googlom** v mesečnem pregledu.
-2. Pri prevozu v knjigi je v vrstici **km** (zeleno = natančno iz Googla ali vpisano ročno, **~** = ocena). Ko prevoz odpreš, vidiš vir: **Google Zemljevidi**, **ročno**, **ceste OSM** ali **ocena**.
-3. **Ročni vpis** (polje »ročno«) ima prednost pred Googlom in ostane, dokler ga ne izbrišeš. Uporabi ga, ko je dejanska pot drugačna (zapora, ovinek).
-4. Naslov z ustanovo (npr. »UKC Ljubljana – očesna klinika«) Google dobi kot polno ime ustanove z naslovom iz seznama klinik (10.4); za hišne naslove doda državo.
-5. **Mesečni pregled → Kilometrina**: skupni km meseca, delež natančnih vpisov, km po dnevih in po vozilih, prevozi brez km. **Prenesi CSV** (brez imen pacientov) ali **CSV z imeni pacientov** (samo za notranjo rabo). CSV ima BOM in decimalno vejico, zato se v slovenskem Excelu odpre pravilno. Natisnjen mesec ima stolpec Km.
+**Zakaj je bila kilometrina prej netočna:** cestno omrežje (OSRM) je bilo že pravo, a za naslov brez znane hišne številke je aplikacija vzela **središče naselja**. Pri »Cesta prvih borcev 18, Brežice« je zato razlika med središčem mesta in pravo hišo lahko več kilometrov (v večjih naseljih še več). Pravi popravek je točka naslova, ne drugačna cesta.
 
-**Kdaj se Google ne kliče:** ključ ni vpisan, »Uporabi Google« je izklopljeno, ali je Google vrnil napako (npr. 403: ključ ni omejen ali Routes API ni vklopljen; 429: preveč zahtevkov). Aplikacija v tem primeru ne ponavlja zahtevkov v zanki: samodejni izračun začasno počiva, pri prevozu pa vidiš razumljivo sporočilo. Do ponovne vzpostavitve se kilometrina računa po cestah OpenStreetMap (označeno »ceste OSM«) ali z oceno (»ocena«).
+**Kako zdaj deluje (brez Googla):**
+1. Vpiši **OD** in **DO** (ali izberi pacienta). Ko vnos potrdiš, aplikacija v OpenStreetMap (Nominatim) poišče **točko naslova** (ulica + hišna številka), nato OSRM izračuna **cestno razdaljo OD → DO** (pri čakanju na pregled tudi DO → OD). Ustanove in klinike imajo točko že v aplikaciji (iskanje ni potrebno).
+2. Rezultat se zapiše v vpis z virom **naslov + ceste OSM** in **natančnostjo** vsakega konca poti: hišna številka, ustanova, točka na zemljevidu (= natančno); samo ulica, kraj ni potrjen, središče naselja (= približno, **~** pred številko).
+3. Pri približnem vpisu je pod vrstico opozorilo, kateri konec je netočen. Rešitev: vpiši hišno številko ali pritisni **Točka na zemljevidu**, dotakni se zemljevida tam, kjer je hiša, in **Shrani točko**. Točka je **ročni popravek naslova**: velja za vse prevoze z istim naslovom od včeraj naprej (pretekli dnevi ostanejo, kot so bili zapisani), na vseh napravah, in ima prednost pred iskanjem. **Odstrani popravek** vrne iskanje.
+4. **Točka pacienta se shrani pri pacientu** (polje `gc`): naslov, ki je bil že enkrat najden, se za ponovne prevoze (npr. dializo trikrat na teden) ne išče znova. Če se naslov pacienta spremeni, se išče znova.
+5. **Ročni vpis km** (polje »ročno«) ima vedno prednost in ostane, dokler ga ne izbrišeš (tudi če se izračun konča po vpisu). Uporabi ga, ko je dejanska pot drugačna (zapora, ovinek). **Izračunaj znova** na prevozu ga prepiše.
+6. **Dan → Več → Preračunaj kilometrino dneva**, mesečni pregled → **Izračunaj manjkajoče**. Ob odprtju dneva (od včeraj do 14 dni naprej) aplikacija sama dopolni prevoze brez km.
+7. **Mesečni pregled → Kilometrina**: skupni km meseca, delež natančnih vpisov, km po dnevih in po vozilih, prevozi brez km. **Prenesi CSV** (brez imen pacientov) ali **CSV z imeni pacientov** (samo za notranjo rabo). CSV ima BOM in decimalno vejico, zato se v slovenskem Excelu odpre pravilno. Natisnjen mesec ima stolpec Km.
 
-**Zakaj dve različni poti za izračun:** razpored (kdo vozi koga, ob kateri uri) računa po cestah OpenStreetMap, ker potrebuje na stotine razdalj; Google kličemo samo za kilometrino vpisanih prevozov (en zahtevek na prevoz, pri čakanju na pregled dva), da so stroški majhni. Google vrne tudi natančno lego naslova OD in DO, ki jo planer uporabi namesto središča naselja.
+**Kaj aplikacija zavrne, namesto da bi molče računala narobe:** zadetek, ki je več kot nekaj kilometrov od prepoznanega kraja (npr. ista ulica v drugem kraju), se ne uporabi; naslov brez kraja dobi oznako »kraj ni potrjen«; točka več kot 400 m od ceste je opozorilo. V vseh primerih vidiš ~ in razlog.
+
+**Kje se razdalja razlikuje od Google Zemljevidov:** OSRM in Google lahko izbereta nekoliko drugačno pot (običajno razlika nekaj odstotkov), zato pri nekaj prvih vpisih primerjaj z Googlom in po potrebi vpiši ročno. Točnost je vedno omejena z OpenStreetMap: če hišne številke tam ni, je točka na ulici ali v naselju (označeno ~).
+
+**Neobvezno: Google.** Če v Nastavitve → Izračun vpišeš ključ Google (11.7), se za kilometrino uporablja Google (plačljivo po zahtevku). Obstoječi vpisi z OSM ostanejo, dokler jih ne preračunaš. Brez ključa je Google izklopljen in se ne kliče nikoli.
+
+**Kdaj se iskanje naslovov ne kliče:** »Išči točke naslovov« je izklopljeno, »Uporabi dejanske ceste« je izklopljeno, naslov je ustanova ali samo naselje (brez hišne številke), ali je strežnik vrnil napako (429: preveč zahtevkov, 403: zavrnjen zahtevek). Aplikacija nato ne ponavlja zahtevkov v zanki in pokaže razumljivo sporočilo; do ponovne vzpostavitve je kilometrina ocena z oznako ~.
+
+**Zakaj dve poti računanja:** razpored (kdo vozi koga, ob kateri uri) računa po splošnih točkah (naselja, ustanove) in matriki razdalj, ker potrebuje na stotine razdalj; točen naslov iščemo samo za vpisane prevoze (en zahtevek na novi naslov). Točka naslova se po potrditvi uporabi tudi v razporedu namesto središča naselja.
 
 ### 10.4 Klinike, ambulante in čakanje na pregled
 
@@ -478,13 +489,13 @@ Firebase konzola → **Firestore Database** → **Usage**. Če se približuješ 
 
 ---
 
-### 11.7 Google ključ za kilometrino: nastavitev, stroški, odpravljanje težav
-Neobvezno; najprej 0.2, točka 5 (DPO). Podrobnosti Googlovega vmesnika in cen se spreminjajo, zato **preveri trenutno dokumentacijo (Routes API – Compute Routes) in cenik**; v mojem okolju Googlovih strani ni bilo mogoče prebrati, zato cene in brezplačne kvote **ne navajam**.
+### 11.7 Google ključ za kilometrino (neobvezno): nastavitev, stroški, odpravljanje težav
+Neobvezno; **brez njega kilometrina deluje brezplačno (10.3, 11.9)**. Najprej 0.2, točka 5 (DPO). Podrobnosti Googlovega vmesnika in cen se spreminjajo, zato **preveri trenutno dokumentacijo (Routes API – Compute Routes) in cenik**; v mojem okolju Googlovih strani ni bilo mogoče prebrati, zato cene in brezplačne kvote **ne navajam**.
 1. V **Google Cloud Console** ustvari projekt (lahko s pravnim subjektom ZD) in vklopi **obračun** (Google za Maps Platform zahteva plačilno sredstvo).
 2. **APIs & Services** → vklopi **Routes API**.
 3. **Credentials** → **Create credentials** → **API key**. Ključ takoj **omeji**: *Application restrictions* → **Websites (HTTP referrers)** → naslov tvoje strani, npr. `https://UPORABNIK.github.io/*`; *API restrictions* → **samo Routes API**.
 4. Nastavi **proračunsko opozorilo in dnevno kvoto** (Billing → Budgets & alerts; APIs → Quotas), da te nepričakovana poraba ne preseneti.
-5. V aplikaciji: **Nastavitve → Izračun → Natančna kilometrina** → vpiši ključ → **Shrani** → **Preveri Google**. Pričakovano: »Google deluje: SB Brežice → UKC Ljubljana: … km«. Ključ, vpisan tukaj, velja samo za to napravo; za vse naprave ga vpiši v `config.js` (`google.key`).
+5. V aplikaciji: **Nastavitve → Izračun → Google Zemljevidi (neobvezno)** → vpiši ključ → **Shrani** → **Preveri Google**. Pričakovano: »Google deluje: SB Brežice → UKC Ljubljana: … km«. Ključ, vpisan tukaj, velja samo za to napravo; za vse naprave ga vpiši v `config.js` (`google.key`).
 6. Če preizkus ne uspe: **403** = ključ ni omejen na pravi naslov ali Routes API ni vklopljen; **429** = prekoračena kvota; **brez povezave** = naprava ali omrežje blokira `routes.googleapis.com`. Aplikacija nato računa po cestah OSM ali z oceno.
 7. Možnost **»Upoštevaj promet pri času vožnje«** je privzeto izklopljena (je dražja zahteva in za kilometrino ni potrebna).
 8. Ključa nikoli ne pošiljaj po e-pošti in ga ne objavljaj; če je ušel, ga v konzoli **zavrti** (rotate) in vpiši novega.
@@ -497,6 +508,19 @@ Neobvezno; najprej 0.2, točka 5 (DPO). Podrobnosti Googlovega vmesnika in cen s
 - Poti in točke se rišejo v brskalniku; strežnik ploščic ne dobi nobenega podatka o prevozih.
 
 ---
+
+### 11.9 Iskanje naslovov (Nominatim): pravila, zasebnost, lasten strežnik, odpravljanje težav
+**Kaj se pošlje:** samo besedilo naslova (npr. »Dobova 25«), brez imena pacienta, telefona, naloga ali ure. Strežnik vidi še IP naslov naprave in izvor strani (Referer). Naslovi pacientov so osebni podatki: za redno delo z resničnimi pacienti to vključi v oceno pooblaščenca (0.2, točka 5) ali uporabi lasten strežnik (spodaj).
+
+**Pravila javnega strežnika** (operations.osmfoundation.org/policies/nominatim, preveri tudi sam): največ **1 zahtevek na sekundo**, rezultate je treba shranjevati, ni množičnega iskanja in samodokončanja med tipkanjem, zahtevek mora imeti veljaven Referer ali User-Agent. Aplikacija to upošteva: zahtevki gredo po vrsti z razmikom 1,1 s, iskanje steče šele po potrditvi vnosa, vsak naslov se išče enkrat (pomnilnik seje, točka pri pacientu, ročni popravki). Ob 429 počiva eno minuto, ob 403 deset minut. Referer je samo izvor strani (npr. `https://uporabnik.github.io`), zato aplikacija mora teči prek `https` (odprta kot datoteka `file://` Refererja nima).
+
+**Preizkus:** Nastavitve → Izračun → **Preveri iskanje naslovov** (en zahtevek: Zdravstveni dom Brežice; pričakovano »deluje … m od znane točke postaje«). Če ne uspe: **brez povezave** = omrežje ali brskalnik blokira `nominatim.openstreetmap.org`; **403** = Referer manjka ali je naslov blokiran; **429** = preveč zahtevkov.
+
+**Lasten ali drug strežnik:** `config.js` → `geocode.url` (mora biti `https`, združljiv z Nominatim API `/search`); v `build-prod.py` v `connect-src` dodaj njegov izvor in ponovno zgradi. `geocode.url: ''` iskanje izklopi (km po središču naselja z oznako ~). `geocode.email` je neobvezen stik za vzdrževalce javnega strežnika.
+
+**Popravki točk (`geoFix`)** so del skupnih nastavitev (`cfg/main`); pravila baze (`firestore.rules`) dovolijo zapis tudi dispečerju. **Po posodobitvi pravil v Firebase konzoli** (korak 3) jih vnovič prilepi, sicer dispečer popravka ne more shraniti.
+
+**Podatki:** © prispevajoči OpenStreetMap (ODbL); pripis je viden ob zemljevidu. Če boš za redno delo vseeno želel uradne hišne številke GURS, jih uvoziš po razdelku 11.3 (`naslovi.json`); uvožen naslov ima prednost in ne zahteva iskanja.
 
 ## 12. Lokalni (demo) način – brez oblaka
 
@@ -523,7 +547,7 @@ Neobvezno; najprej 0.2, točka 5 (DPO). Podrobnosti Googlovega vmesnika in cen s
 
 ## 14. Kaj je preizkušeno in kaj ne
 
-**Preizkušeno (81 samodejnih preverjanj v brskalniku, 47 preizkusov planerja in razpoznave):**
+**Preizkušeno (88 samodejnih preverjanj v brskalniku, 55 preizkusov planerja, razpoznave in kilometrine):**
 - Dispečer objavi razpored, voznik in spremljevalec prejmeta svoj del, koraki (sprejem → na poti → na kraju → v vozilu → na cilju → zaključi, »ni doma«, odklonitev, popravek ure) pridejo do dispečerja; v knjigo se samodejno vpišeta čas in »Kdo je naredil odvoz«.
 - Planer: strogo, samodejno, prosto; 6 pacientov v Avto 13 (običajno 4, največ 6); nadure; ležeči brez nosil ostane nerazporejen; izjema pri prevozu v strogem načinu; vse prilagoditve so izpisane.
 - Nalogi: izračun veljavnosti, opozorilo na mejnem dnevu (30 dni letni, 7 dni mesečni), podaljšanje utiša opozorilo, samodejno izpolnjevanje iz baze pacientov, predogled za kopiranje.
@@ -531,11 +555,14 @@ Neobvezno; najprej 0.2, točka 5 (DPO). Podrobnosti Googlovega vmesnika in cen s
 - Mobilni zasloni (390 px), temni način, PWA in delovanje brez povezave (lupina aplikacije).
 - **Cestno usmerjanje, kilometrina, klinike, dializa in planer** (mapa `source/tests`, zagon `cd source && node tests/run.js`): 33 preizkusov proti **posnetku (lažnemu) OSRM in Google Routes API-ju**: oblika zahtev, bloki do 40 + 40 točk, izpad in preklop strežnika, omejitev 429 in 403 brez zanke, relacije brez poti, več ciljev v eni vožnji, ležeči, ustrezno vozilo, konflikti, zaklep prevozov v teku, predlogi; **čakanje na pregled** (prevoz nazaj se ne vpisuje posebej, vozilo je zasedeno, združevanje samo z istim ciljem); **klinike** (ime, vzdevki, privzet čas pregleda); **dializa** (termini, dnevi, prosti čas posadke za sede paciente); **kilometrina** (ročni vpis ima prednost, pot nazaj pri čakanju, vir pri vsakem km, mesečno poročilo, CSV z BOM in decimalno vejico); poleg tega 48 preverjanj zgrajene aplikacije v Chromiumu (vrstice prevozov, en odprt urejevalnik, km čip, ročni in Google km, čakanje na pregled, dializa in klinike v nastavitvah, kartica Google s preizkusom, mesečna kilometrina in CSV, brez napak v konzoli, brez kršitev CSP, brez zunanjih klicev razen cestnih strežnikov in Googla ob vpisanem ključu, brez imen pacientov v zahtevkih za Google) ter pregled zaslona na telefonu (390 px, brez vodoravnega drsenja) in v temnem načinu. Izhodiščni izračun planerja je bil primerjan s prvotnim (v2_2) na 120 naključnih dneh: **enak rezultat**, kadar so nove možnosti izklopljene; nov planer v nobenem dnevu ni bil slabši od izhodišča, v 82 od 120 je našel krajši razpored (v povprečju okoli 10 % manj kilometrov po lastni oceni planerja, ne meritev).
 
+- **Iskanje naslovov in kilometrina OSM** (`node tests/run.js`, `tests/browser.js`): oblika zahtevka Nominatim (samo besedilo naslova, omejitev na kraj, Referer samo izvor), vrsta z razmikom in enim zahtevkom naenkrat, pomnilnik, točka pri pacientu, 429/403/izpad, zavrnitev zadetka v drugem kraju, razvrstitev natančnosti, km iz točke naslova in OSRM, pot nazaj, ročni vnos ima prednost (tudi med tekočim izračunom), popravek točke na zemljevidu in preračun, prenos popravkov med napravami, nastavitve. Vse **proti posnetku (lažnemu) Nominatim in OSRM** z izmišljenimi naslovi.
+
 **NI preizkušeno (v mojem okolju ni bilo dostopa do Googlovih strežnikov):**
 - **Pravi zemljevid s prvimi ploščicami OpenStreetMap**: v mojem okolju ni bilo dostopa do strežnika ploščic, zato je zemljevid preizkušen s posnetkom strežnika ploščic (postavitev ploščic, povečava, povleci, okna, Referer samo z izvorom, izpad podlage). Videz prave podlage in odziv javnega strežnika (omejitve, glava Referer) preveri ob prvem zagonu.
 - **Tisk knjige dneva** je preizkušen kot PDF; poravnavo na pravem tiskalniku preveri (A4, pokončno, brez prilagajanja strani).
 - **Razpoznava hitrega vnosa** je preizkušena na primerih iz fotografij (izmišljena imena); resnični zapisi dispečerja bodo pokazali, katere kratice manjkajo (Nastavitve → Klinike in Naslovi).
 - Točke **IMI Ljubljana** in **DSO Brežice** imajo približne koordinate in oznako »preveri«.
+- **Povezava z živim Nominatim in točnost za tvoje naslove:** v okolju, kjer je bil paket narejen, strežnik Nominatim ni bil dosegljiv, zato **ne vem, koliko hišnih številk v Posavju je v OpenStreetMap** in kako Nominatim razume zapis »naselje + številka« (npr. »Dobova 25«). **Prvi pravi preizkus je gumb »Preveri iskanje naslovov« (11.9)**, nato nekaj pravih naslovov: tam, kjer hišne številke ni, aplikacija pokaže ~ in ponudi točko na zemljevidu. Razdalje primerjaj z Google Zemljevidi na prvih 10 vpisih.
 - **Povezava z živim Google Routes API** – vse je preizkušeno samo proti posnetku odgovorov po dokumentaciji, ki je nisem mogel prebrati. **Prvi pravi preizkus je gumb »Preveri Google«** (11.7). Neznanke: ali brskalniški klic (CORS) z vašim ključem in naslovom strani deluje, točen cenik in kvota, ter ali Google naslove tipa »Dobova 25« razume enako kot v aplikaciji Zemljevidi. Če kilometrina odstopa od tistega, kar vidiš v Zemljevidih, jo popravi ročno in mi pošlji primer.
 - **Kilometrina po Googlu ni enaka vozniški evidenci:** Google računa pot za osebni avto OD → DO; reševalno vozilo lahko vozi drugače. Kaj natančno šteje v kilometrino po internih in ZZZS pravilih (npr. vožnja od postaje do pacienta), bom uskladil s tvojimi primeri iz knjige.
 - **Naslovi, časi pregleda in vzdevki klinik** so začetni predlogi po mojem spominu (ne iz uradnega vira): preveri jih v Nastavitve → Klinike.

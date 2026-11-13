@@ -14,7 +14,7 @@ css = '\n'.join(re.findall(r'<style>(.*?)</style>', head, re.S))
 assert css.strip(), 'CSS ni najden'
 (out / 'style.css').write_text(css, encoding='utf-8')
 
-order = ['20-data', '30-core', '35-db', '38-routing', '39-google', '40-planner', '45-pacienti', '50-views', '52-views2', '54-quick', '55-live', '56-map', '60-main']
+order = ['20-data', '30-core', '35-db', '37-geocode', '38-routing', '39-google', '40-planner', '45-pacienti', '50-views', '52-views2', '54-quick', '55-live', '56-map', '60-main']
 js = '\n'.join((src / f'{n}.js').read_text(encoding='utf-8') for n in order)
 (out / 'app.js').write_text(js, encoding='utf-8')
 body = (src / '10-body.html').read_text(encoding='utf-8')
@@ -27,8 +27,8 @@ csp = "; ".join([
     # podlaga zemljevida: ploščice OpenStreetMap. Če v config.js zamenjaš tiles.url, dodaj njegov izvor sem.
     "img-src 'self' data: blob: https://tile.openstreetmap.org",
     "font-src 'self'",
-    # povezave: Firebase + strežnik za cestno usmerjanje (OSRM; samo koordinate). Če ga zamenjaš (config.js → routing), dodaj njegov izvor sem.
-    "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://router.project-osrm.org https://routing.openstreetmap.de",
+    # povezave: Firebase + strežnik za cestno usmerjanje (OSRM; samo koordinate) + iskanje naslovov (Nominatim; samo besedilo naslova). Če ju zamenjaš (config.js → routing / geocode), dodaj izvor sem.
+    "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://router.project-osrm.org https://routing.openstreetmap.de https://nominatim.openstreetmap.org",
     "manifest-src 'self'", "worker-src 'self'",
     "base-uri 'none'", "form-action 'self'", "object-src 'none'"])
 html = f'''<!doctype html>

@@ -20,7 +20,17 @@ window.KP_CONFIG = {
     url: 'https://router.project-osrm.org',
     fallback: ['https://routing.openstreetmap.de/routed-car']   // se uporabi, če prvi strežnik ne odgovori
   },
-  // NATANČNA KILOMETRINA (Google Zemljevidi, Routes API). Kilometrina prevoza = razdalja OD → DO po najboljši poti.
+  // ISKANJE NASLOVOV (brezplačno): točka naslova (ulica + hišna številka) iz OpenStreetMap, nato cestna pot OSRM = kilometrina OD → DO.
+  // Strežniku se pošlje SAMO besedilo naslova (brez imena, telefona, naloga). Javni strežnik Nominatim: največ 1 zahtevek/s, brez množičnega
+  // iskanja (aplikacija to upošteva: vrsta, shranjene točke). Pravila: operations.osmfoundation.org/policies/nominatim
+  // Naslovi pacientov so osebni podatki: za redno rabo preveri s pooblaščencem ali uporabi lasten Nominatim (url spodaj; v CSP, build-prod.py, dodaj izvor).
+  //   url: ''  → iskanje naslovov izklopljeno (km po središču naselja, oznaka ~)
+  //   email: neobvezno, stik za vzdrževalce strežnika (priporočilo OSM za redno rabo)
+  geocode: {
+    url: 'https://nominatim.openstreetmap.org',
+    email: ''
+  },
+  // NEOBVEZNO: NATANČNA KILOMETRINA Z GOOGLOM (Google Zemljevidi, Routes API; plačljivo, če ključ vneseš). Kilometrina prevoza = razdalja OD → DO po najboljši poti.
   // Google dobi SAMO besedilo naslova OD in DO (brez imen, telefonov, nalogov). Naslovi pacientov so osebni podatki:
   // pred uporabo se posvetuj s pooblaščencem za varstvo podatkov (glej NAVODILA.md).
   // Ključ lahko vpišeš tukaj (velja za vse naprave) ali v aplikaciji: Nastavitve → Izračun (velja samo za to napravo).

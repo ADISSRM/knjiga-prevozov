@@ -151,9 +151,12 @@ const GOOGLE = (() => {
 })();
 
 /* =====================================================================
-   KILOMETRINA PREVOZA (vpis v knjigi): km OD → DO, vir, zastarelost, samodejni izračun
-   Polja prevoza: km (OD → DO), kmBack (DO → OD, samo ko reševalec počaka na pregled), kmSrc ('google' | 'rocno'), kk (besedilo OD>DO ob izračunu),
-   gf / gt (koordinate OD in DO po Googlu), kmAt (čas izračuna).
+   KILOMETRINA PREVOZA (vpis v knjigi): km OD → DO, vir, natančnost, zastarelost, samodejni izračun
+   Dva načina računanja (KM.engine()):
+   - 'osm' (BREZPLAČNO, privzeto): točka naslova iz OpenStreetMap (37-geocode.js: ulica + hišna številka) in cestna razdalja OSRM (38-routing.js)
+   - 'google' (neobvezno, ko je vnesen ključ): Google Routes API, kot v Google Zemljevidih
+   Polja prevoza: km (OD → DO), kmBack (DO → OD, samo ko reševalec počaka na pregled), kmSrc ('osm' | 'google' | 'rocno'), kk (besedilo OD>DO ob izračunu),
+   gf / gt (koordinate OD in DO), gp (natančnost točk [OD, DO]: hisna | ulica | nejasno | naselje | ustanova | rocno), kmAt (čas izračuna).
    ===================================================================== */
 const KM = (() => {
   const timers = new Map();
@@ -162,46 +165,80 @@ const KM = (() => {
   const fresh = r => r.km != null && (r.kmSrc === 'rocno' || r.kk === rideKk(r));
   const needBack = r => +r.stay > 0 && r.kmBack == null && r.kmSrc !== 'rocno';          // čakanje je bilo vklopljeno po izračunu: manjka pot nazaj
   const done = r => fresh(r) && (r.kmSrc === 'rocno' || (r.gf && r.gt)) && !needBack(r);
-  const SRC = { google:'Google', rocno:'ročno', osrm:'ceste OSM', ocena:'ocena' };
+  const SRC = { osm:'naslov + ceste OSM', google:'Google', rocno:'ročno', osrm:'ceste OSM', ocena:'ocena' };
+  /* Način računanja: Google, če je vnesen ključ; sicer brezplačno OSM (iskanje naslova + OSRM). */
+  const engine = () => GOOGLE.enabled() ? 'google' : ((GEOC.enabled() && ROUTE.enabled()) ? 'osm' : '');
+  const can = () => engine() !== '';
+  const autoOn = () => { const e = engine(); return e === 'google' ? GOOGLE.auto() : e === 'osm' ? GEOC.auto() : false; };
+  const queued = () => GOOGLE.info().queued + GEOC.info().queued;
+  const precOf = r => (r.kmSrc === 'osm' && Array.isArray(r.gp)) ? r.gp : null;
+  const precExact = r => { const p = precOf(r); return !p || p.every(x => GEOC.exactPrec(x)); };
   /* Km prevoza za prikaz: shranjeno (Google ali ročno) ali sproti iz cestnih podatkov (OSM) oziroma ocena. */
   function info(r){
     const stay = +r.stay > 0;
     if (r.from && r.to && fresh(r)){
       const back = stay ? (r.kmBack != null ? r.kmBack : r.km) : 0;
-      return { km:r.km, back, total:r.km + back, src:r.kmSrc || 'google', exact:true, backExact:!stay || r.kmBack != null };
+      const ex = precExact(r);
+      return { km:r.km, back, total:r.km + back, src:r.kmSrc || 'google', exact:ex, backExact:ex && (!stay || r.kmBack != null), prec:precOf(r) };
     }
     if (!(r.from || '').trim() || !(r.to || '').trim()) return { km:null, back:0, total:null, src:'', exact:false };
     const L = makeLeg(S.settings), l = L(ridePt(r, 'from'), ridePt(r, 'to')), src = l.real ? 'osrm' : 'ocena';
     return { km:l.km, back:stay ? l.km : 0, total:l.km * (stay ? 2 : 1), src, exact:false, backExact:false };
   }
-  /* Izračun z Googlom za en prevoz (OD → DO in, če počaka, DO → OD). Rezultat se zavrže, če se je besedilo medtem spremenilo. */
+  /* Izračun kilometrine za en prevoz (OD → DO in, če počaka, DO → OD): brezplačno z OSM ali z Googlom, če je ključ. Rezultat se zavrže, če se je besedilo medtem spremenilo. */
   async function ensure(date, id, o = {}){
     const hit = rideById(date, id); if (!hit) return null;
     const r0 = hit.r; if (!isFilled(r0) || r0.odpovedano || !(r0.from || '').trim() || !(r0.to || '').trim()) return null;
-    if (!GOOGLE.enabled()) return null;
+    const eng = engine(); if (!eng) return null;
     if (!o.force && done(r0)) return null;
     const kk0 = rideKk(r0), departIso = r0.time ? new Date(`${date}T${r0.time}:00`).toISOString() : '';
-    let a, b = null;
+    let a, b = null, fa = null, ta = null;
     try {
-      a = await GOOGLE.ride(r0.from, r0.to, { fresh:!!o.force, departIso });
-      if (+r0.stay > 0) b = await GOOGLE.ride(r0.to, r0.from, { fresh:!!o.force, departIso });
+      if (eng === 'google'){
+        a = await GOOGLE.ride(r0.from, r0.to, { fresh:!!o.force, departIso });
+        if (+r0.stay > 0) b = await GOOGLE.ride(r0.to, r0.from, { fresh:!!o.force, departIso });
+      } else {
+        fa = await GEOC.resolve(r0.from, { fresh:!!o.force }); ta = await GEOC.resolve(r0.to, { fresh:!!o.force });
+        a = await ROUTE.exact(fa, ta);
+        if (+r0.stay > 0) b = await ROUTE.exact(ta, fa);
+      }
     } catch(e){ if (o.silent !== false && e.code !== 'off') note(id, e.message); return null; }
     const cur = rideById(date, id); if (!cur) return null;
     const r = cur.r; if (rideKk(r) !== kk0) return null;   // naslov se je medtem spremenil
-    r.km = r1(a.km); r.kmBack = b ? r1(b.km) : null; r.kmSrc = 'google'; r.kk = kk0; r.gf = a.f; r.gt = a.t; r.kmAt = a.at;
+    if (r.kmSrc === 'rocno' && !o.force) return null;      // dispečer je med izračunom vpisal km ročno: ročni vnos ima prednost
+    if (eng === 'google'){ r.km = r1(a.km); r.kmBack = b ? r1(b.km) : null; r.kmSrc = 'google'; r.gf = a.f; r.gt = a.t; r.gp = null; r.kmWarn = ''; r.kmAt = a.at; }
+    else {
+      r.km = r1(a.km); r.kmBack = b ? r1(b.km) : null; r.kmSrc = 'osm'; r.gf = [fa.lat, fa.lon]; r.gt = [ta.lat, ta.lon]; r.gp = [fa.prec, ta.prec]; r.kmAt = new Date().toISOString();
+      r.kmWarn = [fa.warn && 'OD: ' + fa.warn, ta.warn && 'DO: ' + ta.warn].filter(Boolean).join(' · ');
+      if (Math.max(...a.snap) > 400) r.kmWarn = (r.kmWarn ? r.kmWarn + ' · ' : '') + 'točka je več kot 400 m od ceste';
+    }
+    r.kk = kk0;
     save(); if (KM.onUpdate) KM.onUpdate(date, id);
     return r;
   }
   const noted = new Map();
   function note(id, msg){ const t = Date.now(); if (noted.get('m') === msg && t - (noted.get('t') || 0) < 60000) return; noted.set('m', msg); noted.set('t', t); if (typeof toast === 'function') toast('Kilometrina: ' + msg); }
   function schedule(date, id){
-    if (!GOOGLE.auto()) return;
+    if (!autoOn()) return;
     const k = date + '|' + id; clearTimeout(timers.get(k));
-    timers.set(k, setTimeout(() => { timers.delete(k); ensure(date, id); }, 900));
+    timers.set(k, setTimeout(() => { timers.delete(k); ensure(date, id); }, engine() === 'osm' ? 1500 : 900));   // OSM: iskanje šele, ko vnos mirujejo (pravilo Nominatim: brez samodokončanja)
+  }
+  /* Dispečer je na zemljevidu popravil točko naslova: vsi prevozi od včeraj naprej s tem naslovom se izračunajo znova (pretekli ostanejo, kot so bili zapisani). */
+  function refix(text, from = addDays(todayStr(), -1)){
+    const k = GEOC.key(text); let n = 0;
+    Object.keys(S.rides || {}).forEach(date => {
+      if (date < from) return;
+      (S.rides[date] || []).forEach(r => {
+        if (!isFilled(r) || r.odpovedano || r.kmSrc === 'rocno') return;
+        if (GEOC.key(r.from || '') === k || GEOC.key(r.to || '') === k){ r.kk = ''; n++; schedule(date, r.id); }
+      });
+    });
+    if (n) save();
+    return n;
   }
   /* Vsi prevozi dneva brez svežega km (samodejno ob odprtju dneva ali na gumb) */
   function day(date, o = {}){
-    const todo = filledRides(date).filter(({ r }) => !r.odpovedano && (o.force || !done(r))).map(({ r }) => r.id);
+    const todo = filledRides(date).filter(({ r }) => !r.odpovedano && r.kmSrc !== 'rocno' && (o.force || !done(r))).map(({ r }) => r.id);   // ročni vnos km se pri množičnem preračunu ne prepiše
     return Promise.all(todo.map(id => ensure(date, id, { force:!!o.force, silent:false }))).then(() => todo.length);
   }
   function setManual(date, id, val){
@@ -238,5 +275,5 @@ const KM = (() => {
     lines.push(['', '', '', ...(withNames ? [''] : []), '', '', 'SKUPAJ', '', '', fmtKm(rep.total), '', ''].join(';'));
     return '﻿' + lines.join('\r\n');
   }
-  return { onUpdate:null, fresh, info, ensure, schedule, day, setManual, month, csv, fmtKm, SRC, r1 };
+  return { onUpdate:null, fresh, info, ensure, schedule, refix, day, setManual, month, csv, fmtKm, SRC, r1, engine, can, auto:autoOn, queued };
 })();

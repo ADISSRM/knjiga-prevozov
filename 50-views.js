@@ -75,22 +75,30 @@ const demoBanner = () => hasDemo() ? `<div class="banner"><span>${IC.info}</span
 const hasDemo = () => Object.values(S.rides).some(a => a.some(r => r.demo)) || S.staff.some(s => s.demo) || S.patients.some(p => p.demo);
 
 /* ---------- Kilometrina: oznaka in polje ---------- */
-const KM_SRC_L = { google:'Google Zemljevidi', rocno:'ročni vnos', osrm:'ocena po cestah (OSM)', ocena:'ocena po zračni razdalji' };
+const KM_SRC_L = { osm:'naslov + ceste OSM', google:'Google Zemljevidi', rocno:'ročni vnos', osrm:'ocena po cestah (OSM)', ocena:'ocena po zračni razdalji' };
 function kmChipHTML(r){
   if (!isFilled(r) || r.odpovedano) return '<span class="kmchip" data-role="kmchip" hidden></span>';
   const i = KM.info(r); if (i.total == null) return '<span class="kmchip" data-role="kmchip" hidden></span>';
   const ex = i.exact && i.backExact, tip = `${KM_SRC_L[i.src] || ''}: ${KM.fmtKm(i.km)} km` + (i.back ? ` + nazaj ${KM.fmtKm(i.back)} km` : '');
   return `<span class="kmchip src-${i.src} ${ex ? 'ex' : 'est'}" data-role="kmchip" title="${esc(tip)}">${ex ? '' : '~'}${KM.fmtKm(i.total)} km</span>`;
 }
+/* Opozorilo o natančnosti: kateri konec poti nima hišne številke (OSM) – takrat je km približen */
+function precNoteHTML(r){
+  const p = (r.kmSrc === 'osm' && Array.isArray(r.gp)) ? r.gp : null; if (!p) return '';
+  const bad = [['OD', p[0]], ['DO', p[1]]].filter(([, x]) => !GEOC.exactPrec(x));
+  if (!bad.length) return '';
+  return `<span class="kmwarn" role="note">${bad.map(([l, x]) => l + ': ' + esc(GEOC.PREC[x] || x)).join(', ')} – kilometrina je približna. Vpiši hišno številko ali potrdi točko na zemljevidu.</span>`;
+}
 function kmBoxHTML(r){
   if (!(r.from || '').trim() || !(r.to || '').trim()) return '<span class="hint">Vpiši OD in DO: kilometrina se izračuna sama.</span>';
-  const i = KM.info(r), gi = GOOGLE.info(), tilde = x => x ? '' : '~';
+  const i = KM.info(r), tilde = x => x ? '' : '~', eng = KM.engine();
   const parts = [`<b class="kmv">${tilde(i.exact)}${KM.fmtKm(i.km)} km</b>`];
   if (i.back) parts.push(`nazaj ${tilde(i.backExact)}${KM.fmtKm(i.back)} km`, `skupaj <b>${tilde(i.exact && i.backExact)}${KM.fmtKm(i.total)} km</b>`);
-  const can = GOOGLE.enabled();
+  const pick = eng === 'osm' ? `<button type="button" class="btn sm" data-act="pickPt" title="Poglej točki OD in DO na zemljevidu ali ju popravi">Točka na zemljevidu</button>` : '';
   return `<span class="srcbadge src-${i.src}">${KM_SRC_L[i.src] || ''}</span><span class="kmtxt">${parts.join(' · ')}</span>
     <input type="text" inputmode="decimal" class="kmin" data-km="manual" placeholder="ročno" aria-label="Ročni vnos kilometrov OD → DO" value="${r.kmSrc === 'rocno' && r.km != null ? KM.fmtKm(r.km) : ''}">
-    ${can ? '<button type="button" class="btn sm" data-act="kmRecalc">Izračunaj z Googlom</button>' : `<span class="hint">${gi.configured ? 'Google je izklopljen.' : 'Natančen izračun: vnesi ključ Google (Nastavitve → Izračun).'}</span>`}`;
+    ${eng ? `<button type="button" class="btn sm" data-act="kmRecalc">Izračunaj znova</button>${pick}` : '<span class="hint">Izračun kilometrine je izklopljen: vklopi iskanje naslovov in dejanske ceste (Nastavitve → Izračun).</span>'}
+    ${precNoteHTML(r)}`;
 }
 
 /* ---------- Mesečna knjiga ---------- */
@@ -100,11 +108,11 @@ function kmReportHTML(y, m){
   const dayRows = rep.days.map(d => `<tr><td>${fmtShort(d.date)}</td><td class="num">${d.n}</td><td class="num">${KM.fmtKm(d.km)} km</td></tr>`).join('');
   return `<section class="card card-pad stack kmrep" id="kmReport">
     <div class="card-head" style="margin:0"><h3>Kilometrina · ${MONTHS[m]} ${y}</h3>
-      <div class="row" style="gap:6px"><button type="button" class="btn sm" data-act="kmMonth" ${GOOGLE.enabled() ? '' : 'disabled title="Najprej vnesi ključ Google (Nastavitve → Izračun)"'}>Izračunaj manjkajoče z Googlom</button><button type="button" class="btn sm" data-act="kmCsv" data-names="0">Prenesi CSV</button><button type="button" class="btn sm" data-act="kmCsv" data-names="1">CSV z imeni pacientov</button></div></div>
-    <div class="sumline"><span><b class="mono">${KM.fmtKm(rep.total)}</b> km skupaj</span><span><b class="mono">${share} %</b> natančno (Google ali ročno)</span><span><b class="mono">${rep.missing}</b> prevozov brez km</span></div>
+      <div class="row" style="gap:6px"><button type="button" class="btn sm" data-act="kmMonth" ${KM.can() ? '' : 'disabled title="Izračun kilometrine je izklopljen: vklopi iskanje naslovov in dejanske ceste (Nastavitve → Izračun)"'}>Izračunaj manjkajoče</button><button type="button" class="btn sm" data-act="kmCsv" data-names="0">Prenesi CSV</button><button type="button" class="btn sm" data-act="kmCsv" data-names="1">CSV z imeni pacientov</button></div></div>
+    <div class="sumline"><span><b class="mono">${KM.fmtKm(rep.total)}</b> km skupaj</span><span><b class="mono">${share} %</b> natančno (točen naslov, Google ali ročno)</span><span><b class="mono">${rep.missing}</b> prevozov brez km</span></div>
     ${rep.rows.length ? `<div class="two"><div class="tablewrap"><table><thead><tr><th>Dan</th><th class="num">Prevozov</th><th class="num">Km</th></tr></thead><tbody>${dayRows}</tbody></table></div>
       <div class="tablewrap"><table><thead><tr><th>Vozilo</th><th class="num">Km</th></tr></thead><tbody>${vehRows || '<tr><td colspan="2" class="muted">Vozila se pokažejo po razporeditvi.</td></tr>'}</tbody></table></div></div>` : '<div class="empty-state">V tem mesecu še ni prevozov.</div>'}
-    <p class="hint" style="margin:0">Kilometrina prevoza = razdalja OD → DO po najboljši poti (Google Zemljevidi, osebni avto). Pri čakanju na pregled je prišteta tudi pot nazaj. Vožnja reševalca do pacienta in nazaj na postajo ni všteta. Oznaka ~ pomeni oceno (brez Googla).</p></section>`;
+    <p class="hint" style="margin:0">Kilometrina prevoza = razdalja OD → DO po cestah (točka naslova iz OpenStreetMap ali Google, cestna pot OSRM ali Google, osebni avto). Pri čakanju na pregled je prišteta tudi pot nazaj. Vožnja reševalca do pacienta in nazaj na postajo ni všteta. Oznaka ~ pomeni, da naslov nima hišne številke v OSM ali da je to ocena: tak vpis potrdi na zemljevidu ali vpiši km ročno.</p></section>`;
 }
 function renderMonth(){
   const { y, m } = UI.month, n = daysInMonth(y, m), today = todayStr();
@@ -263,10 +271,10 @@ function renderDay(){
           ${terms.length ? `<button type="button" class="btn sm" data-act="loadDia">${IC.kidney.replace('<svg', '<svg width="14" height="14"')} Naloži dializne paciente</button>` : ''}
           <button type="button" class="btn sm" data-act="copyOpen">Kopiraj prevoze z drugega dne …</button>
           <button type="button" class="btn sm" data-act="printDay">Natisni knjigo dneva (OBR REŠ 08)</button>
-          <button type="button" class="btn sm" data-act="kmDay" ${GOOGLE.enabled() ? '' : 'disabled title="Najprej vnesi ključ Google (Nastavitve → Izračun)"'}>Preračunaj kilometrino z Googlom</button></div></details>
+          <button type="button" class="btn sm" data-act="kmDay" ${KM.can() ? '' : 'disabled title="Izračun kilometrine je izklopljen: vklopi iskanje naslovov in dejanske ceste (Nastavitve → Izračun)"'}>Preračunaj kilometrino dneva</button></div></details>
       </div>
     </div>
-    <div class="sumline" id="daySum"><span><b class="mono">${filled}</b> ${filled === 1 ? 'prevoz' : 'prevozov'}</span><span><b class="mono">${done}</b> opravljenih</span>${ks.any ? `<span title="${ks.all ? 'Vse razdalje so natančne (Google ali ročno)' : 'Del razdalj je ocena (~)'}"><b class="mono">${ks.all ? '' : '~'}${KM.fmtKm(ks.t)}</b> km</span>` : ''}${terms.map(t => `<span class="chip">${IC.kidney.replace('<svg', '<svg width="12" height="12"')} dializa ${t === 'dop' ? 'dopoldne' : 'popoldne'}</span>`).join('')}${warns.length ? `<details class="warnbox inline"><summary>${warns.length} opozoril</summary><ul class="warnlist">${warns.slice(0, 40).map(w => `<li>${esc(w.text)}</li>`).join('')}</ul></details>` : ''}</div>
+    <div class="sumline" id="daySum"><span><b class="mono">${filled}</b> ${filled === 1 ? 'prevoz' : 'prevozov'}</span><span><b class="mono">${done}</b> opravljenih</span>${ks.any ? `<span title="${ks.all ? 'Vse razdalje so natančne (točen naslov, Google ali ročno)' : 'Del razdalj je ocena (~)'}"><b class="mono">${ks.all ? '' : '~'}${KM.fmtKm(ks.t)}</b> km</span>` : ''}${terms.map(t => `<span class="chip">${IC.kidney.replace('<svg', '<svg width="12" height="12"')} dializa ${t === 'dop' ? 'dopoldne' : 'popoldne'}</span>`).join('')}${warns.length ? `<details class="warnbox inline"><summary>${warns.length} opozoril</summary><ul class="warnlist">${warns.slice(0, 40).map(w => `<li>${esc(w.text)}</li>`).join('')}</ul></details>` : ''}</div>
     ${blocked.length ? `<div class="banner bad"><span>${IC.alert}</span><div>${blocked.map(v => `<b>${esc(v.name)}</b>: ${esc(vehBlocked(date, v.id).tip)}${vehBlocked(date, v.id).note ? ' (' + esc(vehBlocked(date, v.id).note) + ')' : ''}`).join(' · ')}. Vozilo ni v razporedu.</div></div>` : ''}
     ${S.dayNote[date] ? `<div class="banner warn"><span>${IC.info}</span><div><b>Opomba dneva:</b> ${esc(S.dayNote[date])}</div></div>` : ''}
     ${quickFormHTML(date)}${UI.copy ? copyPanelHTML(date) : ''}
@@ -294,7 +302,7 @@ function updateDayCounts(){
   if (spans[0]) spans[0].innerHTML = `<b class="mono">${f}</b> ${f === 1 ? 'prevoz' : 'prevozov'}`;
   if (spans[1]) spans[1].innerHTML = `<b class="mono">${d}</b> opravljenih`;
   let kmEl = spans[2];
-  if (ks.any){ if (!kmEl){ kmEl = document.createElement('span'); spans[1].after(kmEl); } kmEl.title = ks.all ? 'Vse razdalje so natančne (Google ali ročno)' : 'Del razdalj je ocena (~)'; kmEl.innerHTML = `<b class="mono">${ks.all ? '' : '~'}${KM.fmtKm(ks.t)}</b> km`; }
+  if (ks.any){ if (!kmEl){ kmEl = document.createElement('span'); spans[1].after(kmEl); } kmEl.title = ks.all ? 'Vse razdalje so natančne (točen naslov, Google ali ročno)' : 'Del razdalj je ocena (~)'; kmEl.innerHTML = `<b class="mono">${ks.all ? '' : '~'}${KM.fmtKm(ks.t)}</b> km`; }
   else if (kmEl) kmEl.remove();
 }
 /* Lahka osvežitev vrstice med tipkanjem (ne zamenja polj, da fokus ostane) */
@@ -332,7 +340,7 @@ function refreshBox(el){
 }
 /* Samodejni izračun kilometrine za današnji in bližnje dneve (enkrat na sejo in dan; pozneje ob spremembi naslova) */
 function kmAuto(date){
-  if (!GOOGLE.auto() || UI.kmTried[date]) return;
+  if (!KM.auto() || UI.kmTried[date]) return;
   const t = todayStr(); if (date < addDays(t, -1) || date > addDays(t, 14)) return;
   UI.kmTried[date] = 1; KM.day(date).catch(() => {});
 }
@@ -653,6 +661,26 @@ function routingCard(){
     ${test}
     <p class="hint" style="margin:0">Predpomnilnik: ${ri.cached} relacij${ri.shared ? ', iz razdalje.json: ' + ri.shared + (ri.sharedBuilt ? ' (' + esc(String(ri.sharedBuilt).slice(0, 10)) + ')' : '') : ''}${ri.pending ? ', čaka na prenos: ' + ri.pending : ''}${host ? ' · strežnik: ' + esc(host) : ''}. V predpomnilnik gredo samo splošne točke (naselja, ustanove, mesta), nikoli hišni naslovi pacientov. Točnost: naselja so predstavljena s središčno točko, promet v živo ni upoštevan.</p></div>`;
 }
+/* ---------- Nastavitve: brezplačna natančna kilometrina (naslov → točka → cesta) ---------- */
+function geocodeCard(){
+  const gi = GEOC.info(), G = S.settings.geocode || {}, t = UI.geoTest, eng = KM.engine();
+  const tone = !gi.configured || !gi.on ? 'warn' : gi.status === 'error' ? 'bad' : gi.status === 'ok' ? 'ok' : 'info';
+  const txt = !gi.configured ? 'ni nastavljeno' : !gi.on ? 'izklopljeno' : gi.status === 'error' ? 'napaka' : gi.status === 'ok' ? 'deluje' : 'pripravljeno';
+  const test = t ? (t.running ? '<span class="chip info">Preverjam …</span>' : `<div class="banner" style="${t.ok ? '' : 'background:var(--warn-soft);color:var(--warn)'}"><span>${IC.info}</span><div><b>${t.ok ? 'Iskanje naslovov deluje' : 'Preizkus ni uspel'}</b>${t.ok ? ` · Zdravstveni dom Brežice najden ${t.d} m od znane točke postaje (${t.ms} ms)` : ''}<br>${esc(t.msg || '')}</div></div>`) : '';
+  const chk = (path, on, label) => `<label class="row" style="gap:8px;flex-wrap:nowrap"><input type="checkbox" data-path="${path}" data-bool="1" ${on ? 'checked' : ''}> ${label}</label>`;
+  const nfix = Object.keys(S.geoFix || {}).length;
+  const mode = eng === 'osm' ? '<span class="chip ok">kilometrina se računa brezplačno (OpenStreetMap)</span>' : eng === 'google' ? '<span class="chip warn">trenutno velja Google (ključ je vnesen); za brezplačni način ga odstrani ali izklopi spodaj</span>' : '<span class="chip warn">izračun kilometrine je izklopljen</span>';
+  return `<div class="card card-pad stack" style="gap:12px"><div class="card-head" style="margin:0"><h3>Natančna kilometrina: naslovi OD → DO (brezplačno)</h3><span class="chip ${tone}">${txt}</span></div>
+    <div class="banner"><span>${IC.info}</span><div>Ko vpišeš naslov z ulico in hišno številko (npr. »Cesta prvih borcev 18, Brežice« ali »Dobova 25«), aplikacija najde točko naslova v OpenStreetMap in izračuna <b>cestno razdaljo OD → DO</b>. Google Zemljevidov ni treba odpirati. Pri vsakem vpisu je viden vir in natančnost: <b>~</b> pomeni, da OSM za ta naslov nima hišne številke. Takrat točko potrdi ali popravi na zemljevidu (gumb »Točka na zemljevidu« pri prevozu). Strežnik dobi <b>samo besedilo naslova</b>, brez imena, telefona in naloga.</div></div>
+    <div>${mode}</div>
+    <div class="stack" style="gap:8px">
+      ${chk('settings.geocode.on', G.on !== false, 'Išči točke naslovov v OpenStreetMap')}
+      ${chk('settings.geocode.auto', G.auto !== false, 'Izračunaj samodejno, ko vpišem OD in DO (in ob odprtju dneva od včeraj do 14 dni naprej)')}</div>
+    <div class="row"><button type="button" class="btn sm" data-act="geoTest" ${gi.configured ? '' : 'disabled'}>Preveri iskanje naslovov</button><span class="hint">Poskusno iskanje: Zdravstveni dom Brežice (en zahtevek).</span></div>
+    ${test}
+    <p class="hint" style="margin:0">V tej seji: ${gi.calls} zahtevkov${gi.errors ? ', ' + gi.errors + ' napak' : ''}, ${gi.cached} naslovov v pomnilniku${gi.queued ? ', v čakalni vrsti ' + gi.queued : ''}${gi.host ? ' · strežnik: ' + esc(gi.host) : ''}. Ročno popravljenih točk: ${nfix}.</p>
+    <details class="hintdet"><summary>Zasebnost, omejitve in kako deluje</summary><p class="hint" style="margin:6px 0 0">Javni strežnik Nominatim (OpenStreetMap) je brezplačen, vendar velja pravilo največ 1 zahtevek na sekundo, brez množičnega iskanja in brez samodokončanja med tipkanjem: aplikacija išče šele, ko vnos potrdiš, zahtevke postavi v vrsto in vsak naslov poišče samo enkrat (točka se shrani pri pacientu in za ponovne prevoze, npr. dializo, se ne išče znova). Strežnik vidi besedilo naslova, IP naslov naprave in izvor te strani. Naslovi pacientov so osebni podatki: za redno delo preveri s pooblaščencem za varstvo podatkov ali uporabi lasten strežnik (config.js → geocode.url, v CSP v build-prod.py dodaj njegov izvor). Zadetek, ki je več kot nekaj km od prepoznanega kraja, aplikacija zavrne (npr. ista ulica v drugem kraju) in uporabi središče naselja z oznako ~. Cestno pot izračuna OSRM po omrežju OpenStreetMap; razdalja se lahko od Google Zemljevidov razlikuje za nekaj odstotkov (drugačna izbira poti), zato je ročni vnos km vedno mogoč. Podatki © prispevajoči OpenStreetMap (ODbL).</p></details></div>`;
+}
 /* ---------- Nastavitve: Google, dializa, klinike ---------- */
 function googleCard(){
   const gi = GOOGLE.info(), G = S.settings.google || {}, t = UI.gTest;
@@ -661,7 +689,7 @@ function googleCard(){
   const txt = !gi.configured ? 'ključ ni vnesen' : !gi.on ? 'izklopljeno' : gi.status === 'error' ? 'napaka' : gi.status === 'ok' ? 'deluje' : 'pripravljeno';
   const test = t ? (t.running ? '<span class="chip info">Preverjam …</span>' : `<div class="banner ${t.ok ? '' : 'warn'}"><span>${IC.info}</span><div><b>${t.ok ? 'Google deluje' : 'Preizkus ni uspel'}</b>${t.km ? ` · SB Brežice → UKC Ljubljana: ${KM.fmtKm(t.km)} km, ${Math.round(t.min)} min (${t.ms} ms)` : ''}<br>${esc(t.msg)}</div></div>`) : '';
   const chk = (path, on, label) => `<label class="row" style="gap:8px;flex-wrap:nowrap"><input type="checkbox" data-path="${path}" data-bool="1" ${on ? 'checked' : ''}> ${label}</label>`;
-  return `<div class="card card-pad stack" style="gap:12px"><div class="card-head" style="margin:0"><h3>Natančna kilometrina (Google Zemljevidi)</h3><span class="chip ${tone}">${txt}</span></div>
+  return `<div class="card card-pad stack" style="gap:12px"><div class="card-head" style="margin:0"><h3>Google Zemljevidi (neobvezno, plačljivo)</h3><span class="chip ${tone}">${txt}</span></div>
     <div class="banner"><span>${IC.info}</span><div>Kilometrina vsakega prevoza se izračuna z Googlom po najboljši cestni poti <b>OD → DO</b>, kot v Google Zemljevidih. Google dobi <b>samo besedilo naslova OD in DO</b> (brez imena, telefona in naloga). Rezultat se zapiše v knjigo z oznako vira. Naslovi pacientov so osebni podatki: pred uporabo se posvetuj s pooblaščencem za varstvo podatkov.</div></div>
     <div class="stack" style="gap:8px">
       ${chk('settings.google.on', G.on !== false, 'Uporabi Google za kilometrino')}
@@ -757,7 +785,7 @@ function renderSettings(){
   } else if (T === 'planiranje'){
     const k = (label, path, step=1, unit='') => `<label for="k-${path}">${label}${unit ? ' <span class="dim">(' + unit + ')</span>' : ''}</label>${field(path, S.settings[path.split('.')[1]], { num:1, step, label })}`.replace('data-path', `id="k-${path}" data-path`);
     const kl = (label, key) => `<label for="k-lim-${key}">${label} <span class="dim">(km/h)</span></label>${field('settings.lim.' + key, S.settings.lim[key], { num:1, step:1, label }).replace('data-path', 'id="k-lim-' + key + '" data-path')}`;
-    body = `<div class="stack">${googleCard()}${routingCard()}${mapCard()}<details class="card card-pad sect" data-sect="param" ${UI.sect.param ? 'open' : ''}><summary><h3>Parametri izračuna: hitrosti, časi pobiranja, rezerve</h3></summary><div class="kv" style="margin-top:12px">
+    body = `<div class="stack">${geocodeCard()}${routingCard()}${googleCard()}${mapCard()}<details class="card card-pad sect" data-sect="param" ${UI.sect.param ? 'open' : ''}><summary><h3>Parametri izračuna: hitrosti, časi pobiranja, rezerve</h3></summary><div class="kv" style="margin-top:12px">
       ${kl('Omejitev v naselju','naselje')}${kl('Omejitev izven naselij','izven')}${kl('Omejitev na hitri cesti','hitra')}${kl('Omejitev na avtocesti','avtocesta')}${k('Dejanska hitrost glede na omejitev','settings.eff',1,'%')}${k('Faktor ceste (samo za ocene brez cestnih podatkov)','settings.road',0.05)}${k('Pobiranje sede pacienta','settings.pickMin',1,'min')}${k('Odpuščanje sede pacienta','settings.dropMin',1,'min')}${k('Pobiranje leže pacienta','settings.pickLeze',1,'min')}${k('Odpuščanje leže pacienta','settings.dropLeze',1,'min')}${k('Pobiranje pacienta na vozičku','settings.pickUtila',1,'min')}${k('Odpuščanje pacienta na vozičku','settings.dropUtila',1,'min')}${k('Privzet čas pregleda (čakanje)','settings.stayDef',5,'min')}${k('Privzeta pot od vhoda do ambulante','settings.extraDef',1,'min')}
       ${k('Rezerva pred preiskavo','settings.buffer',1,'min')}${k('Okno združevanja po uri','settings.window',5,'min')}${k('Okno združevanja pri oddaljenih ciljih (Ljubljana, Novo mesto)','settings.windowFar',10,'min')}${k('NN ekipa: najdlje od postaje (0 = brez omejitve)','settings.nnMaxKm',5,'km')}${k('Največji dodaten čas za soprevoznika','settings.detour',5,'min')}${k('Najdaljša vožnja pacienta v vozilu','settings.maxRide',5,'min')}
       ${k('Čakanje pri odvozu brez zamude','settings.waitTol',1,'min')}${k('Število polj v knjigi na dan','settings.slots',1,'polj')}${k('Samodejna odjava','settings.idleMin',5,'min')}

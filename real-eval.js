@@ -5,7 +5,7 @@
 const vm = require('vm'), path = require('path');
 const { load } = require('./load.js'), REAL = require('./real-days.js');
 const SRC = path.join(__dirname, '..', 'src') + path.sep;
-const FILES = ['20-data.js', '30-core.js', '35-db.js', '38-routing.js', '39-google.js', '40-planner.js', '45-pacienti.js'].map(f => SRC + f);
+const FILES = ['20-data.js', '30-core.js', '35-db.js', '37-geocode.js', '38-routing.js', '39-google.js', '40-planner.js', '45-pacienti.js'].map(f => SRC + f);
 const SET = JSON.parse(process.env.SET || '{}');
 const want = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(REAL.DAYS);
 let ok = 0, pairs = 0; const T = { a:{ km:0, lateMin:0, obj:0 }, d:{ km:0, lateMin:0, obj:0 } };

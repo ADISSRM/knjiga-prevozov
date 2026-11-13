@@ -343,7 +343,9 @@ function dataTab(){
 function openPreview(title, variants){ UI.modal = { title, variants, idx:0 }; renderModal(); }
 function renderModal(){
   const host = $('#modal'), m = UI.modal;
-  if (!m){ host.hidden = true; host.innerHTML = ''; return; }
+  if (!m){ host.hidden = true; host.innerHTML = ''; delete host.dataset.pk; return; }
+  if (m.type === 'pick'){ renderPick(host, m); return; }
+  delete host.dataset.pk;
   const v = m.variants[m.idx], lines = v.text.split('\n');
   host.hidden = false;
   host.innerHTML = `<div class="modal-back" data-act="closeModal"></div><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
@@ -355,6 +357,73 @@ function renderModal(){
   const b = host.querySelector('.btn.primary'); if (b) b.focus();
 }
 
+
+/* ---------- Točka naslova na zemljevidu: pregled in popravek (kilometrina) ----------
+   Dispečer vidi, kje aplikacija meni, da je naslov OD ali DO, in lahko z dotikom na zemljevidu postavi pravo točko. Popravek je ročen vpis (S.geoFix),
+   velja za vse prevoze z istim naslovom od včeraj naprej in na vseh napravah. Za ustanove točke ni treba popravljati tukaj (Nastavitve → Klinike in ustanove). */
+const pickText = m => { const hit = rideById(m.date, m.id); return hit ? String(hit.r[m.side] || '').trim() : ''; };
+function pickSpec(m){
+  const pins = [];
+  if (m.cur && GEOC.isPoint(m.cur)) pins.push({ id:'cur', lon:m.cur.lon, lat:m.cur.lat, kind:'pu', label:'•', name:'Trenutna točka', html:`<b>Trenutna točka</b><br>${esc(GEOC.PREC[m.cur.prec] || '')}${m.cur.warn ? '<br>' + esc(m.cur.warn) : ''}` });
+  if (m.pick) pins.push({ id:'new', lon:m.pick[0], lat:m.pick[1], kind:'do', label:'✓', name:'Nova točka', html:'<b>Nova točka</b><br>Shrani jo spodaj.' });
+  return { routes:[], pins, pick:m.canFix ? { cb:pickAt } : null };
+}
+function pickAt(lon, lat){
+  const m = UI.modal; if (!m || m.type !== 'pick') return;
+  m.pick = [lon, lat]; const v = MAP.views[m.key]; if (v) v.user = true;
+  pickRefresh(m);
+}
+function pickRefresh(m){
+  const host = $('#modal'); if (!host || UI.modal !== m) return;
+  const txt = pickText(m), st = host.querySelector('[data-role=pickst]');
+  if (st){
+    let t = '', warn = false;
+    if (m.status){ t = m.status; warn = !!m.err; }
+    else if (m.pick) t = 'Nova točka je izbrana. Shrani jo, da se kilometrina preračuna.';
+    else if (m.cur){ t = 'Trenutna točka: ' + (GEOC.PREC[m.cur.prec] || '') + (m.cur.warn ? ' (' + m.cur.warn + ')' : '') + '.'; warn = !GEOC.exactPrec(m.cur.prec); }
+    if (m.canFix === false && !m.status) t += ' Točka ustanove se ureja v Nastavitve → Klinike in ustanove.';
+    else if (m.canFix && !MAP.tilesOn()) t += ' Podlaga zemljevida je izklopljena ali ni dosegljiva: točke ne moreš natančno izbrati.';
+    else if (m.canFix && !m.pick) t += ' Dotakni se zemljevida tam, kjer je hiša (povečaj s + ali koleščkom).';
+    st.textContent = t.trim(); st.classList.toggle('warn', warn);
+  }
+  const sv = host.querySelector('[data-act="pickSave"]'), cl = host.querySelector('[data-act="pickClear"]');
+  if (sv) sv.disabled = !m.pick || !m.canFix;
+  if (cl) cl.disabled = !GEOC.hasFix(txt);
+  MAP.update(m.key, pickSpec(m));
+}
+async function pickLoad(m){
+  const txt = pickText(m), side = m.side, an = GEOC.analyse(txt);
+  m.cur = null; m.pick = null; m.err = false; m.canFix = ['search', 'unknown', 'settlement'].includes(an.mode) || (an.mode === 'import' ? false : GEOC.hasFix(txt));
+  m.status = 'Iščem točko …'; pickRefresh(m);
+  try { m.cur = await GEOC.resolve(txt); m.status = ''; }
+  catch(e){
+    m.status = e.message; m.err = true;
+    if (an.g && isFinite(an.g.lat) && an.g.kind !== 'neznano') m.cur = { lat:an.g.lat, lon:an.g.lon, prec:'naselje', warn:'središče naselja' };
+  }
+  if (UI.modal !== m || m.side !== side) return;
+  pickRefresh(m);
+}
+function openPick(date, id){
+  const hit = rideById(date, id); if (!hit) return;
+  const r = hit.r, side = (r.to || '').trim() && geo(r.to).kind !== 'poi' ? 'to' : 'from';
+  UI.modal = { type:'pick', date, id, side }; renderModal(); pickLoad(UI.modal);
+}
+function renderPick(host, m){
+  const hit = rideById(m.date, m.id); if (!hit){ UI.modal = null; renderModal(); return; }
+  const k = m.key = 'pick|' + m.id + '|' + m.side;
+  if (host.dataset.pk === k && host.querySelector('.imap[data-map="' + k + '"]')){ pickRefresh(m); return; }   // ponovni izris strani ne uniči zemljevida
+  host.dataset.pk = k; host.hidden = false;
+  const r = hit.r, short = s => { const t = String(s || '').trim() || '–'; return t.length > 34 ? t.slice(0, 33) + '…' : t; };
+  host.innerHTML = `<div class="modal-back" data-act="closeModal"></div><div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="modal-head"><h3 id="mTitle">Točka naslova na zemljevidu</h3><button type="button" class="icon-btn" data-act="closeModal" aria-label="Zapri">${IC.x}</button></div>
+    <div class="seg" role="group" aria-label="Konec poti">${[['from', 'OD'], ['to', 'DO']].map(([s, l]) => `<button type="button" data-act="pickSide" data-s="${s}" aria-pressed="${m.side === s}">${l}: ${esc(short(r[s]))}</button>`).join('')}</div>
+    ${MAP.html(k, pickSpec(m), { label:'Zemljevid za izbiro točke naslova' })}
+    <div class="pickst" data-role="pickst" aria-live="polite"></div>
+    <div class="pickbar"><button type="button" class="btn primary" data-act="pickSave" disabled>Shrani točko in preračunaj km</button><button type="button" class="btn" data-act="pickClear" disabled>Odstrani popravek</button><button type="button" class="btn" data-act="closeModal">Zapri</button></div>
+    <p class="hint" style="margin:0">Točka se shrani kot popravek naslova za vse prevoze z istim naslovom (od včeraj naprej) in na vseh napravah. Podatki zemljevida: © prispevajoči OpenStreetMap.</p></div>`;
+  MAP.mountAll(host);
+  const b = host.querySelector('.seg button[aria-pressed="true"]'); if (b) b.focus();
+}
 
 /* ---------- Tisk knjige prevozov za mesec ---------- */
 const kmPrint = r => { const i = KM.info(r); return i.total == null ? '' : (i.exact && i.backExact ? '' : '~') + KM.fmtKm(i.total); };

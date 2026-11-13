@@ -127,7 +127,7 @@ function addQuickRide(date, p){
 }
 
 /* ---------- Kopiranje in ponavljanje ---------- */
-const COPY_FIELDS = ['name', 'time', 'from', 'to', 'phone', 'mode', 'patientId', 'nalogId', 'note', 'stay', 'stayAuto', 'stayTouched', 'km', 'kmBack', 'kmSrc', 'kk', 'gf', 'gt', 'kmAt'];
+const COPY_FIELDS = ['name', 'time', 'from', 'to', 'phone', 'mode', 'patientId', 'nalogId', 'note', 'stay', 'stayAuto', 'stayTouched', 'km', 'kmBack', 'kmSrc', 'kk', 'gf', 'gt', 'gp', 'kmWarn', 'kmAt'];
 function cloneRideTo(r, date){
   const a = ensureDay(date);
   const dup = a.some(x => isFilled(x) && !x.odpovedano && norm(x.name) === norm(r.name) && (x.time || '') === (r.time || '') && norm(x.to) === norm(r.to) && norm(x.from) === norm(r.from));

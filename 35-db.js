@@ -145,6 +145,8 @@ function normalizeState(){
   if (S.settings.nnMaxKm == null) S.settings.nnMaxKm = 60;
   if (!S.settings.v3){ if (S.settings.window === 60) S.settings.window = 90; S.settings.v3 = 1; }   // dispečer v praksi združuje ure v ~90 min oknu
   S.settings.google = Object.assign({ on:true, auto:true, traffic:false }, S.settings.google || {});
+  S.settings.geocode = Object.assign({ on:true, auto:true }, S.settings.geocode || {});
+  S.geoFix = (S.geoFix && typeof S.geoFix === 'object') ? S.geoFix : {};
   S.places = Array.isArray(S.places) ? S.places : defaultState().places;
   if (S.settings.windowFar == null) S.settings.windowFar = 180;   // oddaljeni cilji: skupna vožnja kljub večjemu razponu ur (glej Nastavitve → Izračun)
   if (S.settings.farMin == null) S.settings.farMin = 40;
@@ -166,7 +168,8 @@ function migratePatient(p){
 }
 function cfgDoc(){
   return J({ v:2, settings:S.settings, rules:S.rules, vehicles:S.vehicles, staff:S.staff, notices:S.notices, addrBook:S.addrBook, places:S.places,
-    coordOv:Object.entries(S.coordOv || {}).map(([n, c]) => ({ n, lat:c[0], lon:c[1] })) });
+    coordOv:Object.entries(S.coordOv || {}).map(([n, c]) => ({ n, lat:c[0], lon:c[1] })),
+    geoFix:Object.entries(S.geoFix || {}).map(([k, c]) => ({ k, lat:c[0], lon:c[1], at:c[2] || '' })) });
 }
 function applyCfg(d){
   const def = defaultState();
@@ -174,6 +177,7 @@ function applyCfg(d){
   S.rules = mergeDefaults(d.rules || {}, def.rules);
   S.vehicles = d.vehicles || def.vehicles; S.staff = d.staff || []; S.notices = d.notices || []; S.addrBook = d.addrBook || []; S.places = d.places || def.places;
   S.coordOv = {}; (d.coordOv || []).forEach(o => { S.coordOv[o.n] = [o.lat, o.lon]; });
+  S.geoFix = {}; (d.geoFix || []).forEach(o => { if (o && o.k && isFinite(o.lat) && isFinite(o.lon)) S.geoFix[o.k] = [o.lat, o.lon, o.at || '']; });
   normalizeState();
 }
 function dayDoc(date){

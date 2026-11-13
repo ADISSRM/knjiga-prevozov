@@ -256,6 +256,12 @@ details.warnbox summary{cursor:pointer;font-weight:600}
 .imap-attr{position:absolute;left:0;bottom:0;z-index:4;font-size:10.5px;line-height:1.5;background:rgba(255,255,255,.82);color:#333;padding:0 6px;border-top-right-radius:6px}
 .imap-attr a{color:inherit}
 .imap.imap-tall .imap-vp{height:clamp(340px,64vh,580px)}
+.imap.picking .imap-vp{cursor:crosshair}
+.modal.modal-wide{width:min(860px,100%)}
+.modal .imap-vp{height:clamp(300px,50vh,460px)}
+.pickbar{display:flex;gap:8px 10px;flex-wrap:wrap;align-items:center}
+.pickst{font-size:13px;color:var(--ink-2);min-height:20px}
+.pickst.warn{color:var(--warn)}
 .imap.imap-full{position:fixed;inset:0;z-index:1000;border-radius:0;border:0}
 .imap.imap-full .imap-vp{height:100%}
 html.imap-lock,html.imap-lock body{overflow:hidden}
@@ -601,7 +607,8 @@ a.btn{text-decoration:none}
 .kmrow .kmin{width:88px;padding:5px 8px}
 .kmv{font-family:var(--font-mono)}
 .srcbadge{font-size:11.5px;font-weight:600;border-radius:6px;padding:2px 8px;background:var(--surface-3);color:var(--ink-2);white-space:nowrap}
-.srcbadge.src-google{background:var(--ok-soft);color:var(--ok)}
+.srcbadge.src-google,.srcbadge.src-osm{background:var(--ok-soft);color:var(--ok)}
+.kmwarn{flex:1 1 100%;font-size:12.5px;color:var(--warn);background:var(--warn-soft);border-radius:8px;padding:4px 8px}
 .srcbadge.src-rocno{background:var(--info-soft);color:var(--info)}
 .srcbadge.src-osrm,.srcbadge.src-ocena{background:var(--warn-soft);color:var(--warn)}
 .donerow{border-top:1px solid var(--line);padding-top:10px}
@@ -861,7 +868,8 @@ function defaultState(){
       pickLeze:10, dropLeze:8, pickUtila:8, dropUtila:6,   // čas nalaganja in odpuščanja pri leže in utila pacientu (min)
       stayDef:45, extraDef:5,                               // privzet čas pregleda, ko reševalec počaka; privzeta pot od vhoda do ambulante
       diaT:{ dop:{ start:'06:30', end:'10:30' }, pop:{ start:'11:30', end:'15:30' } },   // dializa: dopoldanska in popoldanska
-      google:{ on:true, auto:true, traffic:false }          // natančni km prek Google Maps (ključ v config.js ali v tej napravi)
+      google:{ on:true, auto:true, traffic:false },         // natančni km prek Google Maps (neobvezno; ključ v config.js ali v tej napravi)
+      geocode:{ on:true, auto:true }                        // brezplačno iskanje naslovov (ulica + hišna številka) v OpenStreetMap; km = točka naslova + cestna pot OSRM
     },
     /* Prilagodljiva pravila: "običajno" velja, "prilagoditev" se uporabi samo, ko je potrebna (ali ko dispečer tako izbere). */
     rules:{
@@ -1347,6 +1355,8 @@ function normalizeState(){
   if (S.settings.nnMaxKm == null) S.settings.nnMaxKm = 60;
   if (!S.settings.v3){ if (S.settings.window === 60) S.settings.window = 90; S.settings.v3 = 1; }   // dispečer v praksi združuje ure v ~90 min oknu
   S.settings.google = Object.assign({ on:true, auto:true, traffic:false }, S.settings.google || {});
+  S.settings.geocode = Object.assign({ on:true, auto:true }, S.settings.geocode || {});
+  S.geoFix = (S.geoFix && typeof S.geoFix === 'object') ? S.geoFix : {};
   S.places = Array.isArray(S.places) ? S.places : defaultState().places;
   if (S.settings.windowFar == null) S.settings.windowFar = 180;   // oddaljeni cilji: skupna vožnja kljub večjemu razponu ur (glej Nastavitve → Izračun)
   if (S.settings.farMin == null) S.settings.farMin = 40;
@@ -1368,7 +1378,8 @@ function migratePatient(p){
 }
 function cfgDoc(){
   return J({ v:2, settings:S.settings, rules:S.rules, vehicles:S.vehicles, staff:S.staff, notices:S.notices, addrBook:S.addrBook, places:S.places,
-    coordOv:Object.entries(S.coordOv || {}).map(([n, c]) => ({ n, lat:c[0], lon:c[1] })) });
+    coordOv:Object.entries(S.coordOv || {}).map(([n, c]) => ({ n, lat:c[0], lon:c[1] })),
+    geoFix:Object.entries(S.geoFix || {}).map(([k, c]) => ({ k, lat:c[0], lon:c[1], at:c[2] || '' })) });
 }
 function applyCfg(d){
   const def = defaultState();
@@ -1376,6 +1387,7 @@ function applyCfg(d){
   S.rules = mergeDefaults(d.rules || {}, def.rules);
   S.vehicles = d.vehicles || def.vehicles; S.staff = d.staff || []; S.notices = d.notices || []; S.addrBook = d.addrBook || []; S.places = d.places || def.places;
   S.coordOv = {}; (d.coordOv || []).forEach(o => { S.coordOv[o.n] = [o.lat, o.lon]; });
+  S.geoFix = {}; (d.geoFix || []).forEach(o => { if (o && o.k && isFinite(o.lat) && isFinite(o.lon)) S.geoFix[o.k] = [o.lat, o.lon, o.at || '']; });
   normalizeState();
 }
 function dayDoc(date){
@@ -1504,6 +1516,192 @@ function audit(action, detail = {}){
   DB.add('audit', e).catch(() => {});
 }
 const initials = n => String(n || '').trim().split(/\s+/).map(w => (w[0] || '').toUpperCase()).join('.').slice(0, 5);
+/* =====================================================================
+   NASLOVI → TOČKE (brezplačno): ulica in hišna številka iz OpenStreetMap (Nominatim)
+   Zakaj: kilometrina OD → DO je točna le, če je točka naslova pravi naslov in ne središče naselja. Za ustanove in klinike so koordinate
+   v aplikaciji že znane. Za hišne naslove (»Dobova 25«, »Cesta prvih borcev 18, Brežice«) se tukaj poišče točka, razdaljo po cesti pa
+   nato izračuna OSRM (38-routing.js, ROUTE.exact). Tako kilometrina ni več odvisna od Google Zemljevidov.
+
+   Kaj gre ven iz brskalnika: SAMO besedilo naslova (npr. »Dobova 25«), brez imena pacienta, telefona, naloga ali ure. Strežnik vidi še IP naslov
+   naprave in izvor strani (Referer), kot zahtevajo pravila javnega strežnika (operations.osmfoundation.org/policies/nominatim).
+   Pravila tega strežnika, ki jih aplikacija upošteva: največ 1 zahtevek na sekundo (vrsta, razmik 1,1 s), rezultati se ne iščejo znova
+   (pomnilnik seje, polje pacienta gc in ročni popravki S.geoFix), brez samodokončanja med tipkanjem (iskanje šele po potrditvi vnosa).
+   Natančnost vsake točke je zapisana (hisna | ulica | naselje | ustanova | rocno) in se pokaže ob kilometrini: ~ pomeni, da OSM za ta naslov
+   nima hišne številke. Takrat dispečer točko popravi na zemljevidu (shrani se v S.geoFix in velja za vse naprave).
+   Podatki: © prispevajoči k OpenStreetMap (ODbL). Lasten strežnik ali drug Nominatim-združljiv: config.js → geocode.url.
+   ===================================================================== */
+const GEOC = (() => {
+  const GC = (window.KP_CONFIG && window.KP_CONFIG.geocode) || {};
+  const DEF_URL = 'https://nominatim.openstreetmap.org';
+  const base = () => { const u = GC.url === undefined ? DEF_URL : String(GC.url || ''); return /^https:\/\//.test(u) ? u.replace(/\/+$/, '') : ''; };
+  const gs = () => (typeof S !== 'undefined' && S && S.settings && S.settings.geocode) || { on:true, auto:true };
+  const enabled = () => !!base() && gs().on !== false;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const mem = new Map();          // ključ naslova -> rezultat (samo ta seja)
+  const inflight = new Map();
+  const neg = new Map();           // naslovi, ki jih OSM ne pozna: 10 minut se ne iščejo znova
+  const wait = [];
+  let running = false, coolUntil = 0, lastCall = 0;
+  const R = { status:'idle', err:'', calls:0, errors:0, lastOk:0, minGap:1100, timeoutMs:12000, onUpdate:null, fetch:(u, o) => fetch(u, o) };
+
+  const PREC = { hisna:'hišna številka', ulica:'samo ulica', nejasno:'kraj ni potrjen', naselje:'središče naselja', ustanova:'ustanova', rocno:'točka na zemljevidu' };
+  const RANK = { rocno:0, ustanova:0, hisna:0, ulica:1, nejasno:1, naselje:2 };
+  const exactPrec = p => RANK[p] === 0;
+  const worst = (a, b) => (RANK[a] ?? 2) >= (RANK[b] ?? 2) ? a : b;
+  const key = t => norm(t).replace(/[,.;]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const dkm = (a, b, c, d) => { const r = x => x * Math.PI / 180, h = Math.sin(r(c - a) / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(r(d - b) / 2) ** 2; return 12742 * Math.asin(Math.sqrt(h)); };
+  function setStatus(st, err){ R.status = st; R.err = err || ''; if (R.onUpdate){ try { R.onUpdate('status'); } catch(e){} } }
+
+  /* ---------- Ročni popravki točk (S.geoFix: ključ -> [lat, lon, čas]) in točke pacientov (p.gc) ---------- */
+  const fixOf = k => { const f = (typeof S !== 'undefined' && S && S.geoFix) ? S.geoFix[k] : null; return f && isFinite(f[0]) && isFinite(f[1]) ? f : null; };
+  const patientHit = k => { const ps = (typeof S !== 'undefined' && S && S.patients) || []; for (const p of ps) if (p.gc && p.gc.k === k && p.addr && key(p.addr) === k && isFinite(p.gc.lat) && isFinite(p.gc.lon)) return p.gc; return null; };
+  function remember(k, res){
+    mem.set(k, res);
+    if (res.src !== 'osm') return;
+    let any = false;
+    for (const p of ((typeof S !== 'undefined' && S && S.patients) || [])) if (p.addr && key(p.addr) === k){ p.gc = { k, lat:+res.lat.toFixed(6), lon:+res.lon.toFixed(6), prec:res.prec, at:new Date().toISOString() }; any = true; }
+    if (any && typeof save === 'function') save();
+  }
+  function setFix(text, lat, lon){
+    const k = key(text); if (!k || !isFinite(lat) || !isFinite(lon)) return false;
+    S.geoFix = S.geoFix || {}; S.geoFix[k] = [+(+lat).toFixed(6), +(+lon).toFixed(6), new Date().toISOString()];
+    mem.delete(k); for (const p of S.patients || []) if (p.gc && p.gc.k === k) delete p.gc;
+    save(); return true;
+  }
+  function clearFix(text){ const k = key(text); if (S.geoFix && S.geoFix[k]){ delete S.geoFix[k]; mem.delete(k); save(); return true; } return false; }
+  const hasFix = text => !!fixOf(key(text));
+
+  /* ---------- Kaj je treba iskati ---------- */
+  const HR_TOWN = /(hrva|croat|zagreb|samobor|jastrebarsko|krapina)/i;
+  function analyse(text){
+    const t = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!t) return { mode:'empty', t };
+    let g = null; try { g = geo(t); } catch(e){ g = null; }
+    if (!g || g.kind === 'prazno') return { mode:'empty', t };
+    if (g.kind === 'poi') return { mode:'poi', t, g };
+    if (g.kind === 'addr') return { mode:'import', t, g };
+    const settl = g.kind === 'naselje' || g.kind === 'mesto';
+    if (/\d/.test(t)) return { mode:'search', t, g, cen:settl ? g : null };
+    return settl ? { mode:'settlement', t, g } : { mode:'unknown', t, g };
+  }
+  const isPoint = res => res && isFinite(res.lat) && isFinite(res.lon);
+
+  /* ---------- Nominatim ---------- */
+  function classify(x){
+    const a = x.address || {};
+    if (a.house_number || (+x.place_rank >= 28)) return 'hisna';
+    if (x.category === 'highway' || x.class === 'highway' || (+x.place_rank >= 26 && +x.place_rank <= 27)) return 'ulica';
+    return 'naselje';
+  }
+  async function http(path){
+    const b = base(); if (!b) throw Object.assign(new Error('Iskanje naslovov ni nastavljeno (config.js → geocode.url).'), { code:'off' });
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) throw Object.assign(new Error('Ni povezave z internetom.'), { code:'net' });
+    const gap = lastCall + R.minGap - Date.now(); if (gap > 0) await sleep(gap);
+    lastCall = Date.now(); R.calls++;
+    const ac = typeof AbortController !== 'undefined' ? new AbortController() : null, to = setTimeout(() => { if (ac) ac.abort(); }, R.timeoutMs);
+    let res;
+    try { res = await R.fetch(b + path, { method:'GET', mode:'cors', credentials:'omit', cache:'no-store', referrerPolicy:'strict-origin-when-cross-origin', signal:ac ? ac.signal : undefined }); }
+    catch(e){ clearTimeout(to); throw Object.assign(new Error(e && e.name === 'AbortError' ? 'Strežnik za naslove ne odgovarja (časovna omejitev).' : 'Brez povezave s strežnikom za naslove.'), { code:'net' }); }
+    clearTimeout(to);
+    if (res.status === 429){ coolUntil = Date.now() + 60000; throw Object.assign(new Error('Strežnik za naslove omejuje število zahtev (429). Počakam minuto.'), { code:'limit' }); }
+    if (res.status === 403 || res.status === 401){ coolUntil = Date.now() + 600000; throw Object.assign(new Error('Strežnik za naslove je zavrnil zahtevek (' + res.status + '): preveri, da stran teče na https in da ni blokiran Referer.'), { code:'blocked' }); }
+    if (res.status >= 500) throw Object.assign(new Error('Strežnik za naslove ima težavo (' + res.status + ').'), { code:'net' });
+    let j = null; try { j = await res.json(); } catch(e){ j = null; }
+    if (!Array.isArray(j)) throw Object.assign(new Error('Neveljaven odgovor strežnika za naslove.'), { code:'net' });
+    return j;
+  }
+  function searchPath(q, o = {}){
+    const p = ['format=jsonv2', 'addressdetails=1', 'limit=5', 'dedupe=1', 'accept-language=sl', 'countrycodes=' + (o.cc || 'si'), 'q=' + encodeURIComponent(q)];
+    if (o.box){ p.push('viewbox=' + o.box.map(x => x.toFixed(5)).join(','), 'bounded=1'); }
+    else if (o.bias){ p.push('viewbox=15.10000,46.15000,16.10000,45.70000'); }          // kraj ni naveden: raje zadetek v Posavju (ne omeji)
+    if (GC.email) p.push('email=' + encodeURIComponent(GC.email));
+    return '/search?' + p.join('&');
+  }
+  const queue = job => new Promise((res, rej) => { wait.push({ job, res, rej }); pump(); });
+  async function pump(){
+    if (running) return; running = true;
+    try {
+      while (wait.length){
+        const w = wait.shift();
+        try { w.res(await w.job()); } catch(e){ w.rej(e); }
+      }
+    } finally { running = false; }
+  }
+
+  /* Najdi točko za besedilo naslova. Vrne { lat, lon, prec, src, warn? } ali zavrne z napako (code: empty | off | net | limit | blocked | unknown). */
+  function resolve(text, o = {}){
+    const an = analyse(text), k = key(text);
+    if (an.mode === 'empty') return Promise.reject(Object.assign(new Error('Naslov je prazen.'), { code:'empty' }));
+    if (an.mode === 'poi'){ const p = an.g; return Promise.resolve({ lat:p.lat, lon:p.lon, prec:'ustanova', src:'poi' }); }
+    const fx = fixOf(k); if (fx) return Promise.resolve({ lat:fx[0], lon:fx[1], prec:'rocno', src:'rocno' });
+    if (an.mode === 'import') return Promise.resolve({ lat:an.g.lat, lon:an.g.lon, prec:'hisna', src:'uvoz' });
+    if (an.mode === 'unknown') return Promise.reject(Object.assign(new Error('Naslov ni prepoznan: dodaj kraj ali hišno številko.'), { code:'unknown' }));
+    if (an.mode === 'settlement') return Promise.resolve({ lat:an.g.lat, lon:an.g.lon, prec:'naselje', src:'naselje', warn:'brez hišne številke' });
+    if (!o.fresh){
+      if (mem.has(k)) return Promise.resolve(mem.get(k));
+      const pg = patientHit(k); if (pg) return Promise.resolve({ lat:pg.lat, lon:pg.lon, prec:pg.prec || 'hisna', src:'osm' });
+    }
+    if (!enabled()) return Promise.reject(Object.assign(new Error('Iskanje naslovov je izklopljeno (Nastavitve → Izračun).'), { code:'off' }));
+    if (Date.now() < coolUntil) return Promise.reject(Object.assign(new Error(R.err || 'Iskanje naslovov počiva (omejitev strežnika).'), { code:'limit' }));
+    if (inflight.has(k)) return inflight.get(k);
+    if ((neg.get(k) || 0) > Date.now() && !o.fresh) return Promise.reject(Object.assign(new Error('Naslova ni mogoče najti v OpenStreetMap: dodaj kraj ali popravi zapis.'), { code:'unknown' }));
+    const p = queue(() => lookup(an, k)).catch(e => { if (e.code === 'unknown') neg.set(k, Date.now() + 600000); else { R.errors++; setStatus('error', e.message); } throw e; }).finally(() => inflight.delete(k));
+    inflight.set(k, p); return p;
+  }
+  async function lookup(an, k){
+    const cen = an.cen, g = an.g, hr = HR_TOWN.test(an.t) || (g.kind === 'mesto' && HR_TOWN.test(g.label || ''));
+    let q = an.t;
+    const town = String((cen && cen.label) || '').split(' - ')[0];
+    if (cen && town && !norm(q).includes(norm(town))) q += ', ' + town;       // »Cankarjeva 5« brez kraja → naselje, ki ga je app prepoznala
+    const o = { cc:hr ? 'hr' : (cen ? 'si' : 'si,hr'), bias:!cen && !hr };
+    let list = [];
+    if (cen){ const dLon = cen.kind === 'mesto' ? 0.14 : 0.09, dLat = cen.kind === 'mesto' ? 0.1 : 0.065; list = await http(searchPath(q, { ...o, box:[cen.lon - dLon, cen.lat + dLat, cen.lon + dLon, cen.lat - dLat] })); }
+    if (!list.length) list = await http(searchPath(q, o));
+    const maxOff = cen ? (cen.kind === 'mesto' ? 16 : 9) : 1e9;
+    let hit = null;
+    for (const x of list){
+      const lat = +x.lat, lon = +x.lon; if (!isFinite(lat) || !isFinite(lon)) continue;
+      if (cen && dkm(lat, lon, cen.lat, cen.lon) > maxOff) continue;       // zadetek v drugem kraju (npr. isto ime ulice drugje): ne zaupaj
+      hit = { lat, lon, prec:classify(x), src:'osm', disp:String(x.display_name || '').slice(0, 160) }; break;
+    }
+    let res;
+    if (hit){
+      if (!cen && hit.prec !== 'naselje'){ hit.prec = 'nejasno'; hit.warn = 'kraj ni naveden ali prepoznan: preveri točko na zemljevidu'; }
+      else if (hit.prec === 'naselje') hit.warn = 'OSM nima ulice ali hišne številke';
+      else if (hit.prec === 'ulica') hit.warn = 'OSM nima te hišne številke (točka je na ulici)';
+      res = hit;
+    } else if (cen){
+      res = { lat:cen.lat, lon:cen.lon, prec:'naselje', src:'naselje', warn:'naslova ni v OSM: uporabljeno središče naselja' };
+    } else {
+      throw Object.assign(new Error('Naslova ni mogoče najti v OpenStreetMap: dodaj kraj ali popravi zapis.'), { code:'unknown' });
+    }
+    R.lastOk = Date.now(); setStatus('ok');
+    if (res.src === 'osm') remember(k, res); else mem.set(k, res);
+    return res;
+  }
+
+  /* Preizkus: poišče Zdravstveni dom Brežice in primerja z znano točko postaje (en zahtevek). */
+  async function test(){
+    const t0 = Date.now();
+    if (!base()) return { ok:false, msg:'Iskanje naslovov ni nastavljeno (config.js → geocode.url).' };
+    try {
+      const list = await queue(() => http(searchPath('Zdravstveni dom Brežice, Brežice', { cc:'si' })));
+      const x = list.find(y => isFinite(+y.lat) && isFinite(+y.lon) && dkm(+y.lat, +y.lon, BASE_POI.lat, BASE_POI.lon) < 3);
+      if (!x) return { ok:false, ms:Date.now() - t0, msg:'Strežnik je odgovoril, a Zdravstvenega doma Brežice ni našel v bližini postaje.' };
+      const d = Math.round(dkm(+x.lat, +x.lon, BASE_POI.lat, BASE_POI.lon) * 1000);
+      setStatus('ok'); R.lastOk = Date.now();
+      return { ok:true, ms:Date.now() - t0, d, prec:classify(x), msg:'Povezava deluje.' };
+    } catch(e){ setStatus('error', e.message); return { ok:false, ms:Date.now() - t0, msg:e.message, code:e.code }; }
+  }
+
+  const auto = () => enabled() && gs().auto !== false && Date.now() >= coolUntil;
+  function clear(){ mem.clear(); neg.clear(); inflight.clear(); coolUntil = 0; setStatus('idle'); }
+  /* Ob odjavi pozabi vse naslove iz pomnilnika (točke pacientov ostanejo samo v njihovem zapisu v bazi). */
+  function forget(){ clear(); wait.length = 0; }
+  const info = () => ({ configured:!!base(), on:enabled(), auto:auto(), status:R.status, err:R.err, calls:R.calls, errors:R.errors, cached:mem.size, queued:wait.length + (running ? 1 : 0), lastOk:R.lastOk, cooling:Math.max(0, coolUntil - Date.now()), host:(() => { try { return new URL(base()).host; } catch(e){ return ''; } })() });
+  Object.assign(R, { enabled, auto, resolve, analyse, classify, setFix, clearFix, hasFix, test, clear, forget, info, key, PREC, RANK, exactPrec, worst, searchPath, isPoint, dkm });
+  return R;
+})();
 /* =====================================================================
    CESTNO USMERJANJE: pravi cestni podatki iz OpenStreetMap (OSRM)
    Razdalja in trajanje vožnje po dejanskem cestnem omrežju (ne zračna črta). Planer (40-planner.js) bere podatke
@@ -1712,6 +1910,35 @@ const ROUTE = (() => {
   }
   const pathCached = points => { const pts = points.filter(routable).filter((p, i, a) => !i || key(p) !== key(a[i - 1])); return geoCache.get(pts.map(key).join('|')) || null; };
 
+  /* ---------- Natančna pot med dvema točkama (kilometrina prevoza OD → DO) ----------
+     Neposreden zahtevek /route za ta par točk (ne iz matrike naselij): točki sta lahko hišna naslova. Če sta obe splošni točki in je razdalja že
+     v predpomnilniku ali v razdalje.json, se ne kliče strežnik. Zahtevki gredo po vrsti (razmik R.gap), da javni strežnik ni preobremenjen.
+     Vrne { km, min, snap:[m, m] }; snap = razdalja od točke do najbližje ceste (velika vrednost pomeni, da točka ni ob cesti). */
+  const exactCache = new Map();
+  let exactChain = Promise.resolve();
+  function exact(a, b){
+    if (!enabled()) return Promise.reject(Object.assign(new Error('Cestni podatki so izklopljeni (Nastavitve → Planiranje).'), { code:'off' }));
+    if (!routable(a) || !routable(b)) return Promise.reject(Object.assign(new Error('Točka ni znana.'), { code:'point' }));
+    const ka = key(a), kb = key(b); if (ka === kb) return Promise.resolve({ km:0, min:0, snap:[0, 0] });
+    const ck = ka + '>' + kb; if (exactCache.has(ck)) return Promise.resolve(exactCache.get(ck));
+    const v = (a.kind !== 'addr' && b.kind !== 'addr' && !a.exact && !b.exact) ? lookup(a, b) : null;
+    if (v && v !== NONE) return Promise.resolve({ km:v.m / 1000, min:v.s / 60, snap:[0, 0] });
+    const job = async () => {
+      if (exactCache.has(ck)) return exactCache.get(ck);
+      const res = await http('/route/v1/driving/' + a.lon.toFixed(5) + ',' + a.lat.toFixed(5) + ';' + b.lon.toFixed(5) + ',' + b.lat.toFixed(5) + '?overview=false&alternatives=false&steps=false');
+      if (res.code === 'NoRoute' || (res.code === 'Ok' && !(res.routes && res.routes[0]))) throw Object.assign(new Error('Med naslovoma ni poti po cestah.'), { code:'noroute' });
+      if (res.code !== 'Ok' || !res.routes || !res.routes[0]) throw new Error('OSRM: ' + (res.code || 'neveljaven odgovor') + (res.message ? ' – ' + res.message : ''));
+      const r0 = res.routes[0], w = res.waypoints || [];
+      const out = { km:r0.distance / 1000, min:r0.duration / 60, snap:[(w[0] && w[0].distance) || 0, (w[1] && w[1].distance) || 0] };
+      exactCache.set(ck, out); if (exactCache.size > 400) exactCache.delete(exactCache.keys().next().value);
+      R.lastOk = Date.now(); setStatus('ok');
+      return out;
+    };
+    const run = exactChain.then(job);
+    exactChain = run.catch(() => {}).then(() => (R.gap ? sleep(R.gap) : null));
+    return run;
+  }
+
   /* ---------- Preizkus povezave: ZD Brežice → UKC Ljubljana ---------- */
   async function test(){
     const a = BASE_POI, b = POIS.find(p => p.n === 'UKC Ljubljana'), t0 = Date.now();
@@ -1729,17 +1956,17 @@ const ROUTE = (() => {
     return out;
   }
 
-  function clear(){ cache.clear(); gen.clear(); pending.clear(); snapFar.clear(); geoCache.clear(); coolUntil = 0; backoff = 0; store.del('kp.route.v1'); R.version++; if (typeof PLAN_CACHE !== 'undefined') PLAN_CACHE.clear(); notify('data'); }
+  function clear(){ cache.clear(); gen.clear(); pending.clear(); snapFar.clear(); geoCache.clear(); exactCache.clear(); coolUntil = 0; backoff = 0; store.del('kp.route.v1'); R.version++; if (typeof PLAN_CACHE !== 'undefined') PLAN_CACHE.clear(); notify('data'); }
   /* Ob odjavi: pozabi vse, kar ni splošna točka (npr. hišni naslovi pacientov), in geometrije poti. Splošne točke ostanejo v predpomnilniku. */
   function forget(){
     for (const k of [...cache.keys()]){ const [a, b] = k.split('>'); if (!gen.has(a) || !gen.has(b)) cache.delete(k); }
     for (const k of [...snapFar.keys()]) if (!gen.has(k)) snapFar.delete(k);
     for (const [k, v] of [...pending]) if (!v.gen) pending.delete(k);
-    geoCache.clear(); R.version++; if (typeof PLAN_CACHE !== 'undefined') PLAN_CACHE.clear();
+    geoCache.clear(); exactCache.clear(); R.version++; if (typeof PLAN_CACHE !== 'undefined') PLAN_CACHE.clear();
   }
   const info = () => ({ on:enabled(), configured:urls().length > 0, urls:urls(), status:R.status, err:R.err, url:R.url, cached:cache.size, shared:shared ? shared.n : 0, sharedBuilt:shared ? shared.built : '', pending:pending.size, busy, cooling:Math.max(0, coolUntil - Date.now()) });
 
-  Object.assign(R, { enabled, routable, key, leg, lookup, init, settle, flush, warm, warmPoints, exportShared, setShared, path, pathCached, test, clear, forget, info, snapFar:p => snapFar.get(key(p)) || 0, fetchMatrix, persist, retry:() => { coolUntil = 0; backoff = 0; if (pending.size) flush(); } });
+  Object.assign(R, { enabled, routable, key, leg, lookup, exact, init, settle, flush, warm, warmPoints, exportShared, setShared, path, pathCached, test, clear, forget, info, snapFar:p => snapFar.get(key(p)) || 0, fetchMatrix, persist, retry:() => { coolUntil = 0; backoff = 0; if (pending.size) flush(); } });
   return R;
 })();
 /* =====================================================================
@@ -1895,9 +2122,12 @@ const GOOGLE = (() => {
 })();
 
 /* =====================================================================
-   KILOMETRINA PREVOZA (vpis v knjigi): km OD → DO, vir, zastarelost, samodejni izračun
-   Polja prevoza: km (OD → DO), kmBack (DO → OD, samo ko reševalec počaka na pregled), kmSrc ('google' | 'rocno'), kk (besedilo OD>DO ob izračunu),
-   gf / gt (koordinate OD in DO po Googlu), kmAt (čas izračuna).
+   KILOMETRINA PREVOZA (vpis v knjigi): km OD → DO, vir, natančnost, zastarelost, samodejni izračun
+   Dva načina računanja (KM.engine()):
+   - 'osm' (BREZPLAČNO, privzeto): točka naslova iz OpenStreetMap (37-geocode.js: ulica + hišna številka) in cestna razdalja OSRM (38-routing.js)
+   - 'google' (neobvezno, ko je vnesen ključ): Google Routes API, kot v Google Zemljevidih
+   Polja prevoza: km (OD → DO), kmBack (DO → OD, samo ko reševalec počaka na pregled), kmSrc ('osm' | 'google' | 'rocno'), kk (besedilo OD>DO ob izračunu),
+   gf / gt (koordinate OD in DO), gp (natančnost točk [OD, DO]: hisna | ulica | nejasno | naselje | ustanova | rocno), kmAt (čas izračuna).
    ===================================================================== */
 const KM = (() => {
   const timers = new Map();
@@ -1906,46 +2136,80 @@ const KM = (() => {
   const fresh = r => r.km != null && (r.kmSrc === 'rocno' || r.kk === rideKk(r));
   const needBack = r => +r.stay > 0 && r.kmBack == null && r.kmSrc !== 'rocno';          // čakanje je bilo vklopljeno po izračunu: manjka pot nazaj
   const done = r => fresh(r) && (r.kmSrc === 'rocno' || (r.gf && r.gt)) && !needBack(r);
-  const SRC = { google:'Google', rocno:'ročno', osrm:'ceste OSM', ocena:'ocena' };
+  const SRC = { osm:'naslov + ceste OSM', google:'Google', rocno:'ročno', osrm:'ceste OSM', ocena:'ocena' };
+  /* Način računanja: Google, če je vnesen ključ; sicer brezplačno OSM (iskanje naslova + OSRM). */
+  const engine = () => GOOGLE.enabled() ? 'google' : ((GEOC.enabled() && ROUTE.enabled()) ? 'osm' : '');
+  const can = () => engine() !== '';
+  const autoOn = () => { const e = engine(); return e === 'google' ? GOOGLE.auto() : e === 'osm' ? GEOC.auto() : false; };
+  const queued = () => GOOGLE.info().queued + GEOC.info().queued;
+  const precOf = r => (r.kmSrc === 'osm' && Array.isArray(r.gp)) ? r.gp : null;
+  const precExact = r => { const p = precOf(r); return !p || p.every(x => GEOC.exactPrec(x)); };
   /* Km prevoza za prikaz: shranjeno (Google ali ročno) ali sproti iz cestnih podatkov (OSM) oziroma ocena. */
   function info(r){
     const stay = +r.stay > 0;
     if (r.from && r.to && fresh(r)){
       const back = stay ? (r.kmBack != null ? r.kmBack : r.km) : 0;
-      return { km:r.km, back, total:r.km + back, src:r.kmSrc || 'google', exact:true, backExact:!stay || r.kmBack != null };
+      const ex = precExact(r);
+      return { km:r.km, back, total:r.km + back, src:r.kmSrc || 'google', exact:ex, backExact:ex && (!stay || r.kmBack != null), prec:precOf(r) };
     }
     if (!(r.from || '').trim() || !(r.to || '').trim()) return { km:null, back:0, total:null, src:'', exact:false };
     const L = makeLeg(S.settings), l = L(ridePt(r, 'from'), ridePt(r, 'to')), src = l.real ? 'osrm' : 'ocena';
     return { km:l.km, back:stay ? l.km : 0, total:l.km * (stay ? 2 : 1), src, exact:false, backExact:false };
   }
-  /* Izračun z Googlom za en prevoz (OD → DO in, če počaka, DO → OD). Rezultat se zavrže, če se je besedilo medtem spremenilo. */
+  /* Izračun kilometrine za en prevoz (OD → DO in, če počaka, DO → OD): brezplačno z OSM ali z Googlom, če je ključ. Rezultat se zavrže, če se je besedilo medtem spremenilo. */
   async function ensure(date, id, o = {}){
     const hit = rideById(date, id); if (!hit) return null;
     const r0 = hit.r; if (!isFilled(r0) || r0.odpovedano || !(r0.from || '').trim() || !(r0.to || '').trim()) return null;
-    if (!GOOGLE.enabled()) return null;
+    const eng = engine(); if (!eng) return null;
     if (!o.force && done(r0)) return null;
     const kk0 = rideKk(r0), departIso = r0.time ? new Date(`${date}T${r0.time}:00`).toISOString() : '';
-    let a, b = null;
+    let a, b = null, fa = null, ta = null;
     try {
-      a = await GOOGLE.ride(r0.from, r0.to, { fresh:!!o.force, departIso });
-      if (+r0.stay > 0) b = await GOOGLE.ride(r0.to, r0.from, { fresh:!!o.force, departIso });
+      if (eng === 'google'){
+        a = await GOOGLE.ride(r0.from, r0.to, { fresh:!!o.force, departIso });
+        if (+r0.stay > 0) b = await GOOGLE.ride(r0.to, r0.from, { fresh:!!o.force, departIso });
+      } else {
+        fa = await GEOC.resolve(r0.from, { fresh:!!o.force }); ta = await GEOC.resolve(r0.to, { fresh:!!o.force });
+        a = await ROUTE.exact(fa, ta);
+        if (+r0.stay > 0) b = await ROUTE.exact(ta, fa);
+      }
     } catch(e){ if (o.silent !== false && e.code !== 'off') note(id, e.message); return null; }
     const cur = rideById(date, id); if (!cur) return null;
     const r = cur.r; if (rideKk(r) !== kk0) return null;   // naslov se je medtem spremenil
-    r.km = r1(a.km); r.kmBack = b ? r1(b.km) : null; r.kmSrc = 'google'; r.kk = kk0; r.gf = a.f; r.gt = a.t; r.kmAt = a.at;
+    if (r.kmSrc === 'rocno' && !o.force) return null;      // dispečer je med izračunom vpisal km ročno: ročni vnos ima prednost
+    if (eng === 'google'){ r.km = r1(a.km); r.kmBack = b ? r1(b.km) : null; r.kmSrc = 'google'; r.gf = a.f; r.gt = a.t; r.gp = null; r.kmWarn = ''; r.kmAt = a.at; }
+    else {
+      r.km = r1(a.km); r.kmBack = b ? r1(b.km) : null; r.kmSrc = 'osm'; r.gf = [fa.lat, fa.lon]; r.gt = [ta.lat, ta.lon]; r.gp = [fa.prec, ta.prec]; r.kmAt = new Date().toISOString();
+      r.kmWarn = [fa.warn && 'OD: ' + fa.warn, ta.warn && 'DO: ' + ta.warn].filter(Boolean).join(' · ');
+      if (Math.max(...a.snap) > 400) r.kmWarn = (r.kmWarn ? r.kmWarn + ' · ' : '') + 'točka je več kot 400 m od ceste';
+    }
+    r.kk = kk0;
     save(); if (KM.onUpdate) KM.onUpdate(date, id);
     return r;
   }
   const noted = new Map();
   function note(id, msg){ const t = Date.now(); if (noted.get('m') === msg && t - (noted.get('t') || 0) < 60000) return; noted.set('m', msg); noted.set('t', t); if (typeof toast === 'function') toast('Kilometrina: ' + msg); }
   function schedule(date, id){
-    if (!GOOGLE.auto()) return;
+    if (!autoOn()) return;
     const k = date + '|' + id; clearTimeout(timers.get(k));
-    timers.set(k, setTimeout(() => { timers.delete(k); ensure(date, id); }, 900));
+    timers.set(k, setTimeout(() => { timers.delete(k); ensure(date, id); }, engine() === 'osm' ? 1500 : 900));   // OSM: iskanje šele, ko vnos mirujejo (pravilo Nominatim: brez samodokončanja)
+  }
+  /* Dispečer je na zemljevidu popravil točko naslova: vsi prevozi od včeraj naprej s tem naslovom se izračunajo znova (pretekli ostanejo, kot so bili zapisani). */
+  function refix(text, from = addDays(todayStr(), -1)){
+    const k = GEOC.key(text); let n = 0;
+    Object.keys(S.rides || {}).forEach(date => {
+      if (date < from) return;
+      (S.rides[date] || []).forEach(r => {
+        if (!isFilled(r) || r.odpovedano || r.kmSrc === 'rocno') return;
+        if (GEOC.key(r.from || '') === k || GEOC.key(r.to || '') === k){ r.kk = ''; n++; schedule(date, r.id); }
+      });
+    });
+    if (n) save();
+    return n;
   }
   /* Vsi prevozi dneva brez svežega km (samodejno ob odprtju dneva ali na gumb) */
   function day(date, o = {}){
-    const todo = filledRides(date).filter(({ r }) => !r.odpovedano && (o.force || !done(r))).map(({ r }) => r.id);
+    const todo = filledRides(date).filter(({ r }) => !r.odpovedano && r.kmSrc !== 'rocno' && (o.force || !done(r))).map(({ r }) => r.id);   // ročni vnos km se pri množičnem preračunu ne prepiše
     return Promise.all(todo.map(id => ensure(date, id, { force:!!o.force, silent:false }))).then(() => todo.length);
   }
   function setManual(date, id, val){
@@ -1982,7 +2246,7 @@ const KM = (() => {
     lines.push(['', '', '', ...(withNames ? [''] : []), '', '', 'SKUPAJ', '', '', fmtKm(rep.total), '', ''].join(';'));
     return '﻿' + lines.join('\r\n');
   }
-  return { onUpdate:null, fresh, info, ensure, schedule, day, setManual, month, csv, fmtKm, SRC, r1 };
+  return { onUpdate:null, fresh, info, ensure, schedule, refix, day, setManual, month, csv, fmtKm, SRC, r1, engine, can, auto:autoOn, queued };
 })();
 /* =====================================================================
    RAZPORED: dnevne knjige, dializa, parjenje voznikov in vozil, združevanje in vrstni red prevozov
@@ -1994,7 +2258,7 @@ const KM = (() => {
 const PLAN_CACHE = new Map();
 
 /* ---------- Knjiga: polja ---------- */
-const blankRide = () => ({ id:uid(), name:'', time:'', from:'', to:'', phone:'', mode:'sede', dia:'', diaKey:'', stay:0, km:null, kmBack:null, kmSrc:'', kk:'', gf:null, gt:null, kmAt:'', done:false, doneBy:'', doneAt:'', pin:'', demo:false,
+const blankRide = () => ({ id:uid(), name:'', time:'', from:'', to:'', phone:'', mode:'sede', dia:'', diaKey:'', stay:0, km:null, kmBack:null, kmSrc:'', kk:'', gf:null, gt:null, gp:null, kmWarn:'', kmAt:'', done:false, doneBy:'', doneAt:'', pin:'', demo:false,
   patientId:'', nalogId:'', note:'', exc:false, odpovedano:false, prevStatus:'', status:'nova', times:{}, statusBy:'', runKey:'' });
 const isFilled = r => !!((r.name||'').trim() || (r.from||'').trim() || (r.to||'').trim());
 function ensureDay(date){
@@ -3097,22 +3361,30 @@ const demoBanner = () => hasDemo() ? `<div class="banner"><span>${IC.info}</span
 const hasDemo = () => Object.values(S.rides).some(a => a.some(r => r.demo)) || S.staff.some(s => s.demo) || S.patients.some(p => p.demo);
 
 /* ---------- Kilometrina: oznaka in polje ---------- */
-const KM_SRC_L = { google:'Google Zemljevidi', rocno:'ročni vnos', osrm:'ocena po cestah (OSM)', ocena:'ocena po zračni razdalji' };
+const KM_SRC_L = { osm:'naslov + ceste OSM', google:'Google Zemljevidi', rocno:'ročni vnos', osrm:'ocena po cestah (OSM)', ocena:'ocena po zračni razdalji' };
 function kmChipHTML(r){
   if (!isFilled(r) || r.odpovedano) return '<span class="kmchip" data-role="kmchip" hidden></span>';
   const i = KM.info(r); if (i.total == null) return '<span class="kmchip" data-role="kmchip" hidden></span>';
   const ex = i.exact && i.backExact, tip = `${KM_SRC_L[i.src] || ''}: ${KM.fmtKm(i.km)} km` + (i.back ? ` + nazaj ${KM.fmtKm(i.back)} km` : '');
   return `<span class="kmchip src-${i.src} ${ex ? 'ex' : 'est'}" data-role="kmchip" title="${esc(tip)}">${ex ? '' : '~'}${KM.fmtKm(i.total)} km</span>`;
 }
+/* Opozorilo o natančnosti: kateri konec poti nima hišne številke (OSM) – takrat je km približen */
+function precNoteHTML(r){
+  const p = (r.kmSrc === 'osm' && Array.isArray(r.gp)) ? r.gp : null; if (!p) return '';
+  const bad = [['OD', p[0]], ['DO', p[1]]].filter(([, x]) => !GEOC.exactPrec(x));
+  if (!bad.length) return '';
+  return `<span class="kmwarn" role="note">${bad.map(([l, x]) => l + ': ' + esc(GEOC.PREC[x] || x)).join(', ')} – kilometrina je približna. Vpiši hišno številko ali potrdi točko na zemljevidu.</span>`;
+}
 function kmBoxHTML(r){
   if (!(r.from || '').trim() || !(r.to || '').trim()) return '<span class="hint">Vpiši OD in DO: kilometrina se izračuna sama.</span>';
-  const i = KM.info(r), gi = GOOGLE.info(), tilde = x => x ? '' : '~';
+  const i = KM.info(r), tilde = x => x ? '' : '~', eng = KM.engine();
   const parts = [`<b class="kmv">${tilde(i.exact)}${KM.fmtKm(i.km)} km</b>`];
   if (i.back) parts.push(`nazaj ${tilde(i.backExact)}${KM.fmtKm(i.back)} km`, `skupaj <b>${tilde(i.exact && i.backExact)}${KM.fmtKm(i.total)} km</b>`);
-  const can = GOOGLE.enabled();
+  const pick = eng === 'osm' ? `<button type="button" class="btn sm" data-act="pickPt" title="Poglej točki OD in DO na zemljevidu ali ju popravi">Točka na zemljevidu</button>` : '';
   return `<span class="srcbadge src-${i.src}">${KM_SRC_L[i.src] || ''}</span><span class="kmtxt">${parts.join(' · ')}</span>
     <input type="text" inputmode="decimal" class="kmin" data-km="manual" placeholder="ročno" aria-label="Ročni vnos kilometrov OD → DO" value="${r.kmSrc === 'rocno' && r.km != null ? KM.fmtKm(r.km) : ''}">
-    ${can ? '<button type="button" class="btn sm" data-act="kmRecalc">Izračunaj z Googlom</button>' : `<span class="hint">${gi.configured ? 'Google je izklopljen.' : 'Natančen izračun: vnesi ključ Google (Nastavitve → Izračun).'}</span>`}`;
+    ${eng ? `<button type="button" class="btn sm" data-act="kmRecalc">Izračunaj znova</button>${pick}` : '<span class="hint">Izračun kilometrine je izklopljen: vklopi iskanje naslovov in dejanske ceste (Nastavitve → Izračun).</span>'}
+    ${precNoteHTML(r)}`;
 }
 
 /* ---------- Mesečna knjiga ---------- */
@@ -3122,11 +3394,11 @@ function kmReportHTML(y, m){
   const dayRows = rep.days.map(d => `<tr><td>${fmtShort(d.date)}</td><td class="num">${d.n}</td><td class="num">${KM.fmtKm(d.km)} km</td></tr>`).join('');
   return `<section class="card card-pad stack kmrep" id="kmReport">
     <div class="card-head" style="margin:0"><h3>Kilometrina · ${MONTHS[m]} ${y}</h3>
-      <div class="row" style="gap:6px"><button type="button" class="btn sm" data-act="kmMonth" ${GOOGLE.enabled() ? '' : 'disabled title="Najprej vnesi ključ Google (Nastavitve → Izračun)"'}>Izračunaj manjkajoče z Googlom</button><button type="button" class="btn sm" data-act="kmCsv" data-names="0">Prenesi CSV</button><button type="button" class="btn sm" data-act="kmCsv" data-names="1">CSV z imeni pacientov</button></div></div>
-    <div class="sumline"><span><b class="mono">${KM.fmtKm(rep.total)}</b> km skupaj</span><span><b class="mono">${share} %</b> natančno (Google ali ročno)</span><span><b class="mono">${rep.missing}</b> prevozov brez km</span></div>
+      <div class="row" style="gap:6px"><button type="button" class="btn sm" data-act="kmMonth" ${KM.can() ? '' : 'disabled title="Izračun kilometrine je izklopljen: vklopi iskanje naslovov in dejanske ceste (Nastavitve → Izračun)"'}>Izračunaj manjkajoče</button><button type="button" class="btn sm" data-act="kmCsv" data-names="0">Prenesi CSV</button><button type="button" class="btn sm" data-act="kmCsv" data-names="1">CSV z imeni pacientov</button></div></div>
+    <div class="sumline"><span><b class="mono">${KM.fmtKm(rep.total)}</b> km skupaj</span><span><b class="mono">${share} %</b> natančno (točen naslov, Google ali ročno)</span><span><b class="mono">${rep.missing}</b> prevozov brez km</span></div>
     ${rep.rows.length ? `<div class="two"><div class="tablewrap"><table><thead><tr><th>Dan</th><th class="num">Prevozov</th><th class="num">Km</th></tr></thead><tbody>${dayRows}</tbody></table></div>
       <div class="tablewrap"><table><thead><tr><th>Vozilo</th><th class="num">Km</th></tr></thead><tbody>${vehRows || '<tr><td colspan="2" class="muted">Vozila se pokažejo po razporeditvi.</td></tr>'}</tbody></table></div></div>` : '<div class="empty-state">V tem mesecu še ni prevozov.</div>'}
-    <p class="hint" style="margin:0">Kilometrina prevoza = razdalja OD → DO po najboljši poti (Google Zemljevidi, osebni avto). Pri čakanju na pregled je prišteta tudi pot nazaj. Vožnja reševalca do pacienta in nazaj na postajo ni všteta. Oznaka ~ pomeni oceno (brez Googla).</p></section>`;
+    <p class="hint" style="margin:0">Kilometrina prevoza = razdalja OD → DO po cestah (točka naslova iz OpenStreetMap ali Google, cestna pot OSRM ali Google, osebni avto). Pri čakanju na pregled je prišteta tudi pot nazaj. Vožnja reševalca do pacienta in nazaj na postajo ni všteta. Oznaka ~ pomeni, da naslov nima hišne številke v OSM ali da je to ocena: tak vpis potrdi na zemljevidu ali vpiši km ročno.</p></section>`;
 }
 function renderMonth(){
   const { y, m } = UI.month, n = daysInMonth(y, m), today = todayStr();
@@ -3285,10 +3557,10 @@ function renderDay(){
           ${terms.length ? `<button type="button" class="btn sm" data-act="loadDia">${IC.kidney.replace('<svg', '<svg width="14" height="14"')} Naloži dializne paciente</button>` : ''}
           <button type="button" class="btn sm" data-act="copyOpen">Kopiraj prevoze z drugega dne …</button>
           <button type="button" class="btn sm" data-act="printDay">Natisni knjigo dneva (OBR REŠ 08)</button>
-          <button type="button" class="btn sm" data-act="kmDay" ${GOOGLE.enabled() ? '' : 'disabled title="Najprej vnesi ključ Google (Nastavitve → Izračun)"'}>Preračunaj kilometrino z Googlom</button></div></details>
+          <button type="button" class="btn sm" data-act="kmDay" ${KM.can() ? '' : 'disabled title="Izračun kilometrine je izklopljen: vklopi iskanje naslovov in dejanske ceste (Nastavitve → Izračun)"'}>Preračunaj kilometrino dneva</button></div></details>
       </div>
     </div>
-    <div class="sumline" id="daySum"><span><b class="mono">${filled}</b> ${filled === 1 ? 'prevoz' : 'prevozov'}</span><span><b class="mono">${done}</b> opravljenih</span>${ks.any ? `<span title="${ks.all ? 'Vse razdalje so natančne (Google ali ročno)' : 'Del razdalj je ocena (~)'}"><b class="mono">${ks.all ? '' : '~'}${KM.fmtKm(ks.t)}</b> km</span>` : ''}${terms.map(t => `<span class="chip">${IC.kidney.replace('<svg', '<svg width="12" height="12"')} dializa ${t === 'dop' ? 'dopoldne' : 'popoldne'}</span>`).join('')}${warns.length ? `<details class="warnbox inline"><summary>${warns.length} opozoril</summary><ul class="warnlist">${warns.slice(0, 40).map(w => `<li>${esc(w.text)}</li>`).join('')}</ul></details>` : ''}</div>
+    <div class="sumline" id="daySum"><span><b class="mono">${filled}</b> ${filled === 1 ? 'prevoz' : 'prevozov'}</span><span><b class="mono">${done}</b> opravljenih</span>${ks.any ? `<span title="${ks.all ? 'Vse razdalje so natančne (točen naslov, Google ali ročno)' : 'Del razdalj je ocena (~)'}"><b class="mono">${ks.all ? '' : '~'}${KM.fmtKm(ks.t)}</b> km</span>` : ''}${terms.map(t => `<span class="chip">${IC.kidney.replace('<svg', '<svg width="12" height="12"')} dializa ${t === 'dop' ? 'dopoldne' : 'popoldne'}</span>`).join('')}${warns.length ? `<details class="warnbox inline"><summary>${warns.length} opozoril</summary><ul class="warnlist">${warns.slice(0, 40).map(w => `<li>${esc(w.text)}</li>`).join('')}</ul></details>` : ''}</div>
     ${blocked.length ? `<div class="banner bad"><span>${IC.alert}</span><div>${blocked.map(v => `<b>${esc(v.name)}</b>: ${esc(vehBlocked(date, v.id).tip)}${vehBlocked(date, v.id).note ? ' (' + esc(vehBlocked(date, v.id).note) + ')' : ''}`).join(' · ')}. Vozilo ni v razporedu.</div></div>` : ''}
     ${S.dayNote[date] ? `<div class="banner warn"><span>${IC.info}</span><div><b>Opomba dneva:</b> ${esc(S.dayNote[date])}</div></div>` : ''}
     ${quickFormHTML(date)}${UI.copy ? copyPanelHTML(date) : ''}
@@ -3316,7 +3588,7 @@ function updateDayCounts(){
   if (spans[0]) spans[0].innerHTML = `<b class="mono">${f}</b> ${f === 1 ? 'prevoz' : 'prevozov'}`;
   if (spans[1]) spans[1].innerHTML = `<b class="mono">${d}</b> opravljenih`;
   let kmEl = spans[2];
-  if (ks.any){ if (!kmEl){ kmEl = document.createElement('span'); spans[1].after(kmEl); } kmEl.title = ks.all ? 'Vse razdalje so natančne (Google ali ročno)' : 'Del razdalj je ocena (~)'; kmEl.innerHTML = `<b class="mono">${ks.all ? '' : '~'}${KM.fmtKm(ks.t)}</b> km`; }
+  if (ks.any){ if (!kmEl){ kmEl = document.createElement('span'); spans[1].after(kmEl); } kmEl.title = ks.all ? 'Vse razdalje so natančne (točen naslov, Google ali ročno)' : 'Del razdalj je ocena (~)'; kmEl.innerHTML = `<b class="mono">${ks.all ? '' : '~'}${KM.fmtKm(ks.t)}</b> km`; }
   else if (kmEl) kmEl.remove();
 }
 /* Lahka osvežitev vrstice med tipkanjem (ne zamenja polj, da fokus ostane) */
@@ -3354,7 +3626,7 @@ function refreshBox(el){
 }
 /* Samodejni izračun kilometrine za današnji in bližnje dneve (enkrat na sejo in dan; pozneje ob spremembi naslova) */
 function kmAuto(date){
-  if (!GOOGLE.auto() || UI.kmTried[date]) return;
+  if (!KM.auto() || UI.kmTried[date]) return;
   const t = todayStr(); if (date < addDays(t, -1) || date > addDays(t, 14)) return;
   UI.kmTried[date] = 1; KM.day(date).catch(() => {});
 }
@@ -3675,6 +3947,26 @@ function routingCard(){
     ${test}
     <p class="hint" style="margin:0">Predpomnilnik: ${ri.cached} relacij${ri.shared ? ', iz razdalje.json: ' + ri.shared + (ri.sharedBuilt ? ' (' + esc(String(ri.sharedBuilt).slice(0, 10)) + ')' : '') : ''}${ri.pending ? ', čaka na prenos: ' + ri.pending : ''}${host ? ' · strežnik: ' + esc(host) : ''}. V predpomnilnik gredo samo splošne točke (naselja, ustanove, mesta), nikoli hišni naslovi pacientov. Točnost: naselja so predstavljena s središčno točko, promet v živo ni upoštevan.</p></div>`;
 }
+/* ---------- Nastavitve: brezplačna natančna kilometrina (naslov → točka → cesta) ---------- */
+function geocodeCard(){
+  const gi = GEOC.info(), G = S.settings.geocode || {}, t = UI.geoTest, eng = KM.engine();
+  const tone = !gi.configured || !gi.on ? 'warn' : gi.status === 'error' ? 'bad' : gi.status === 'ok' ? 'ok' : 'info';
+  const txt = !gi.configured ? 'ni nastavljeno' : !gi.on ? 'izklopljeno' : gi.status === 'error' ? 'napaka' : gi.status === 'ok' ? 'deluje' : 'pripravljeno';
+  const test = t ? (t.running ? '<span class="chip info">Preverjam …</span>' : `<div class="banner" style="${t.ok ? '' : 'background:var(--warn-soft);color:var(--warn)'}"><span>${IC.info}</span><div><b>${t.ok ? 'Iskanje naslovov deluje' : 'Preizkus ni uspel'}</b>${t.ok ? ` · Zdravstveni dom Brežice najden ${t.d} m od znane točke postaje (${t.ms} ms)` : ''}<br>${esc(t.msg || '')}</div></div>`) : '';
+  const chk = (path, on, label) => `<label class="row" style="gap:8px;flex-wrap:nowrap"><input type="checkbox" data-path="${path}" data-bool="1" ${on ? 'checked' : ''}> ${label}</label>`;
+  const nfix = Object.keys(S.geoFix || {}).length;
+  const mode = eng === 'osm' ? '<span class="chip ok">kilometrina se računa brezplačno (OpenStreetMap)</span>' : eng === 'google' ? '<span class="chip warn">trenutno velja Google (ključ je vnesen); za brezplačni način ga odstrani ali izklopi spodaj</span>' : '<span class="chip warn">izračun kilometrine je izklopljen</span>';
+  return `<div class="card card-pad stack" style="gap:12px"><div class="card-head" style="margin:0"><h3>Natančna kilometrina: naslovi OD → DO (brezplačno)</h3><span class="chip ${tone}">${txt}</span></div>
+    <div class="banner"><span>${IC.info}</span><div>Ko vpišeš naslov z ulico in hišno številko (npr. »Cesta prvih borcev 18, Brežice« ali »Dobova 25«), aplikacija najde točko naslova v OpenStreetMap in izračuna <b>cestno razdaljo OD → DO</b>. Google Zemljevidov ni treba odpirati. Pri vsakem vpisu je viden vir in natančnost: <b>~</b> pomeni, da OSM za ta naslov nima hišne številke. Takrat točko potrdi ali popravi na zemljevidu (gumb »Točka na zemljevidu« pri prevozu). Strežnik dobi <b>samo besedilo naslova</b>, brez imena, telefona in naloga.</div></div>
+    <div>${mode}</div>
+    <div class="stack" style="gap:8px">
+      ${chk('settings.geocode.on', G.on !== false, 'Išči točke naslovov v OpenStreetMap')}
+      ${chk('settings.geocode.auto', G.auto !== false, 'Izračunaj samodejno, ko vpišem OD in DO (in ob odprtju dneva od včeraj do 14 dni naprej)')}</div>
+    <div class="row"><button type="button" class="btn sm" data-act="geoTest" ${gi.configured ? '' : 'disabled'}>Preveri iskanje naslovov</button><span class="hint">Poskusno iskanje: Zdravstveni dom Brežice (en zahtevek).</span></div>
+    ${test}
+    <p class="hint" style="margin:0">V tej seji: ${gi.calls} zahtevkov${gi.errors ? ', ' + gi.errors + ' napak' : ''}, ${gi.cached} naslovov v pomnilniku${gi.queued ? ', v čakalni vrsti ' + gi.queued : ''}${gi.host ? ' · strežnik: ' + esc(gi.host) : ''}. Ročno popravljenih točk: ${nfix}.</p>
+    <details class="hintdet"><summary>Zasebnost, omejitve in kako deluje</summary><p class="hint" style="margin:6px 0 0">Javni strežnik Nominatim (OpenStreetMap) je brezplačen, vendar velja pravilo največ 1 zahtevek na sekundo, brez množičnega iskanja in brez samodokončanja med tipkanjem: aplikacija išče šele, ko vnos potrdiš, zahtevke postavi v vrsto in vsak naslov poišče samo enkrat (točka se shrani pri pacientu in za ponovne prevoze, npr. dializo, se ne išče znova). Strežnik vidi besedilo naslova, IP naslov naprave in izvor te strani. Naslovi pacientov so osebni podatki: za redno delo preveri s pooblaščencem za varstvo podatkov ali uporabi lasten strežnik (config.js → geocode.url, v CSP v build-prod.py dodaj njegov izvor). Zadetek, ki je več kot nekaj km od prepoznanega kraja, aplikacija zavrne (npr. ista ulica v drugem kraju) in uporabi središče naselja z oznako ~. Cestno pot izračuna OSRM po omrežju OpenStreetMap; razdalja se lahko od Google Zemljevidov razlikuje za nekaj odstotkov (drugačna izbira poti), zato je ročni vnos km vedno mogoč. Podatki © prispevajoči OpenStreetMap (ODbL).</p></details></div>`;
+}
 /* ---------- Nastavitve: Google, dializa, klinike ---------- */
 function googleCard(){
   const gi = GOOGLE.info(), G = S.settings.google || {}, t = UI.gTest;
@@ -3683,7 +3975,7 @@ function googleCard(){
   const txt = !gi.configured ? 'ključ ni vnesen' : !gi.on ? 'izklopljeno' : gi.status === 'error' ? 'napaka' : gi.status === 'ok' ? 'deluje' : 'pripravljeno';
   const test = t ? (t.running ? '<span class="chip info">Preverjam …</span>' : `<div class="banner ${t.ok ? '' : 'warn'}"><span>${IC.info}</span><div><b>${t.ok ? 'Google deluje' : 'Preizkus ni uspel'}</b>${t.km ? ` · SB Brežice → UKC Ljubljana: ${KM.fmtKm(t.km)} km, ${Math.round(t.min)} min (${t.ms} ms)` : ''}<br>${esc(t.msg)}</div></div>`) : '';
   const chk = (path, on, label) => `<label class="row" style="gap:8px;flex-wrap:nowrap"><input type="checkbox" data-path="${path}" data-bool="1" ${on ? 'checked' : ''}> ${label}</label>`;
-  return `<div class="card card-pad stack" style="gap:12px"><div class="card-head" style="margin:0"><h3>Natančna kilometrina (Google Zemljevidi)</h3><span class="chip ${tone}">${txt}</span></div>
+  return `<div class="card card-pad stack" style="gap:12px"><div class="card-head" style="margin:0"><h3>Google Zemljevidi (neobvezno, plačljivo)</h3><span class="chip ${tone}">${txt}</span></div>
     <div class="banner"><span>${IC.info}</span><div>Kilometrina vsakega prevoza se izračuna z Googlom po najboljši cestni poti <b>OD → DO</b>, kot v Google Zemljevidih. Google dobi <b>samo besedilo naslova OD in DO</b> (brez imena, telefona in naloga). Rezultat se zapiše v knjigo z oznako vira. Naslovi pacientov so osebni podatki: pred uporabo se posvetuj s pooblaščencem za varstvo podatkov.</div></div>
     <div class="stack" style="gap:8px">
       ${chk('settings.google.on', G.on !== false, 'Uporabi Google za kilometrino')}
@@ -3779,7 +4071,7 @@ function renderSettings(){
   } else if (T === 'planiranje'){
     const k = (label, path, step=1, unit='') => `<label for="k-${path}">${label}${unit ? ' <span class="dim">(' + unit + ')</span>' : ''}</label>${field(path, S.settings[path.split('.')[1]], { num:1, step, label })}`.replace('data-path', `id="k-${path}" data-path`);
     const kl = (label, key) => `<label for="k-lim-${key}">${label} <span class="dim">(km/h)</span></label>${field('settings.lim.' + key, S.settings.lim[key], { num:1, step:1, label }).replace('data-path', 'id="k-lim-' + key + '" data-path')}`;
-    body = `<div class="stack">${googleCard()}${routingCard()}${mapCard()}<details class="card card-pad sect" data-sect="param" ${UI.sect.param ? 'open' : ''}><summary><h3>Parametri izračuna: hitrosti, časi pobiranja, rezerve</h3></summary><div class="kv" style="margin-top:12px">
+    body = `<div class="stack">${geocodeCard()}${routingCard()}${googleCard()}${mapCard()}<details class="card card-pad sect" data-sect="param" ${UI.sect.param ? 'open' : ''}><summary><h3>Parametri izračuna: hitrosti, časi pobiranja, rezerve</h3></summary><div class="kv" style="margin-top:12px">
       ${kl('Omejitev v naselju','naselje')}${kl('Omejitev izven naselij','izven')}${kl('Omejitev na hitri cesti','hitra')}${kl('Omejitev na avtocesti','avtocesta')}${k('Dejanska hitrost glede na omejitev','settings.eff',1,'%')}${k('Faktor ceste (samo za ocene brez cestnih podatkov)','settings.road',0.05)}${k('Pobiranje sede pacienta','settings.pickMin',1,'min')}${k('Odpuščanje sede pacienta','settings.dropMin',1,'min')}${k('Pobiranje leže pacienta','settings.pickLeze',1,'min')}${k('Odpuščanje leže pacienta','settings.dropLeze',1,'min')}${k('Pobiranje pacienta na vozičku','settings.pickUtila',1,'min')}${k('Odpuščanje pacienta na vozičku','settings.dropUtila',1,'min')}${k('Privzet čas pregleda (čakanje)','settings.stayDef',5,'min')}${k('Privzeta pot od vhoda do ambulante','settings.extraDef',1,'min')}
       ${k('Rezerva pred preiskavo','settings.buffer',1,'min')}${k('Okno združevanja po uri','settings.window',5,'min')}${k('Okno združevanja pri oddaljenih ciljih (Ljubljana, Novo mesto)','settings.windowFar',10,'min')}${k('NN ekipa: najdlje od postaje (0 = brez omejitve)','settings.nnMaxKm',5,'km')}${k('Največji dodaten čas za soprevoznika','settings.detour',5,'min')}${k('Najdaljša vožnja pacienta v vozilu','settings.maxRide',5,'min')}
       ${k('Čakanje pri odvozu brez zamude','settings.waitTol',1,'min')}${k('Število polj v knjigi na dan','settings.slots',1,'polj')}${k('Samodejna odjava','settings.idleMin',5,'min')}
@@ -4171,7 +4463,9 @@ function dataTab(){
 function openPreview(title, variants){ UI.modal = { title, variants, idx:0 }; renderModal(); }
 function renderModal(){
   const host = $('#modal'), m = UI.modal;
-  if (!m){ host.hidden = true; host.innerHTML = ''; return; }
+  if (!m){ host.hidden = true; host.innerHTML = ''; delete host.dataset.pk; return; }
+  if (m.type === 'pick'){ renderPick(host, m); return; }
+  delete host.dataset.pk;
   const v = m.variants[m.idx], lines = v.text.split('\n');
   host.hidden = false;
   host.innerHTML = `<div class="modal-back" data-act="closeModal"></div><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
@@ -4183,6 +4477,73 @@ function renderModal(){
   const b = host.querySelector('.btn.primary'); if (b) b.focus();
 }
 
+
+/* ---------- Točka naslova na zemljevidu: pregled in popravek (kilometrina) ----------
+   Dispečer vidi, kje aplikacija meni, da je naslov OD ali DO, in lahko z dotikom na zemljevidu postavi pravo točko. Popravek je ročen vpis (S.geoFix),
+   velja za vse prevoze z istim naslovom od včeraj naprej in na vseh napravah. Za ustanove točke ni treba popravljati tukaj (Nastavitve → Klinike in ustanove). */
+const pickText = m => { const hit = rideById(m.date, m.id); return hit ? String(hit.r[m.side] || '').trim() : ''; };
+function pickSpec(m){
+  const pins = [];
+  if (m.cur && GEOC.isPoint(m.cur)) pins.push({ id:'cur', lon:m.cur.lon, lat:m.cur.lat, kind:'pu', label:'•', name:'Trenutna točka', html:`<b>Trenutna točka</b><br>${esc(GEOC.PREC[m.cur.prec] || '')}${m.cur.warn ? '<br>' + esc(m.cur.warn) : ''}` });
+  if (m.pick) pins.push({ id:'new', lon:m.pick[0], lat:m.pick[1], kind:'do', label:'✓', name:'Nova točka', html:'<b>Nova točka</b><br>Shrani jo spodaj.' });
+  return { routes:[], pins, pick:m.canFix ? { cb:pickAt } : null };
+}
+function pickAt(lon, lat){
+  const m = UI.modal; if (!m || m.type !== 'pick') return;
+  m.pick = [lon, lat]; const v = MAP.views[m.key]; if (v) v.user = true;
+  pickRefresh(m);
+}
+function pickRefresh(m){
+  const host = $('#modal'); if (!host || UI.modal !== m) return;
+  const txt = pickText(m), st = host.querySelector('[data-role=pickst]');
+  if (st){
+    let t = '', warn = false;
+    if (m.status){ t = m.status; warn = !!m.err; }
+    else if (m.pick) t = 'Nova točka je izbrana. Shrani jo, da se kilometrina preračuna.';
+    else if (m.cur){ t = 'Trenutna točka: ' + (GEOC.PREC[m.cur.prec] || '') + (m.cur.warn ? ' (' + m.cur.warn + ')' : '') + '.'; warn = !GEOC.exactPrec(m.cur.prec); }
+    if (m.canFix === false && !m.status) t += ' Točka ustanove se ureja v Nastavitve → Klinike in ustanove.';
+    else if (m.canFix && !MAP.tilesOn()) t += ' Podlaga zemljevida je izklopljena ali ni dosegljiva: točke ne moreš natančno izbrati.';
+    else if (m.canFix && !m.pick) t += ' Dotakni se zemljevida tam, kjer je hiša (povečaj s + ali koleščkom).';
+    st.textContent = t.trim(); st.classList.toggle('warn', warn);
+  }
+  const sv = host.querySelector('[data-act="pickSave"]'), cl = host.querySelector('[data-act="pickClear"]');
+  if (sv) sv.disabled = !m.pick || !m.canFix;
+  if (cl) cl.disabled = !GEOC.hasFix(txt);
+  MAP.update(m.key, pickSpec(m));
+}
+async function pickLoad(m){
+  const txt = pickText(m), side = m.side, an = GEOC.analyse(txt);
+  m.cur = null; m.pick = null; m.err = false; m.canFix = ['search', 'unknown', 'settlement'].includes(an.mode) || (an.mode === 'import' ? false : GEOC.hasFix(txt));
+  m.status = 'Iščem točko …'; pickRefresh(m);
+  try { m.cur = await GEOC.resolve(txt); m.status = ''; }
+  catch(e){
+    m.status = e.message; m.err = true;
+    if (an.g && isFinite(an.g.lat) && an.g.kind !== 'neznano') m.cur = { lat:an.g.lat, lon:an.g.lon, prec:'naselje', warn:'središče naselja' };
+  }
+  if (UI.modal !== m || m.side !== side) return;
+  pickRefresh(m);
+}
+function openPick(date, id){
+  const hit = rideById(date, id); if (!hit) return;
+  const r = hit.r, side = (r.to || '').trim() && geo(r.to).kind !== 'poi' ? 'to' : 'from';
+  UI.modal = { type:'pick', date, id, side }; renderModal(); pickLoad(UI.modal);
+}
+function renderPick(host, m){
+  const hit = rideById(m.date, m.id); if (!hit){ UI.modal = null; renderModal(); return; }
+  const k = m.key = 'pick|' + m.id + '|' + m.side;
+  if (host.dataset.pk === k && host.querySelector('.imap[data-map="' + k + '"]')){ pickRefresh(m); return; }   // ponovni izris strani ne uniči zemljevida
+  host.dataset.pk = k; host.hidden = false;
+  const r = hit.r, short = s => { const t = String(s || '').trim() || '–'; return t.length > 34 ? t.slice(0, 33) + '…' : t; };
+  host.innerHTML = `<div class="modal-back" data-act="closeModal"></div><div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="modal-head"><h3 id="mTitle">Točka naslova na zemljevidu</h3><button type="button" class="icon-btn" data-act="closeModal" aria-label="Zapri">${IC.x}</button></div>
+    <div class="seg" role="group" aria-label="Konec poti">${[['from', 'OD'], ['to', 'DO']].map(([s, l]) => `<button type="button" data-act="pickSide" data-s="${s}" aria-pressed="${m.side === s}">${l}: ${esc(short(r[s]))}</button>`).join('')}</div>
+    ${MAP.html(k, pickSpec(m), { label:'Zemljevid za izbiro točke naslova' })}
+    <div class="pickst" data-role="pickst" aria-live="polite"></div>
+    <div class="pickbar"><button type="button" class="btn primary" data-act="pickSave" disabled>Shrani točko in preračunaj km</button><button type="button" class="btn" data-act="pickClear" disabled>Odstrani popravek</button><button type="button" class="btn" data-act="closeModal">Zapri</button></div>
+    <p class="hint" style="margin:0">Točka se shrani kot popravek naslova za vse prevoze z istim naslovom (od včeraj naprej) in na vseh napravah. Podatki zemljevida: © prispevajoči OpenStreetMap.</p></div>`;
+  MAP.mountAll(host);
+  const b = host.querySelector('.seg button[aria-pressed="true"]'); if (b) b.focus();
+}
 
 /* ---------- Tisk knjige prevozov za mesec ---------- */
 const kmPrint = r => { const i = KM.info(r); return i.total == null ? '' : (i.exact && i.backExact ? '' : '~') + KM.fmtKm(i.total); };
@@ -4370,7 +4731,7 @@ function addQuickRide(date, p){
 }
 
 /* ---------- Kopiranje in ponavljanje ---------- */
-const COPY_FIELDS = ['name', 'time', 'from', 'to', 'phone', 'mode', 'patientId', 'nalogId', 'note', 'stay', 'stayAuto', 'stayTouched', 'km', 'kmBack', 'kmSrc', 'kk', 'gf', 'gt', 'kmAt'];
+const COPY_FIELDS = ['name', 'time', 'from', 'to', 'phone', 'mode', 'patientId', 'nalogId', 'note', 'stay', 'stayAuto', 'stayTouched', 'km', 'kmBack', 'kmSrc', 'kk', 'gf', 'gt', 'gp', 'kmWarn', 'kmAt'];
 function cloneRideTo(r, date){
   const a = ensureDay(date);
   const dup = a.some(x => isFilled(x) && !x.odpovedano && norm(x.name) === norm(r.name) && (x.time || '') === (r.time || '') && norm(x.to) === norm(r.to) && norm(x.from) === norm(r.from));
@@ -4811,7 +5172,10 @@ const MAP = (() => {
       if (!ptrs.size) vp.classList.remove('grab');
       if (e.type === 'pointerup' && wasOne && !moved){
         if (downPin){ openPin(downPin); }
-        else {
+        else if (spec.pick && typeof spec.pick.cb === 'function'){      // način izbire točke: en dotik postavi točko (dvojni dotik za povečavo ni na voljo, povečaj z +/− ali koleščkom)
+          const r = rect(), [cx, cy] = centerPx(), [lo, la] = ll(cx - W / 2 + (e.clientX - r.left), cy - H / 2 + (e.clientY - r.top), v.zoom);
+          spec.pick.cb(lo, la);
+        } else {
           const now = Date.now(), r = rect(), x = e.clientX - r.left, y = e.clientY - r.top;
           if (now - lastTap.t < 320 && Math.hypot(x - lastTap.x, y - lastTap.y) < 30){ zoomAt(v.zoom + 1, x, y); schedule(); lastTap.t = 0; }
           else { lastTap = { t:now, x, y }; if (openId){ openId = ''; $pop.dataset.for = ''; placePop(); drawPins(...origin()); } }
@@ -4861,6 +5225,7 @@ const MAP = (() => {
     });
     if (typeof ResizeObserver !== 'undefined'){ ro = new ResizeObserver(() => schedule()); ro.observe(vp); }
     if (el.classList.contains('imap-full')){ document.documentElement.classList.add('imap-lock'); $full.innerHTML = SVGI.close; }
+    el.classList.toggle('picking', !!spec.pick);
     render();
 
     const api = {
@@ -4869,7 +5234,7 @@ const MAP = (() => {
         const p = (spec.pins || []).find(q => q.id === id); if (!p || !ok(p)) return false;
         v.zoom = clampZ(Math.max(v.zoom, z || 14)); v.lon = p.lon; v.lat = p.lat; v.user = true; openId = id; $pop.dataset.for = ''; render(); return true;
       },
-      setSpec(sp){ spec = sp; $pop.dataset.for = ''; schedule(); },
+      setSpec(sp){ spec = sp; el.classList.toggle('picking', !!sp.pick); $pop.dataset.for = ''; schedule(); },
       destroy(){ dead = true; if (ro) ro.disconnect(); clearTimeout(purgeT); cancelAnimationFrame(raf); tiles.clear(); }
     };
     return api;
@@ -5065,14 +5430,25 @@ document.addEventListener('click', async e => {
     case 'kmRecalc': {
       const art = el.closest('[data-ride]'); if (!art) break; el.disabled = true; el.textContent = 'Računam …';
       const r = await KM.ensure(art.dataset.date, art.dataset.ride, { force:true });
-      if (r) toast(`Kilometrina: ${KM.fmtKm(r.km)} km (Google)`); else { const nb = $(`[data-ride="${art.dataset.ride}"]`); if (nb) refreshKm(nb); }
+      if (r) toast(`Kilometrina: ${KM.fmtKm(r.km)} km (${KM.SRC[r.kmSrc] || ''})`); else { const nb = $(`[data-ride="${art.dataset.ride}"]`); if (nb) refreshKm(nb); }
       break; }
     case 'kmDay': {
-      if (!GOOGLE.enabled()){ toast('Google ni nastavljen (Nastavitve → Izračun)'); break; }
-      el.disabled = true; toast('Računam kilometrino z Googlom …'); const n = await KM.day(UI.date, { force:true }); toast(n ? `Kilometrina preračunana za ${n} prevozov` : 'Ni prevozov za izračun'); rerender(); break; }
+      if (!KM.can()){ toast('Izračun kilometrine je izklopljen: vklopi iskanje naslovov in dejanske ceste (Nastavitve → Izračun)'); break; }
+      el.disabled = true; toast('Računam kilometrino …'); const n = await KM.day(UI.date, { force:true }); toast(n ? `Kilometrina preračunana za ${n} prevozov` : 'Ni prevozov za izračun'); rerender(); break; }
+    case 'pickPt': { const art = el.closest('[data-ride]'); if (art) openPick(art.dataset.date, art.dataset.ride); break; }
+    case 'pickSide': { const m = UI.modal; if (!m || m.type !== 'pick' || m.side === el.dataset.s) break; UI.modal = { type:'pick', date:m.date, id:m.id, side:el.dataset.s }; renderModal(); pickLoad(UI.modal); break; }
+    case 'pickSave': {
+      const m = UI.modal; if (!m || m.type !== 'pick' || !m.pick) break;
+      const txt = pickText(m); if (!txt) break; el.disabled = true;
+      GEOC.setFix(txt, m.pick[1], m.pick[0]); audit('naslov.tocka.popravljena', {}); KM.refix(txt);
+      const r = await KM.ensure(m.date, m.id, { force:true }); UI.modal = null; renderModal(); rerender();
+      toast(r ? `Točka shranjena. Kilometrina: ${KM.fmtKm(r.km)} km` : 'Točka shranjena'); break; }
+    case 'pickClear': {
+      const m = UI.modal; if (!m || m.type !== 'pick') break; const txt = pickText(m); if (!txt || !GEOC.clearFix(txt)) break;
+      audit('naslov.tocka.odstranjena', {}); KM.refix(txt); await KM.ensure(m.date, m.id, { force:true }); const m2 = { type:'pick', date:m.date, id:m.id, side:m.side }; UI.modal = m2; renderModal(); pickLoad(m2); rerender(); break; }
     case 'kmReport': UI.kmRep = !UI.kmRep; render(); break;
     case 'kmMonth': {
-      if (!GOOGLE.enabled()){ toast('Google ni nastavljen (Nastavitve → Izračun)'); break; }
+      if (!KM.can()){ toast('Izračun kilometrine je izklopljen: vklopi iskanje naslovov in dejanske ceste (Nastavitve → Izračun)'); break; }
       el.disabled = true; const { y, m } = UI.month, n = daysInMonth(y, m); let cnt = 0;
       for (let d = 1; d <= n; d++){ const dt = `${y}-${pad(m + 1)}-${pad(d)}`; el.textContent = `Računam … ${d}/${n}`; cnt += await KM.day(dt).catch(() => 0); }
       toast(cnt ? `Izračunano: ${cnt} prevozov` : 'Vsi prevozi imajo že kilometrino'); rerender(); break; }
@@ -5086,8 +5462,9 @@ document.addEventListener('click', async e => {
     case 'delPlace': { const pl = S.places[+el.dataset.i]; if (!pl) break; if (el.dataset.arm){ S.places.splice(+el.dataset.i, 1); save(); rerender(); } else armBtn(el, 'Potrdi'); break; }
     case 'gkeySave': { const v = ($('#gkey').value || '').trim(); if (!/^[A-Za-z0-9_\-]{20,}$/.test(v)){ toast('Ključ ni videti veljaven (vsaj 20 znakov: črke, številke, - in _)'); break; } store.set('kp.gkey', v); GOOGLE.clear(); UI.gTest = null; audit('google.kljuc.shranjen', {}); toast('Ključ shranjen na tej napravi'); rerender(); break; }
     case 'gkeyClear': store.del('kp.gkey'); GOOGLE.forget(); UI.gTest = null; audit('google.kljuc.odstranjen', {}); toast('Ključ odstranjen s te naprave'); rerender(); break;
+    case 'geoTest': { UI.geoTest = { running:true }; rerender(); UI.geoTest = await GEOC.test(); audit('naslovi.preizkus', { uspeh:!!UI.geoTest.ok }); rerender(); break; }
     case 'gTest': { UI.gTest = { running:true }; rerender(); UI.gTest = await GOOGLE.test(); audit('google.preizkus', { uspeh:!!UI.gTest.ok }); rerender(); break; }
-    case 'loadDia': { const n = loadDialysis(UI.date); if (n && GOOGLE.auto()) KM.day(UI.date).catch(() => {}); toast(n ? `Dodanih ${n} dializnih prevozov` : 'Dializni pacienti so že v knjigi ali jih ni v bazi'); rerender(); break; }
+    case 'loadDia': { const n = loadDialysis(UI.date); if (n && KM.auto()) KM.day(UI.date).catch(() => {}); toast(n ? `Dodanih ${n} dializnih prevozov` : 'Dializni pacienti so že v knjigi ali jih ni v bazi'); rerender(); break; }
     case 'addSlots': addSlots(UI.date, 5); rerender(); toast('Dodanih 5 polj'); break;
     case 'gotoDisp': UI.dDate = date; go('dispecer'); break;
     case 'mode': { const art = el.closest('[data-ride]'); const hit = rideById(art.dataset.date, art.dataset.ride); if (hit){ hit.r.mode = el.dataset.mode; save(); refreshBox(art); } break; }
@@ -5186,7 +5563,7 @@ document.addEventListener('click', async e => {
     case 'copyDo': {
       if (!UI.copy || !UI.copy.sel.size) break;
       const res = copyRides(UI.copy.src, UI.date, [...UI.copy.sel]);
-      filledRides(UI.date).forEach(({ r }) => { if (r.from && r.to && !r.km && GOOGLE.auto()) KM.schedule(UI.date, r.id); });
+      filledRides(UI.date).forEach(({ r }) => { if (r.from && r.to && !r.km && KM.auto()) KM.schedule(UI.date, r.id); });
       UI.copy = null; rerender(); toast(res.n ? `Kopiranih prevozov: ${res.n}${res.skipped ? ' (' + res.skipped + ' že vpisanih preskočenih)' : ''}` : 'Vsi izbrani prevozi so že vpisani'); break; }
     case 'printDay': printDay(UI.date); break;
     case 'stopFocus': MAP.focus(el.dataset.mapkey, el.dataset.mapid); break;
@@ -5452,7 +5829,7 @@ async function logout(msg = ''){
   const wasFb = BACKEND === 'firebase';
   stopSync(); stopCrew(); ME = null; sess.del('kp.sess');
   $('#app').hidden = true; $('#auth').hidden = false; sgClose(); UI.modal = null; renderModal();
-  try { ROUTE.forget(); } catch(e){} UI.maps = {}; UI.routeTest = null; UI.routeWarm = null;
+  try { ROUTE.forget(); GEOC.forget(); } catch(e){} UI.maps = {}; UI.routeTest = null; UI.routeWarm = null;
   S = defaultState(); normalizeState(); USERS_REMOTE = []; AUDIT.length = 0; Object.keys(EVENTS).forEach(k => delete EVENTS[k]); Object.keys(RUNS).forEach(k => delete RUNS[k]);
   if (wasFb){ try { await DB.shutdown(); } catch(e){} try { sessionStorage.setItem('kp.msg', msg); } catch(e){} location.reload(); return; }
   renderAuth('login', msg);
@@ -5521,7 +5898,7 @@ async function boot(){
   S = defaultState(); normalizeState(); loadAddr(); loadSharedAddr(); fillLogos();
   KM.onUpdate = (date, id) => {      // kilometrina prevoza je izračunana: osveži vrstico; ko je čakalna vrsta prazna, še razpored (natančne koordinate)
     if (!ME) return;
-    if (UI.view === 'dan' && UI.date === date){ const nb = $(`[data-ride="${id}"]`); if (nb) refreshKm(nb); if (GOOGLE.info().queued === 0) scheduleRender(); }
+    if (UI.view === 'dan' && UI.date === date){ const nb = $(`[data-ride="${id}"]`); if (nb) refreshKm(nb); if (KM.queued() === 0) scheduleRender(); }
     else if (['knjiga', 'dispecer'].includes(UI.view)) scheduleRender();
   };
   GOOGLE.onUpdate = () => { if (ME && UI.view === 'nastavitve' && UI.setTab === 'planiranje') scheduleRender(); };

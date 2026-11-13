@@ -166,14 +166,25 @@ document.addEventListener('click', async e => {
     case 'kmRecalc': {
       const art = el.closest('[data-ride]'); if (!art) break; el.disabled = true; el.textContent = 'Računam …';
       const r = await KM.ensure(art.dataset.date, art.dataset.ride, { force:true });
-      if (r) toast(`Kilometrina: ${KM.fmtKm(r.km)} km (Google)`); else { const nb = $(`[data-ride="${art.dataset.ride}"]`); if (nb) refreshKm(nb); }
+      if (r) toast(`Kilometrina: ${KM.fmtKm(r.km)} km (${KM.SRC[r.kmSrc] || ''})`); else { const nb = $(`[data-ride="${art.dataset.ride}"]`); if (nb) refreshKm(nb); }
       break; }
     case 'kmDay': {
-      if (!GOOGLE.enabled()){ toast('Google ni nastavljen (Nastavitve → Izračun)'); break; }
-      el.disabled = true; toast('Računam kilometrino z Googlom …'); const n = await KM.day(UI.date, { force:true }); toast(n ? `Kilometrina preračunana za ${n} prevozov` : 'Ni prevozov za izračun'); rerender(); break; }
+      if (!KM.can()){ toast('Izračun kilometrine je izklopljen: vklopi iskanje naslovov in dejanske ceste (Nastavitve → Izračun)'); break; }
+      el.disabled = true; toast('Računam kilometrino …'); const n = await KM.day(UI.date, { force:true }); toast(n ? `Kilometrina preračunana za ${n} prevozov` : 'Ni prevozov za izračun'); rerender(); break; }
+    case 'pickPt': { const art = el.closest('[data-ride]'); if (art) openPick(art.dataset.date, art.dataset.ride); break; }
+    case 'pickSide': { const m = UI.modal; if (!m || m.type !== 'pick' || m.side === el.dataset.s) break; UI.modal = { type:'pick', date:m.date, id:m.id, side:el.dataset.s }; renderModal(); pickLoad(UI.modal); break; }
+    case 'pickSave': {
+      const m = UI.modal; if (!m || m.type !== 'pick' || !m.pick) break;
+      const txt = pickText(m); if (!txt) break; el.disabled = true;
+      GEOC.setFix(txt, m.pick[1], m.pick[0]); audit('naslov.tocka.popravljena', {}); KM.refix(txt);
+      const r = await KM.ensure(m.date, m.id, { force:true }); UI.modal = null; renderModal(); rerender();
+      toast(r ? `Točka shranjena. Kilometrina: ${KM.fmtKm(r.km)} km` : 'Točka shranjena'); break; }
+    case 'pickClear': {
+      const m = UI.modal; if (!m || m.type !== 'pick') break; const txt = pickText(m); if (!txt || !GEOC.clearFix(txt)) break;
+      audit('naslov.tocka.odstranjena', {}); KM.refix(txt); await KM.ensure(m.date, m.id, { force:true }); const m2 = { type:'pick', date:m.date, id:m.id, side:m.side }; UI.modal = m2; renderModal(); pickLoad(m2); rerender(); break; }
     case 'kmReport': UI.kmRep = !UI.kmRep; render(); break;
     case 'kmMonth': {
-      if (!GOOGLE.enabled()){ toast('Google ni nastavljen (Nastavitve → Izračun)'); break; }
+      if (!KM.can()){ toast('Izračun kilometrine je izklopljen: vklopi iskanje naslovov in dejanske ceste (Nastavitve → Izračun)'); break; }
       el.disabled = true; const { y, m } = UI.month, n = daysInMonth(y, m); let cnt = 0;
       for (let d = 1; d <= n; d++){ const dt = `${y}-${pad(m + 1)}-${pad(d)}`; el.textContent = `Računam … ${d}/${n}`; cnt += await KM.day(dt).catch(() => 0); }
       toast(cnt ? `Izračunano: ${cnt} prevozov` : 'Vsi prevozi imajo že kilometrino'); rerender(); break; }
@@ -187,8 +198,9 @@ document.addEventListener('click', async e => {
     case 'delPlace': { const pl = S.places[+el.dataset.i]; if (!pl) break; if (el.dataset.arm){ S.places.splice(+el.dataset.i, 1); save(); rerender(); } else armBtn(el, 'Potrdi'); break; }
     case 'gkeySave': { const v = ($('#gkey').value || '').trim(); if (!/^[A-Za-z0-9_\-]{20,}$/.test(v)){ toast('Ključ ni videti veljaven (vsaj 20 znakov: črke, številke, - in _)'); break; } store.set('kp.gkey', v); GOOGLE.clear(); UI.gTest = null; audit('google.kljuc.shranjen', {}); toast('Ključ shranjen na tej napravi'); rerender(); break; }
     case 'gkeyClear': store.del('kp.gkey'); GOOGLE.forget(); UI.gTest = null; audit('google.kljuc.odstranjen', {}); toast('Ključ odstranjen s te naprave'); rerender(); break;
+    case 'geoTest': { UI.geoTest = { running:true }; rerender(); UI.geoTest = await GEOC.test(); audit('naslovi.preizkus', { uspeh:!!UI.geoTest.ok }); rerender(); break; }
     case 'gTest': { UI.gTest = { running:true }; rerender(); UI.gTest = await GOOGLE.test(); audit('google.preizkus', { uspeh:!!UI.gTest.ok }); rerender(); break; }
-    case 'loadDia': { const n = loadDialysis(UI.date); if (n && GOOGLE.auto()) KM.day(UI.date).catch(() => {}); toast(n ? `Dodanih ${n} dializnih prevozov` : 'Dializni pacienti so že v knjigi ali jih ni v bazi'); rerender(); break; }
+    case 'loadDia': { const n = loadDialysis(UI.date); if (n && KM.auto()) KM.day(UI.date).catch(() => {}); toast(n ? `Dodanih ${n} dializnih prevozov` : 'Dializni pacienti so že v knjigi ali jih ni v bazi'); rerender(); break; }
     case 'addSlots': addSlots(UI.date, 5); rerender(); toast('Dodanih 5 polj'); break;
     case 'gotoDisp': UI.dDate = date; go('dispecer'); break;
     case 'mode': { const art = el.closest('[data-ride]'); const hit = rideById(art.dataset.date, art.dataset.ride); if (hit){ hit.r.mode = el.dataset.mode; save(); refreshBox(art); } break; }
@@ -287,7 +299,7 @@ document.addEventListener('click', async e => {
     case 'copyDo': {
       if (!UI.copy || !UI.copy.sel.size) break;
       const res = copyRides(UI.copy.src, UI.date, [...UI.copy.sel]);
-      filledRides(UI.date).forEach(({ r }) => { if (r.from && r.to && !r.km && GOOGLE.auto()) KM.schedule(UI.date, r.id); });
+      filledRides(UI.date).forEach(({ r }) => { if (r.from && r.to && !r.km && KM.auto()) KM.schedule(UI.date, r.id); });
       UI.copy = null; rerender(); toast(res.n ? `Kopiranih prevozov: ${res.n}${res.skipped ? ' (' + res.skipped + ' že vpisanih preskočenih)' : ''}` : 'Vsi izbrani prevozi so že vpisani'); break; }
     case 'printDay': printDay(UI.date); break;
     case 'stopFocus': MAP.focus(el.dataset.mapkey, el.dataset.mapid); break;
@@ -553,7 +565,7 @@ async function logout(msg = ''){
   const wasFb = BACKEND === 'firebase';
   stopSync(); stopCrew(); ME = null; sess.del('kp.sess');
   $('#app').hidden = true; $('#auth').hidden = false; sgClose(); UI.modal = null; renderModal();
-  try { ROUTE.forget(); } catch(e){} UI.maps = {}; UI.routeTest = null; UI.routeWarm = null;
+  try { ROUTE.forget(); GEOC.forget(); } catch(e){} UI.maps = {}; UI.routeTest = null; UI.routeWarm = null;
   S = defaultState(); normalizeState(); USERS_REMOTE = []; AUDIT.length = 0; Object.keys(EVENTS).forEach(k => delete EVENTS[k]); Object.keys(RUNS).forEach(k => delete RUNS[k]);
   if (wasFb){ try { await DB.shutdown(); } catch(e){} try { sessionStorage.setItem('kp.msg', msg); } catch(e){} location.reload(); return; }
   renderAuth('login', msg);
@@ -622,7 +634,7 @@ async function boot(){
   S = defaultState(); normalizeState(); loadAddr(); loadSharedAddr(); fillLogos();
   KM.onUpdate = (date, id) => {      // kilometrina prevoza je izračunana: osveži vrstico; ko je čakalna vrsta prazna, še razpored (natančne koordinate)
     if (!ME) return;
-    if (UI.view === 'dan' && UI.date === date){ const nb = $(`[data-ride="${id}"]`); if (nb) refreshKm(nb); if (GOOGLE.info().queued === 0) scheduleRender(); }
+    if (UI.view === 'dan' && UI.date === date){ const nb = $(`[data-ride="${id}"]`); if (nb) refreshKm(nb); if (KM.queued() === 0) scheduleRender(); }
     else if (['knjiga', 'dispecer'].includes(UI.view)) scheduleRender();
   };
   GOOGLE.onUpdate = () => { if (ME && UI.view === 'nastavitve' && UI.setTab === 'planiranje') scheduleRender(); };

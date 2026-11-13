@@ -9,6 +9,14 @@ Interna PWA za iPhone in Android: dispečer (knjiga, pacienti in nalogi, razpore
 
 **Pred prvim pravim pacientom** potrebuješ odobritev vodstva in pooblaščenca za varstvo podatkov (glej NAVODILA.md, razdelek 0.2). Do takrat uporabljaj samo izmišljene podatke.
 
+## Spremembe v2_8 (november 2026): brezplačna točna kilometrina po naslovih (brez Google Zemljevidov)
+- **Kilometrina OD → DO po hišnem naslovu je zdaj brezplačna:** aplikacija iz vpisanega naslova (ulica + hišna številka, »Dobova 25«) poišče točko v OpenStreetMap (Nominatim), cestno pot izračuna OSRM. Prej je za naslov brez znane točke vzela središče naselja, zato kilometrina ni bila točna. Google ostane neobvezen (ključ v Nastavitve → Izračun).
+- **Natančnost je vidna:** vir »naslov + ceste OSM«, pri naslovu brez hišne številke v OSM oznaka ~ in razlog; aplikacija zavrne zadetek v drugem kraju.
+- **Točka na zemljevidu:** gumb pri prevozu odpre zemljevid, dotik postavi pravo točko, »Shrani« jo zapiše kot popravek naslova za vse prevoze z istim naslovom (od včeraj naprej) na vseh napravah.
+- Pravila javnega strežnika Nominatim so upoštevana (1 zahtevek/s, vrsta, shranjene točke pri pacientih, brez samodokončanja); pošlje se samo besedilo naslova. **Po posodobitvi prilepi `firestore.rules`** (dispečer sme shraniti popravek točke). Nova razdelka v NAVODILA.md: 10.3 (prenovljen) in 11.9.
+- Popravljeno: ročni vnos km se ni smel prepisati z izračunom, ki je tekel med vpisom; množični preračun dneva ročnih vnosov ne prepisuje.
+- Preizkusi: 55 (planer, razpoznava, naslovi, kilometrina) + 88 v brskalniku. **Z živim strežnikom Nominatim ni preizkušeno** (glej NAVODILA.md, razdelek 14).
+
 ## Spremembe v2_7 (november 2026): preglednejši Dispečer, dializa v Krškem, deset resničnih dni
 - **Zaslon Dispečer je skrajšan** (22 prevozov: okoli 2200 namesto 8600 slikovnih točk): zgoraj Objavi razpored, povzetek v eni vrstici, opozorila (združena) in tabela razporeda; pravila razporejanja, predlogi, zemljevid, podrobnosti po posadkah in zaključek prevozov so zloženi (gumb »Razširi vse«).
 - **»Dializa KK« = dializni center v Krškem (Nefrodial)** je privzeti cilj dialize (koordinate približne, preveri; izbira v Nastavitve → Dializa). Popravljen tihi zamik »SB Brežice – dializa« → »SB Brežice«.

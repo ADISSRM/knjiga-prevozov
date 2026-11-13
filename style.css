@@ -251,6 +251,12 @@ details.warnbox summary{cursor:pointer;font-weight:600}
 .imap-attr{position:absolute;left:0;bottom:0;z-index:4;font-size:10.5px;line-height:1.5;background:rgba(255,255,255,.82);color:#333;padding:0 6px;border-top-right-radius:6px}
 .imap-attr a{color:inherit}
 .imap.imap-tall .imap-vp{height:clamp(340px,64vh,580px)}
+.imap.picking .imap-vp{cursor:crosshair}
+.modal.modal-wide{width:min(860px,100%)}
+.modal .imap-vp{height:clamp(300px,50vh,460px)}
+.pickbar{display:flex;gap:8px 10px;flex-wrap:wrap;align-items:center}
+.pickst{font-size:13px;color:var(--ink-2);min-height:20px}
+.pickst.warn{color:var(--warn)}
 .imap.imap-full{position:fixed;inset:0;z-index:1000;border-radius:0;border:0}
 .imap.imap-full .imap-vp{height:100%}
 html.imap-lock,html.imap-lock body{overflow:hidden}
@@ -594,7 +600,8 @@ a.btn{text-decoration:none}
 .kmrow .kmin{width:88px;padding:5px 8px}
 .kmv{font-family:var(--font-mono)}
 .srcbadge{font-size:11.5px;font-weight:600;border-radius:6px;padding:2px 8px;background:var(--surface-3);color:var(--ink-2);white-space:nowrap}
-.srcbadge.src-google{background:var(--ok-soft);color:var(--ok)}
+.srcbadge.src-google,.srcbadge.src-osm{background:var(--ok-soft);color:var(--ok)}
+.kmwarn{flex:1 1 100%;font-size:12.5px;color:var(--warn);background:var(--warn-soft);border-radius:8px;padding:4px 8px}
 .srcbadge.src-rocno{background:var(--info-soft);color:var(--info)}
 .srcbadge.src-osrm,.srcbadge.src-ocena{background:var(--warn-soft);color:var(--warn)}
 .donerow{border-top:1px solid var(--line);padding-top:10px}
