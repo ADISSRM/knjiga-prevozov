@@ -198,6 +198,14 @@ document.addEventListener('click', async e => {
     case 'delPlace': { const pl = S.places[+el.dataset.i]; if (!pl) break; if (el.dataset.arm){ S.places.splice(+el.dataset.i, 1); save(); rerender(); } else armBtn(el, 'Potrdi'); break; }
     case 'gkeySave': { const v = ($('#gkey').value || '').trim(); if (!/^[A-Za-z0-9_\-]{20,}$/.test(v)){ toast('Ključ ni videti veljaven (vsaj 20 znakov: črke, številke, - in _)'); break; } store.set('kp.gkey', v); GOOGLE.clear(); UI.gTest = null; audit('google.kljuc.shranjen', {}); toast('Ključ shranjen na tej napravi'); rerender(); break; }
     case 'gkeyClear': store.del('kp.gkey'); GOOGLE.forget(); UI.gTest = null; audit('google.kljuc.odstranjen', {}); toast('Ključ odstranjen s te naprave'); rerender(); break;
+    case 'nsOpen': nsOpen(); break;
+    case 'nsParse': { const m = UI.modal; if (m && m.type === 'nscan'){ nsSetText(m, m.text); renderModal(); } break; }
+    case 'nsBack': { const m = UI.modal; if (m && m.type === 'nscan'){ m.step = 'in'; m.err = ''; renderModal(); } break; }
+    case 'nsSave': nsSave(); break;
+    case 'npOpen': npOpen(el.dataset.pid, el.dataset.id); break;
+    case 'npPrint': npPrintGroup(el.dataset.k); break;
+    case 'npDone': npDone(); break;
+    case 'npCalib': NP.printCalib(el.dataset.p === 'b' ? 'b' : 'f'); break;
     case 'geoTest': { UI.geoTest = { running:true }; rerender(); UI.geoTest = await GEOC.test(); audit('naslovi.preizkus', { uspeh:!!UI.geoTest.ok }); rerender(); break; }
     case 'gTest': { UI.gTest = { running:true }; rerender(); UI.gTest = await GOOGLE.test(); audit('google.preizkus', { uspeh:!!UI.gTest.ok }); rerender(); break; }
     case 'loadDia': { const n = loadDialysis(UI.date); if (n && KM.auto()) KM.day(UI.date).catch(() => {}); toast(n ? `Dodanih ${n} dializnih prevozov` : 'Dializni pacienti so že v knjigi ali jih ni v bazi'); rerender(); break; }
@@ -248,7 +256,7 @@ document.addEventListener('click', async e => {
     case 'closeNotice': { const n = S.notices.find(x => x.id === el.dataset.id); if (n){ n.closed = true; if (!n.to || n.to > todayStr()) n.to = todayStr(); save(); render(); } break; }
     case 'delNotice': S.notices = S.notices.filter(x => x.id !== el.dataset.id); save(); render(); break;
     case 'setTab': UI.setTab = el.dataset.k; if (UI.setTab === 'varnost') loadAudit(); if (UI.setTab === 'uporabniki') loadRemoteUsers(); render(); break;
-    case 'addVeh': S.vehicles.push({ id:uid(), name:'Novo vozilo', vrsta:'osebno', fn:'vse', tip:'sanitetno', ns:'redna', sede:3, leze:0, utila:0, skupaj:3, sedeMax:3, lezeMax:0, utilaMax:0, skupajMax:3, aktiv:true }); save(); rerender(); break;
+    case 'addVeh': S.vehicles.push({ id:uid(), name:'Novo vozilo', reg:'', vrsta:'osebno', fn:'vse', tip:'sanitetno', ns:'redna', sede:3, leze:0, utila:0, skupaj:3, sedeMax:3, lezeMax:0, utilaMax:0, skupajMax:3, aktiv:true }); save(); rerender(); break;
     case 'delVeh': { const v = S.vehicles[+el.dataset.i]; if (!v) break; if (el.dataset.arm){ S.vehicles.splice(+el.dataset.i, 1); save(); rerender(); } else { el.dataset.arm = '1'; el.classList.add('danger'); el.style.width = 'auto'; el.style.padding = '0 8px'; el.textContent = 'Potrdi'; } break; }
     case 'delStaff': S.staff.splice(+el.dataset.i, 1); save(); rerender(); break;
     case 'exportAddr': {

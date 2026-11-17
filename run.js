@@ -4,7 +4,7 @@
 const vm = require('vm'), assert = require('assert'), path = require('path');
 const { load } = require('./load.js'), { createMock } = require('./mock-osrm.js'), { createGoogleMock } = require('./mock-google.js'), { createNominatimMock } = require('./mock-nominatim.js');
 const SRC = path.join(__dirname, '..', 'src') + path.sep;
-const FILES = ['20-data.js', '30-core.js', '35-db.js', '37-geocode.js', '38-routing.js', '39-google.js', '40-planner.js', '45-pacienti.js', '54-quick.js'].map(f => SRC + f);
+const FILES = ['20-data.js', '30-core.js', '35-db.js', '37-geocode.js', '38-routing.js', '39-google.js', '40-planner.js', '45-pacienti.js', '46-nalogscan.js', '47-nalogprint.js', '54-quick.js'].map(f => SRC + f);
 const URLS = { url:'https://osrm.test', fallback:['https://osrm2.test'] };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const DATE = '2026-11-10';   // torek
@@ -828,6 +828,116 @@ test('Kilometrina OSM: planer uporabi točko naslova (hiša, ne središče nasel
   sum(t); await t.ev('ROUTE.settle()'); t.ev('ROUTE.persist()');
   const stored = mem.get('kp.route.v1'); assert.ok(stored && stored.length > 20);
   assert.ok(!/45\.8991|45\.9002|15\.6572|15\.6590/.test(stored), 'hišna točka ni v trajnem predpomnilniku');
+});
+
+/* ------------------------------------------------------------------ skeniranje naloga */
+const fs = require('fs');
+const FIX = n => fs.readFileSync(path.join(__dirname, 'fixtures', n), 'utf8');
+const parseNalog = (t, text) => { t.ctx.__txt = text; return t.js('NSCAN.parse(__txt)'); };
+test('Skeniranje: OCR izpolnjenega obrazca (izmišljeni podatki) → ime, naslov, številka zavarovane osebe, relacija, datumi', () => {
+  const t = boot();
+  for (const f of ['psm3', 'psm4', 'psm6']){
+    const r = parseNalog(t, FIX(`nalog-ocr-${f}.txt`)), x = r.fields;
+    assert.strictEqual(x.zzzs, '012345678', f); assert.strictEqual(x.dob, '1948-03-14', f);
+    assert.ok(/^Marija Novakova(?: \S+)?$/.test(x.name) && x.name.startsWith('Marija Novakova'), f + ' ' + x.name);
+    assert.strictEqual(x.addr, 'Primerna ulica 12, Brezice', f); assert.strictEqual(x.phone, '031 123 456', f); assert.strictEqual(x.mail, 'marija.n@primer.si', f);
+    assert.ok(/Dializni center Krsko$/.test(x.do), f + ' ' + x.do); assert.ok(/Prim\w+ ulica 12, Bre/i.test(x.od), f + ' ' + x.od);
+    assert.strictEqual(x.razlog, 'Dializa', f); assert.strictEqual(x.mode, 'leze', f); assert.strictEqual(x.izdan, '2026-11-02', f);
+    assert.ok(/dializa 3x tedensko/.test(x.opombe) && /prevzemom/.test(x.opombe), f + ' ' + x.opombe);
+    assert.ok(/ZD Testno/.test(x.narocnik) && /dr\. Ana Zdravnik/.test(x.zdravnik), f);
+    assert.ok(r.found >= 4, f);
+  }
+  const r3 = parseNalog(t, FIX('nalog-ocr-psm3.txt')).fields; assert.strictEqual(r3.stevilka, '7775996');
+  assert.strictEqual(parseNalog(t, FIX('nalog-ocr-psm4.txt')).fields.veljaDo, '2026-12-31');
+});
+test('Skeniranje: čist vnos (oznake pod vrednostmi), napake OCR v številkah, brez smeti in z napačnim vnosom', () => {
+  const t = boot();
+  const clean = ['NALOG ZA PREVOZ 1234567', '1 - IZVAJALEC', 'ZD Primer Dom', '3 - ZAVAROVANA OSEBA', 'O12 345 6B7 5.6.1951', '(številka zavarovane osebe) (datum rojstva)', 'ZUPAN', '(priimek)', 'PETER', '(ime)',
+    'Dobova 25', '(ulica in hišna št.)', '8257 Dobova', '(poštna številka) (kraj)', '+386 41 555 123', '(telefonska številka)', '12 - RELACIJA PREVOZA', 'Dobova – UKC Ljubljana', '13 - OPOMBE', 'voziček'].join('\n');
+  const x = parseNalog(t, clean).fields;
+  assert.strictEqual(x.zzzs, '012345687'); assert.strictEqual(x.dob, '1951-06-05'); assert.strictEqual(x.name, 'Peter Zupan'); assert.strictEqual(x.addr, 'Dobova 25', 'kraj se ne podvaja');
+  assert.strictEqual(x.posta, '8257'); assert.strictEqual(x.od, 'Dobova'); assert.strictEqual(x.do, 'UKC Ljubljana'); assert.strictEqual(x.opombe, 'voziček'); assert.ok(/386 41 555 123/.test(x.phone), x.phone);
+  const empty = parseNalog(t, ''); assert.strictEqual(empty.found, 0); assert.ok(empty.notes.length >= 2);
+  const junk = parseNalog(t, 'abc\n%%%\n12\n?\n---\n'); assert.ok(!junk.fields.name && !junk.fields.zzzs && !junk.fields.addr, JSON.stringify(junk.fields));
+  assert.ok(!parseNalog(t, 'Telefon 031 123 456\nDatum 14.03.1948').fields.zzzs, 'telefon ni številka zavarovane osebe');
+});
+test('Skeniranje: shranjevanje: nov pacient + nalog, ponovni vnos istega naloga ga posodobi, obstoječi pacient se ujame in ne prepiše', () => {
+  const t = boot(); t.ctx.__f = parseNalog(t, FIX('nalog-ocr-psm4.txt')).fields; t.ctx.__f.addr = 'Primerna ulica 12, Brežice'; t.ctx.__f.od = 'Primerna ulica 12, Brežice'; t.ctx.__f.do = 'Dializni center Krško'; t.ctx.__f.veljaDo = '2026-12-31';
+  assert.strictEqual(t.ev('NSCAN.matchPatient(__f)'), null);
+  const r = t.js('(() => { const r = NSCAN.apply(__f, {}); return { created:r.created, updated:r.updated, name:r.p.name, zzzs:r.p.zzzs, addr:r.p.addr, n:r.p.naloge.length, st:r.n.stevilka, vr:r.n.vrsta, od:r.n.veljaOd, do:r.n.veljaDo, razlog:r.n.razlog, mode:r.n.mode, narocnik:r.n.narocnik, auto:r.n.auto, mail:JSON.stringify(r.p).includes("primer.si") }; })()');
+  assert.deepStrictEqual({ ...r }, { created:true, updated:false, name:'Marija Novakova', zzzs:'012345678', addr:'Primerna ulica 12, Brežice', n:1, st:'1775996', vr:'mesecna', od:'2026-11-02', do:'2026-12-31', razlog:'Dializa', mode:'leze', narocnik:r.narocnik, auto:false, mail:false });
+  const m = t.js('NSCAN.matchPatient(__f).how'); assert.strictEqual(m, 'številka zavarovane osebe');
+  const r2 = t.js('(() => { const r = NSCAN.apply(__f, { pid:S.patients[0].id }); return { created:r.created, updated:r.updated, n:S.patients.length, nn:S.patients[0].naloge.length }; })()');
+  assert.deepStrictEqual({ ...r2 }, { created:false, updated:true, n:1, nn:1 });
+  t.ev('S.patients[0].addr = "Drug naslov 1"; __f.addr = "Tuj naslov 9"; __f.stevilka = "99"; NSCAN.apply(__f, { pid:S.patients[0].id })');
+  assert.strictEqual(t.ev('S.patients[0].addr'), 'Drug naslov 1', 'obstoječega naslova ne prepiše'); assert.strictEqual(t.ev('S.patients[0].naloge.length'), 2);
+  assert.ok(!/Novakova|Marija|01234/.test(t.ev('JSON.stringify(S.audit || [])') || ''), 'dnevnik sprememb brez osebnih podatkov');
+});
+test('Skeniranje: slika iz PDF-ja (Flate RGB, Flate s predikatorjem PNG, Flate sivinski, JPEG); majhne slike se preskočijo', async () => {
+  const { makePdf, pixels } = require('./pdfmake.js'), zlib = require('zlib');
+  const t = boot(); t.ctx.DecompressionStream = DecompressionStream; t.ctx.Response = Response;
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64, 7), Buffer.from([0xff, 0xd9])]);
+  const pdf = makePdf([{ w:320, h:400, comps:3 }, { w:340, h:310, comps:3, predictor:true }, { w:330, h:350, comps:1 }, { w:350, h:360, kind:'dct', jpeg }, { w:50, h:50, comps:3 }]);
+  t.ctx.__pdf = new Uint8Array(pdf);
+  const out = await t.ev('NSCAN.pdfImages(__pdf)');
+  assert.strictEqual(out.length, 4, 'majhna slika (50 px) preskočena');
+  assert.deepStrictEqual(Array.from(out, o => o.kind + ':' + (o.comps || '') + ':' + o.w + 'x' + o.h), ['raw:3:320x400', 'raw:3:340x310', 'raw:1:330x350', 'jpeg::350x360']);
+  assert.ok(Buffer.from(out[0].data.subarray(0, 4000)).equals(pixels(320, 400, 3).subarray(0, 4000)), 'surovi piksli');
+  assert.ok(Buffer.from(out[1].data).equals(pixels(340, 310, 3)), 'predikator PNG je razveljavljen');
+  assert.ok(Buffer.from(out[3].bytes).equals(jpeg), 'JPEG nespremenjen');
+  assert.strictEqual((await t.ev('NSCAN.pdfImages(new Uint8Array([37,80,68,70]))')).length, 0, 'brez slik');
+});
+
+/* ------------------------------------------------------------------ tisk dopolnil na nalog */
+test('Tisk naloga: mesto vrstice (11 sprednja + 29 hrbtna = 40 na list), razporeditev po straneh in listih', () => {
+  const t = boot();
+  assert.deepStrictEqual(t.js('[1, 11, 12, 40, 41, 51, 52].map(r => { const l = NP.loc(r); return l.sheet + l.page + l.line; })'), ['1f0', '1f10', '1b0', '1b28', '2f0', '2f10', '2b0']);
+  const g = t.js('NP.layout(Array.from({length:14}, (_, i) => ({ i })), 9).map(g => ({ k:g.key, n:g.items.length, from:g.from, to:g.to, lines:g.items.map(x => x.line).join() }))');
+  assert.deepStrictEqual(g, [{ k:'1f', n:3, from:9, to:11, lines:'8,9,10' }, { k:'1b', n:11, from:12, to:22, lines:'0,1,2,3,4,5,6,7,8,9,10' }]);
+  assert.strictEqual(t.js('NP.layout(Array.from({length:3}, () => ({})), 39).map(g => g.key + g.items.length).join()'), '1b2,2f1');
+  assert.strictEqual(t.ev('NP.COLS.length'), 9); assert.ok(t.js('NP.COLS').every((x, i, a) => !i || x > a[i - 1]));
+});
+test('Tisk naloga: vrednosti iz posadke, vozila, časov, km in štartnine; ročni popravek ima prednost; pacient se ne natisne', async () => {
+  const t = boot();
+  day(t, { routing:true, vehicles:['v13'], duty:[{ name:'Voznik Test', team:'redna', role:'voznik', vehicleId:'v13' }, { name:'Sprem Test', team:'redna', role:'spremljevalec', vehicleId:'v13' }],
+    rides:[{ name:'TajniPacient Priimek', from:'Dobova 25', to:'SB Brežice', time:'10:00', phone:'1' }] });
+  t.ev('S.vehicles.find(v => v.id === "v13").reg = " kk ab-123 "; S.settings.tisk.startnina = "3.5"; S.settings.tisk.kmDec = 1;');
+  await t.ev(`KM.ensure(${D}, 'r0')`);
+  t.ev(`(() => { const r = rideById(${D}, 'r0').r; r.times = { v_vozilu:'2026-11-10T06:42:00', na_cilju:'2026-11-10T08:10:00' }; r.done = true; })()`);
+  const f = t.js(`NP.entryFor(${D}, rideById(${D}, 'r0').r)`);
+  assert.strictEqual(f.datum, '10.11.2026'); assert.strictEqual(f.reg, 'KK AB-123'); assert.strictEqual(f.od, '06:42'); assert.strictEqual(f.do, '08:10'); assert.strictEqual(f.st, '3,50');
+  assert.strictEqual(f.voz, 'Voznik Test'); assert.strictEqual(f.spr, 'Sprem Test'); assert.ok(/^\d+,\d$/.test(f.km), f.km);
+  const h = t.ev(`NP.pageHTML('f', [{ line:0, f:${JSON.stringify(f)} }], {})`);
+  assert.ok(h.includes('KK AB-123') && h.includes('06:42–08:10') && h.includes('10.11.2026') && h.includes('Voznik Test'));
+  assert.ok(!/TajniPacient|Dobova|Brežice/.test(h), 'nič od pacienta se ne natisne');
+  t.ev(`rideById(${D}, 'r0').r.pr = { row:3, f:{ ...NP.entryFor(${D}, rideById(${D}, 'r0').r), km:'99,9', spr:'Drug Spremljevalec' } }`);
+  const g = t.js(`NP.entryFor(${D}, rideById(${D}, 'r0').r)`); assert.strictEqual(g.km, '99,9'); assert.strictEqual(g.spr, 'Drug Spremljevalec'); assert.strictEqual(g.reg, 'KK AB-123');
+  t.ev('S.settings.tisk.voznik = false; S.settings.tisk.kmDec = 0'); assert.ok(!t.ev(`NP.pageHTML('f', [{ line:0, f:${JSON.stringify(f)} }], {})`).includes('Voznik Test'), 'ime voznika je mogoče izklopiti');
+  assert.strictEqual(t.ev('NP.fmtKm("23.46")'), '23');
+  assert.ok(/white-space:normal/.test(t.ev(`NP.pageHTML('f', [{ line:0, f:{ spr:'Ana Dolgopriimkova-Testna Dolgoimenska' } }], {})`)), 'dolgo ime gre v dve vrstici');
+});
+test('Tisk naloga: opravljen prevoz najde ekipo po imenu, ključu ekipe ali edini ekipi dneva; brez dokaza ostane tablica prazna', () => {
+  const t = boot();
+  day(t, { vehicles:['v04', 'v13'], duty:[{ name:'Voznik Ena', team:'redna', role:'voznik', vehicleId:'v04' }, { name:'Sprem Ena', team:'redna', role:'spremljevalec', vehicleId:'v04' }, { name:'Voznik Dve', team:'redna', role:'voznik', vehicleId:'v13' }],
+    rides:[{ name:'A', from:'Dobova 25', to:'SB Brežice', time:'10:00', phone:'1', done:true, doneBy:'Voznik Dve' }, { name:'B', from:'Dobova 25', to:'SB Brežice', time:'11:00', phone:'1', done:true }, { name:'C', from:'Dobova 25', to:'SB Brežice', time:'12:00', phone:'1', done:true, runKey:`${DATE}_v04` }] });
+  t.ev('S.vehicles.find(v => v.id === "v04").reg = "KK 04-AAA"; S.vehicles.find(v => v.id === "v13").reg = "KK 13-BBB";');
+  const c = id => t.js(`(() => { const x = NP.crewOf(${D}, rideById(${D}, '${id}').r); return { reg:x.reg, voz:x.voz, spr:x.spr }; })()`);
+  assert.deepStrictEqual(c('r0'), { reg:'KK 13-BBB', voz:'Voznik Dve', spr:'' }, 'po imenu v »Kdo je naredil odvoz«');
+  assert.strictEqual(c('r1').reg, '', 'dve ekipi in brez dokaza: tablice ne ugibamo');
+  assert.strictEqual(c('r2').reg, 'KK 04-AAA', 'ključ ekipe');
+});
+test('Tisk naloga: položaj celic (mm), pomanjšanje dolgih imen, premik/raztegnitev, predogled s črtami', () => {
+  const t = boot();
+  const f = { datum:'01.01.2026', od:'08:00', do:'09:00', reg:'KK AB-123', km:'12,3', st:'3,50', spr:'Ana Dolgopriimkova-Testna Dolgoimenska', voz:'Janez' };
+  const h = t.ev(`NP.pageHTML('b', [{ line:2, f:${JSON.stringify(f)} }], {})`);
+  const y = (20.2 + 2 * 8.45).toFixed(2);
+  assert.ok(h.includes(`left:10.60mm;top:${y}mm`), 'datum v prvem stolpcu, vrstica 3 hrbtne strani'); assert.ok(/left:109\.20mm/.test(h), 'spremljevalec');
+  const small = t.ev('NP.fitPt("Ana Dolgopriimkova-Testna Dolgoimenska", 30.8, 9)'); assert.ok(small < 9 && small >= 6, String(small)); assert.strictEqual(t.ev('NP.fitPt("12,3", 9.4, 9)'), 9);
+  t.ev('S.settings.tisk.dx = 2; S.settings.tisk.dy = -1.5; S.settings.tisk.sx = 99; S.settings.tisk.sy = 101');
+  assert.ok(t.ev(`NP.pageHTML('f', [], {})`).includes('translate(2mm,-1.5mm) scale(0.99,1.01)'));
+  assert.ok(t.ev(`NP.pageHTML('f', [], { guide:true })`).includes('ng-h') && !t.ev(`NP.pageHTML('f', [], {})`).includes('ng-h'), 'črte samo za preizkus');
+  assert.strictEqual((t.ev('NP.calibHTML("f")').match(/class="nc"/g) || []).length > 10, true);
+  assert.strictEqual(t.js('S.settings.tisk').od, 'v_vozilu'); assert.strictEqual(t.js('S.vehicles').every(v => !v.reg), true);
 });
 
 /* ------------------------------------------------------------------ zagon */

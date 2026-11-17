@@ -146,6 +146,7 @@ function normalizeState(){
   if (!S.settings.v3){ if (S.settings.window === 60) S.settings.window = 90; S.settings.v3 = 1; }   // dispečer v praksi združuje ure v ~90 min oknu
   S.settings.google = Object.assign({ on:true, auto:true, traffic:false }, S.settings.google || {});
   S.settings.geocode = Object.assign({ on:true, auto:true }, S.settings.geocode || {});
+  S.settings.tisk = Object.assign({ startnina:'', kmDec:1, voznik:true, od:'v_vozilu', dx:0, dy:0, sx:100, sy:100, fs:9 }, S.settings.tisk || {});
   S.geoFix = (S.geoFix && typeof S.geoFix === 'object') ? S.geoFix : {};
   S.places = Array.isArray(S.places) ? S.places : defaultState().places;
   if (S.settings.windowFar == null) S.settings.windowFar = 180;   // oddaljeni cilji: skupna vožnja kljub večjemu razponu ur (glej Nastavitve → Izračun)

@@ -145,6 +145,7 @@ function defaultState(){
       stayDef:45, extraDef:5,                               // privzet čas pregleda, ko reševalec počaka; privzeta pot od vhoda do ambulante
       diaT:{ dop:{ start:'06:30', end:'10:30' }, pop:{ start:'11:30', end:'15:30' } },   // dializa: dopoldanska in popoldanska
       google:{ on:true, auto:true, traffic:false },         // natančni km prek Google Maps (neobvezno; ključ v config.js ali v tej napravi)
+      tisk:{ startnina:'', kmDec:1, voznik:true, od:'v_vozilu', dx:0, dy:0, sx:100, sy:100, fs:9 },   // tisk dopolnil na papirnati nalog (NLG/05)
       geocode:{ on:true, auto:true }                        // brezplačno iskanje naslovov (ulica + hišna številka) v OpenStreetMap; km = točka naslova + cestna pot OSRM
     },
     /* Prilagodljiva pravila: "običajno" velja, "prilagoditev" se uporabi samo, ko je potrebna (ali ko dispečer tako izbere). */
@@ -155,8 +156,8 @@ function defaultState(){
       opozoriloDni:30, opozoriloKratki:7
     },
     vehicles:[
-      { id:'v04', name:'Avto 04', tip:'sanitetno', ns:'redna', sede:3, leze:1, utila:0, skupaj:4, sedeMax:3, lezeMax:1, utilaMax:0, skupajMax:4, aktiv:true },
-      { id:'v13', name:'Avto 13', tip:'sanitetno', ns:'redna', sede:4, leze:0, utila:0, skupaj:4, sedeMax:6, lezeMax:0, utilaMax:0, skupajMax:6, aktiv:true },
+      { id:'v04', name:'Avto 04', reg:'', tip:'sanitetno', ns:'redna', sede:3, leze:1, utila:0, skupaj:4, sedeMax:3, lezeMax:1, utilaMax:0, skupajMax:4, aktiv:true },
+      { id:'v13', name:'Avto 13', reg:'', tip:'sanitetno', ns:'redna', sede:4, leze:0, utila:0, skupaj:4, sedeMax:6, lezeMax:0, utilaMax:0, skupajMax:6, aktiv:true },
       { id:'c1', name:'C1 rdeči', tip:'sanitetno', ns:'oboje', sede:2, leze:0, utila:0, skupaj:2, sedeMax:2, lezeMax:0, utilaMax:0, skupajMax:2, aktiv:true },
       { id:'ost', name:'OSTALO', tip:'ostalo', ns:'oboje', sede:0, leze:0, utila:0, skupaj:0, sedeMax:0, lezeMax:0, utilaMax:0, skupajMax:0, aktiv:true }
     ],
@@ -634,6 +635,7 @@ function normalizeState(){
   if (!S.settings.v3){ if (S.settings.window === 60) S.settings.window = 90; S.settings.v3 = 1; }   // dispečer v praksi združuje ure v ~90 min oknu
   S.settings.google = Object.assign({ on:true, auto:true, traffic:false }, S.settings.google || {});
   S.settings.geocode = Object.assign({ on:true, auto:true }, S.settings.geocode || {});
+  S.settings.tisk = Object.assign({ startnina:'', kmDec:1, voznik:true, od:'v_vozilu', dx:0, dy:0, sx:100, sy:100, fs:9 }, S.settings.tisk || {});
   S.geoFix = (S.geoFix && typeof S.geoFix === 'object') ? S.geoFix : {};
   S.places = Array.isArray(S.places) ? S.places : defaultState().places;
   if (S.settings.windowFar == null) S.settings.windowFar = 180;   // oddaljeni cilji: skupna vožnja kljub večjemu razponu ur (glej Nastavitve → Izračun)
@@ -2569,6 +2571,540 @@ const lastOpened = {};
 function logPatientOpen(id){ const t = Date.now(); if (lastOpened[id] && t - lastOpened[id] < 300000) return; lastOpened[id] = t; const p = patientById(id); audit('pacient.ogled', { id, kdo:p ? initials(p.name) : '' }); }
 
 /* =====================================================================
+   SKENIRANJE NALOGA ZA PREVOZ (Obr. NLG/05) → samodejno izpolnjevanje podatkov pacienta in naloga
+   Tri poti do besedila (vse na napravi, brez pošiljanja slike nikamor):
+     1) prilepljeno besedilo (iPhone: Kamera → »Skeniraj besedilo«, Android: Google Lens → kopiraj; ali besedilo iz PDF),
+     2) slika (fotografija) ali PDF-sken: razpoznava besedila (OCR) v ločenem, izoliranem okvirju ocr/ocr.html,
+     3) PDF, ki je samo slika (iPhone Zapiski, Google Drive …): slika se izvleče iz PDF (JPEG ali Flate), nato OCR.
+   Razčlenjevalec (parse) je čista funkcija: pozna razporeditev obrazca (vrednost je NAD oznako), prenese šum OCR, nikoli ne ugiba brez opore
+   in vsako polje pokaže v pregledu, kjer ga dispečer popravi pred shranjevanjem. Slika in besedilo se NE shranita; shrani se samo potrjeno.
+   ===================================================================== */
+const NSCAN = (() => {
+  const S_ = v => String(v ?? '');
+  const N = s => norm(s);
+  const NOISE_STOP = /(razlog|obravnave|vrsta|prevoza|nujni|nenujni|sanitetni|helikopterski|bolezen|poskodba|poklicna|transplant|doplacila|zavarovan|zavarovalnic|policej?|veljavnost|enkratna|napotnic|zdravnik|izvajal|dejavnost|stevilka|datum|rojstva|telefonska|kontaktna|opombe|relacija|dializa|nepokretnost|skodljivost|javnega|spremstvo|tuji|brez)/;
+  const title = s => S_(s).toLowerCase().replace(/(^|[\s\-'’])(\p{L})/gu, (m, a, b) => a + b.toUpperCase()).replace(/\s+/g, ' ').trim();
+  const lines = text => S_(text).replace(/\r/g, '').split('\n').map(l => l.replace(/[ \t ]+/g, ' ').trim()).filter(Boolean);
+
+  /* Popravek najpogostejših napak OCR v številkah (O→0, l→1 …), samo v besedah, ki so večinoma števke */
+  function fixTok(t){
+    const d = (t.match(/\d/g) || []).length;
+    if (t.length < 2 || d < t.length * 0.5) return t;
+    return t.replace(/[OoQ]/g, '0').replace(/[Il|]/g, '1').replace(/S/g, '5').replace(/B/g, '8');
+  }
+  const fixDigits = line => S_(line).split(' ').map(fixTok).join(' ');
+
+  /* ---------- Vzorci ---------- */
+  const RE_DATE = /(\d{1,2})\s*[.,/]\s*(\d{1,2})\s*[.,/]\s*((?:19|20)\d{2})/g;
+  const RE_MAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+  const RE_PHONE = /(?:\+|00)?\s*(?:386)?[\s(-]*0?\d{1,2}[\s)\-/.]*\d{3}[\s\-/.]*\d{3}\b/;
+  function dates(line){
+    const out = []; let m; RE_DATE.lastIndex = 0;
+    while ((m = RE_DATE.exec(line))){
+      const d = +m[1], mo = +m[2], y = +m[3];
+      if (mo < 1 || mo > 12 || d < 1 || d > 31) continue;
+      out.push({ iso:`${y}-${pad(mo)}-${pad(d)}`, y, text:m[0], at:m.index });
+    }
+    return out;
+  }
+  /* 9-mestna številka zavarovane osebe (tudi razdeljena na skupine po 3 ali brez presledkov) */
+  function zzzsIn(line){
+    if (/\b(?:tel|gsm|mob)/i.test(N(line))) return '';   // vrstica s telefonom ni številka zavarovane osebe
+    const f = fixDigits(line).replace(RE_DATE, ' ');
+    const m = /(?:^|[^\d])(\d{3}[ .]?\d{3}[ .]?\d{3})(?!\d)/.exec(f);
+    return m ? m[1].replace(/\D/g, '') : '';
+  }
+  const phoneIn = line => {
+    const f = fixDigits(line).replace(RE_DATE, ' ').replace(RE_MAIL, ' ');
+    const m = RE_PHONE.exec(f); if (!m) return '';
+    return m[0].replace(/\s+/g, ' ').trim();
+  };
+  const isLabel = l => /^\(/.test(l);
+  /* desni stolpci obrazca (npr. »03 -POKLICNA BOLEZEN 01 3- SANITETNI«) se odrežejo: leva vrednost je pred prvo oznako »številka -« */
+  function cutRight(l){
+    const m = /\s\d{1,2}\s*[-–—=]+\s*\S/.exec(' ' + l);
+    return (m ? l.slice(0, Math.max(0, m.index - 1)) : l).trim();
+  }
+  const cleanText = s => S_(s).replace(/[^\p{L}\p{N}@.,;:'’()+/&\-–\s]/gu, ' ').replace(/\s+/g, ' ').replace(/(\s+[^\p{L}\p{N}\s]{0,2}){1,2}$/u, m => (/^[\s\p{L}\p{N}]*$/u.test(m) && m.trim().length > 2) ? m : '').trim();
+  /* odstrani odvečne kratke ostanke OCR na koncu (npr. »… Krsko 3«, »… Primer Ne«) */
+  const trimTail = s => S_(s).replace(/(?:\s+(?:[^\p{L}\d]{1,3}|\p{L}{1,2}[.,;:]?|\d))+$/u, '').trim();
+  const stripNoise = s => S_(s).replace(/^[^\p{L}\d]*(\p{L}{1,2})\s+(?=\p{Lu})/u, (m, tok) => /^(zd|sb|ob|dh|um|zz)$/i.test(tok) ? m.replace(/^[^\p{L}\d]*/u, '') : '');
+  const nameVal = c => {
+    const t = trimTail(cleanText(cutRight(c).split(/[;|}{\\,]/)[0]).replace(/[^\p{L}\s'’\-]/gu, ' ').replace(/\s+/g, ' ').trim());
+    if (t.length < 2 || t.length > 40 || t.split(' ').length > 3 || NOISE_STOP.test(N(t))) return '';
+    if (!/\p{L}{2}/u.test(t)) return '';
+    return t;
+  };
+  const streetVal = c => {
+    const t = cleanText(cutRight(c)); const n = N(t);
+    if (t.length < 3 || !/\p{L}{2}/u.test(t) || NOISE_STOP.test(n) || RE_MAIL.test(t)) return '';
+    return t;
+  };
+
+  /* ---------- Razčlenjevanje ---------- */
+  function parse(text){
+    const L0 = lines(text), L = L0;
+    const f = {}, src = {}, notes = [];
+    const set = (k, v, how) => { if (v != null && String(v).trim() !== '' && !f[k]){ f[k] = String(v).trim(); src[k] = how || 'oznaka'; } };
+    const now = new Date(), yNow = now.getFullYear();
+
+    /* 0) številka naloga: 7-mestna številka v glavi (zgoraj desno) */
+    for (let i = 0; i < Math.min(8, L.length); i++){
+      const m = /(?:^|[^\d])(\d{7})(?!\d)/.exec(fixDigits(L[i]));
+      if (m){ set('stevilka', m[1], 'glava'); break; }
+    }
+
+    /* 1) zavarovana oseba: vrednost je NAD oznako; sidro = vrstica s številko zavarovane osebe */
+    let iA = L.findIndex((l, i) => zzzsIn(l) && (dates(fixDigits(l)).length || /zavarovane|rojstva/.test(N(L[i + 1] || ''))));
+    if (iA < 0) iA = L.findIndex(l => zzzsIn(l));
+    if (iA < 0){
+      const k = L.findIndex(l => /zavarovane\s+osebe\)|datum\s+rojstva/.test(N(l)));
+      if (k > 0) iA = k - 1;
+    }
+    let stop = L.length;
+    if (iA >= 0){
+      const z = zzzsIn(L[iA]); if (z) set('zzzs', z, 'vzorec');
+      const dd = dates(fixDigits(L[iA])).filter(d => d.y < yNow + 1)[0]; if (dd) set('dob', dd.iso, 'vzorec');
+      for (let i = iA + 1; i < L.length; i++){ if (/kontaktna\s+podatka|^\s*12\s*[-–—=.]|relacija\s+prevoza/.test(N(L[i]))){ stop = i; break; } }
+      const seq = []; let cand = [];
+      for (let i = iA + 1; i < stop; i++){
+        if (isLabel(L[i])){ seq.push({ lab:N(L[i]), cand }); cand = []; } else cand.push(L[i]);
+      }
+      const KEY = [['zzzs', /zavarovane|rojstva|datum/], ['priimek', /pr?[il1]*[mn]?[ie]k|priim|primek|prlm/], ['ime', /^\(?\s*[il1|]me\s*\)?\*?$/], ['ulica', /ulic|hi[sgz]na|\bst\./], ['posta', /po[sš5]t|posin|kraj|krai|\bhl\b/], ['tel', /telef/], ['mail', /po[sš]ta|mail/]];
+      const ORDER = ['zzzs', 'priimek', 'ime', 'ulica', 'posta', 'tel', 'mail'];
+      let next = 0; const byField = {};
+      seq.forEach(s => {
+        let key = (KEY.find(([, re]) => re.test(s.lab)) || [])[0];
+        if (!key) key = ORDER[Math.min(next, ORDER.length - 1)];
+        next = Math.max(next, ORDER.indexOf(key)) + 1;
+        if (!byField[key]) byField[key] = s.cand;
+      });
+      const last = list => list && list.length ? list : [];
+      const pickLast = (list, fn) => { for (let i = list.length - 1; i >= 0; i--){ const v = fn(list[i]); if (v) return v; } return ''; };
+      set('priimek', title(pickLast(last(byField.priimek), nameVal)), 'oznaka');
+      set('ime', title(pickLast(last(byField.ime), nameVal)), 'oznaka');
+      set('ulica', pickLast(last(byField.ulica), streetVal), 'oznaka');
+      const pk = last(byField.posta);
+      for (let i = pk.length - 1; i >= 0; i--){
+        const m = /^(\d{4})\s*(.*)$/.exec(fixDigits(cleanText(cutRight(pk[i]))));
+        if (m){ set('posta', m[1], 'oznaka'); const k = trimTail(m[2].replace(/[^\p{L}\s\-]/gu, ' ').replace(/\s+/g, ' ')); if (k) set('kraj', title(k), 'oznaka'); break; }
+      }
+      if (!f.posta){ const lone = pk.map(x => /^\s*(\d{4})\s*$/.exec(fixDigits(x))).filter(Boolean).pop(); if (lone) set('posta', lone[1], 'oznaka'); }
+      if (!f.kraj){ const k = pickLast(pk.filter(x => !/\d{4}/.test(fixDigits(x))), nameVal); if (k) set('kraj', title(k), 'oznaka'); }
+    }
+    /* telefon in e-pošta: vzorec, kjerkoli v bloku zavarovane osebe (oznaka je pogosto pokvarjena) */
+    const zoneEnd = stop < L.length ? stop : Math.min(L.length, (iA >= 0 ? iA : 0) + 30);
+    for (let i = Math.max(0, iA); i < zoneEnd && i >= 0; i++){
+      if (!f.mail){ const m = RE_MAIL.exec(L[i]); if (m) set('mail', m[0].toLowerCase(), 'vzorec'); }
+      if (!f.phone && i !== iA){ const p = phoneIn(L[i]); if (p && !/\d{4}\s*(?:19|20)\d{2}/.test(p)) set('phone', p, 'vzorec'); }
+    }
+    if (!f.mail){ const m = RE_MAIL.exec(S_(text)); if (m) set('mail', m[0].toLowerCase(), 'vzorec'); }
+
+    /* 2) izvajalec (naročnik) in zdravnik: samo ko je jasno; sicer prazno */
+    const zi = L.findIndex(l => /\bdr\.?\s+[\p{Lu}]/u.test(l) || /\b(?:prim|asist|doc)\.?\s+dr\.?/i.test(l));
+    if (zi >= 0){
+      const m = /\b((?:prim\.?\s*|asist\.?\s*|doc\.?\s*)?dr\.?(?:\s*med\.?)?\s+[\p{Lu}][\p{L}'’-]+(?:\s+[\p{Lu}][\p{L}'’-]+)?)/u.exec(L[zi]);
+      if (m) set('zdravnik', m[1].replace(/\s+/g, ' ').trim(), 'vzorec');
+      const before = stripNoise(m ? L[zi].slice(0, m.index) : L[zi]);
+      if (/(\bzd\b|zdravstven|bolnisnic|ambulant|klinik|ordinacij|zavod|d\.o\.o|\bsb\b|ukc|center|dom\b)/.test(N(before))) set('narocnik', trimTail(cleanText(before)).slice(0, 80), 'vzorec');
+    }
+    if (!f.narocnik){
+      const k = L.findIndex(l => /(\bzd\b|zdravstven\w*\s+(?:dom|postaj|center)|splosna\s+bolnisnica|zdravstveni\s+dom)/.test(N(l)) && !/\d{5,}/.test(l) && !/reseval/.test(N(l)));
+      if (k >= 0 && k < (iA >= 0 ? iA : L.length)) set('narocnik', trimTail(cleanText(stripNoise(cutRight(L[k])))).slice(0, 80), 'vzorec');
+    }
+
+    /* 3) relacija in opombe: besedilo za naslovom »12 – RELACIJA PREVOZA« in »13 – OPOMBE« */
+    const iRel = L.findIndex(l => /(^|\s)12\s*[-–—=.]?\s*rela|relacija\s+prevoza/.test(N(l)));
+    const iOp = L.findIndex((l, i) => i > Math.max(iRel, -1) && /(^|\s)13\s*[-–—=.]?\s*opomb|^\s*opombe/.test(N(l)));
+    const endOp = (() => { const k = L.findIndex((l, i) => i > Math.max(iOp, iRel) && (/^\s*(?:\p{L}+\s+)?kraj\b.*\bdne\b|\bdne\b.*\bzig\b|podpis\s+zdravnika|^\s*datum\s+cas/u.test(N(l)) || /(^|\s)kraj\s+(?:dne|\d)/.test(N(l)))); return k < 0 ? L.length : k; })();
+    if (iRel >= 0){
+      const rel = [], head = L[iRel].replace(/^.*?relacija\s+prevoza\s*/i, '').trim();
+      if (head) rel.push(head);
+      for (let i = iRel + 1; i < (iOp > iRel ? iOp : endOp); i++) rel.push(L[i]);
+      const raw = trimTail(cleanText(rel.join(' ').replace(/\\|\|/g, ' ')));
+      if (raw){
+        f.relacija = raw;
+        const m = /^(.*?)\s+(?:[-–—>]+|=>|→)\s+(.+)$/.exec(raw) || /^(.*?)\s+do\s+(.+)$/i.exec(raw);
+        if (m){ set('od', m[1].trim(), 'vzorec'); set('do', m[2].trim(), 'vzorec'); }
+        src.relacija = 'oznaka';
+      }
+    }
+    if (iOp >= 0){
+      const op = [], head = L[iOp].replace(/^.*?opombe\s*/i, '').trim();
+      if (head) op.push(head);
+      for (let i = iOp + 1; i < endOp; i++) op.push(L[i]);
+      const raw = op.map(x => trimTail(cleanText(x))).filter(x => x.length > 1).join('; ');
+      if (raw){ f.opombe = raw; src.opombe = 'oznaka'; }
+    }
+
+    /* 4) datumi: veljavnost »2 – DO«, datum izdaje (pri »dne«); rojstni datum je že znan */
+    const all = []; L.forEach((l, i) => dates(fixDigits(l)).forEach(d => all.push({ ...d, i, line:l })));
+    const dne = all.slice().reverse().find(d => /\bdne\b|\bkraj\b/.test(N(d.line)) && d.iso !== f.dob);
+    const doo = all.find(d => /(?:^|\s|\()2\s*[-–—=]\s*(?:do|d0|oo|00)\b/.test(N(d.line.slice(0, d.at + 1))) && d.iso !== f.dob) || all.find(d => d.i < (iA >= 0 ? iA : 99) && d.iso !== f.dob && d.y >= yNow - 1);
+    if (dne) set('izdan', dne.iso, 'vzorec');
+    if (doo && (!dne || doo.iso !== dne.iso)) set('veljaDo', doo.iso, 'vzorec');
+    if (!f.izdan){ const x = all.filter(d => d.iso !== f.dob && d.iso !== f.veljaDo).pop(); if (x) set('izdan', x.iso, 'vzorec'); }
+
+    /* 5) iz vsebine: razlog, način prevoza in vrsta naloga (predlog; pregled to prikaže kot izbiro) */
+    const body = N([f.relacija, f.opombe].filter(Boolean).join(' '));
+    if (/dializ|nefrodial|hemodial/.test(body)){ set('razlog', 'Dializa', 'besedilo'); }
+    else if (/obseva|radioterap/.test(body)) set('razlog', 'Obsevanje', 'besedilo');
+    else if (/kemoterap|kemo\b/.test(body)) set('razlog', 'Kemoterapija', 'besedilo');
+    else if (/rehabilit/.test(body)) set('razlog', 'Rehabilitacija', 'besedilo');
+    set('mode', /leze|lezec|nosil/.test(body) ? 'leze' : /utila/.test(body) ? 'utila' : 'sede', /leze|lezec|nosil|utila/.test(body) ? 'besedilo' : 'privzeto');
+    const from = f.izdan || '';
+    if (f.veljaDo && from){
+      const span = Math.round((parseYmd(f.veljaDo) - parseYmd(from)) / 86400000);
+      f.vrsta = span >= 300 ? 'letna' : span >= 25 && span <= 62 ? 'mesecna' : span > 0 && span < 25 ? 'zdravljenje' : 'enkratna';
+    } else f.vrsta = f.razlog === 'Dializa' ? 'letna' : 'enkratna';
+    src.vrsta = f.veljaDo ? 'datumi' : 'predlog';
+
+    /* naslov za aplikacijo: »ulica, kraj« (kraj se izpusti, če je že v ulici: »Dobova 25«) */
+    if (f.ulica){
+      const sameTown = f.kraj && N(f.ulica).startsWith(N(f.kraj));
+      f.addr = f.kraj && !sameTown ? `${f.ulica}, ${f.kraj}` : f.ulica;
+    } else if (f.kraj) f.addr = f.kraj;
+    if (f.ime || f.priimek) f.name = [f.ime, f.priimek].filter(Boolean).join(' ');
+
+    const key = ['name', 'zzzs', 'addr', 'stevilka', 'relacija'];
+    const found = key.filter(k => f[k]).length;
+    if (!f.name) notes.push('Imena ni bilo mogoče prebrati.');
+    if (!f.addr) notes.push('Naslova ni bilo mogoče prebrati.');
+    if (!f.relacija) notes.push('Relacija prevoza ni prebrana.');
+    return { fields:f, src, notes, found, total:key.length, lines:L0.length };
+  }
+
+  /* ---------- Povezava z bazo pacientov ---------- */
+  const digitsOnly = s => S_(s).replace(/\D/g, '');
+  function matchPatient(f){
+    const z = digitsOnly(f.zzzs);
+    if (z.length === 9){ const p = S.patients.find(x => digitsOnly(x.zzzs) === z); if (p) return { p, how:'številka zavarovane osebe' }; }
+    const a = N([f.ime, f.priimek].filter(Boolean).join(' ')).split(' ').filter(Boolean).sort().join(' ');
+    if (a){ const p = S.patients.find(x => N(x.name).split(' ').filter(Boolean).sort().join(' ') === a); if (p) return { p, how:'ime in priimek' }; }
+    return null;
+  }
+  /* Shrani potrjene podatke: pacient (nov ali obstoječ: izpolni samo prazna polja) + nalog (novega, ali posodobi istega s številko) */
+  function apply(f, o = {}){
+    let p = o.pid ? patientById(o.pid) : null, created = false;
+    const name = S_(f.name || [f.ime, f.priimek].filter(Boolean).join(' ')).trim();
+    if (!p){
+      p = blankPatient({ name, addr:f.addr || '', phone:f.phone || '', mode:f.mode || 'sede', zzzs:digitsOnly(f.zzzs), color:nextColor() });
+      S.patients.push(p); created = true; audit('pacient.dodan', { id:p.id, kdo:initials(p.name), vir:'skeniran nalog' });
+    } else {
+      if (!p.addr && f.addr) p.addr = f.addr;
+      if (!p.phone && f.phone) p.phone = f.phone;
+      if (!p.zzzs && f.zzzs) p.zzzs = digitsOnly(f.zzzs);
+    }
+    p.naloge = p.naloge || [];
+    const from = f.veljaOd || f.izdan || todayStr();
+    let n = f.stevilka ? p.naloge.find(x => S_(x.stevilka).trim() === S_(f.stevilka).trim()) : null, updated = !!n;
+    if (!n){ n = blankNalog(f.vrsta || 'enkratna', from); p.naloge.push(n); }
+    const set = (k, v) => { if (v != null && S_(v).trim() !== '') n[k] = S_(v).trim(); };
+    set('stevilka', f.stevilka); set('narocnik', f.narocnik); set('zdravnik', f.zdravnik); set('razlog', f.razlog); set('mode', f.mode);
+    set('od', f.od || p.addr); set('do', f.do); set('opombe', f.opombe);
+    n.vrsta = f.vrsta || n.vrsta; n.veljaOd = from;
+    if (f.veljaDo){ n.veljaDo = f.veljaDo; n.auto = false; } else if (!updated){ n.veljaDo = defaultValidTo(n.vrsta, from); n.auto = true; }
+    if (f.mail){ /* e-pošte ne hranimo: ni potrebna za prevoz */ }
+    audit('nalog.skeniran', { pid:p.id, nov:created, posodobljen:updated });
+    save();
+    return { p, n, created, updated };
+  }
+
+  /* ---------- Slika iz PDF (JPEG ali Flate, kot ga ustvarijo telefoni) ---------- */
+  const inflate = async (u8) => {
+    if (typeof DecompressionStream === 'undefined') throw new Error('Brskalnik ne podpira branja tega PDF. Naredi fotografijo ali izvozi stran kot sliko.');
+    const ds = new DecompressionStream('deflate'), w = ds.writable.getWriter(); w.write(u8); w.close();
+    return new Uint8Array(await new Response(ds.readable).arrayBuffer());
+  };
+  function unpredict(raw, colors, columns, pred){
+    if (pred < 10) return raw;
+    const bpp = colors, rowLen = columns * colors;
+    const rows = Math.floor(raw.length / (rowLen + 1)), res = new Uint8Array(rows * rowLen);
+    for (let r = 0; r < rows; r++){
+      const ft = raw[r * (rowLen + 1)], src = r * (rowLen + 1) + 1, dst = r * rowLen, up = dst - rowLen;
+      for (let i = 0; i < rowLen; i++){
+        const x = raw[src + i], a = i >= bpp ? res[dst + i - bpp] : 0, b = r ? res[up + i] : 0, c = (r && i >= bpp) ? res[up + i - bpp] : 0;
+        let v;
+        if (ft === 0) v = x; else if (ft === 1) v = x + a; else if (ft === 2) v = x + b; else if (ft === 3) v = x + ((a + b) >> 1);
+        else { const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c); v = x + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c); }
+        res[dst + i] = v & 255;
+      }
+    }
+    return res;
+  }
+  /* vrne [{ kind:'jpeg', bytes }, { kind:'raw', w, h, comps, data }] po vrstnem redu v datoteki; slike, manjše od 300 px, preskoči */
+  async function pdfImages(buf){
+    const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf), out = [];
+    let str = ''; const CH = 8192; for (let i = 0; i < u8.length; i += CH) str += String.fromCharCode.apply(null, u8.subarray(i, Math.min(u8.length, i + CH)));
+    let from = 0;
+    for (;;){
+      const at = str.indexOf('/Subtype', from); if (at < 0) break; from = at + 8;
+      if (!/^\s*\/Image\b/.test(str.slice(at + 8, at + 24))) continue;
+      const st = str.lastIndexOf(' obj', at), ds = st < 0 ? Math.max(0, at - 400) : st, sIdx = str.indexOf('stream', at); if (sIdx < 0) break;
+      const dict = str.slice(ds, sIdx);
+      if (/\/ImageMask\s+true/.test(dict)) continue;
+      const w = +(/\/Width\s+(\d+)/.exec(dict) || [])[1], h = +(/\/Height\s+(\d+)/.exec(dict) || [])[1];
+      if (!(w >= 300 && h >= 300)) continue;
+      let p = sIdx + 6; if (str[p] === '\r' && str[p + 1] === '\n') p += 2; else if (str[p] === '\n' || str[p] === '\r') p += 1;
+      let len = (/\/Length\s+(\d+)(?!\s+\d+\s+R)/.exec(dict) || [])[1]; len = len ? +len : 0;
+      let end = len && str.startsWith('endstream', p + len) || str.startsWith('\nendstream', p + len) || str.startsWith('\r\nendstream', p + len) ? p + len : str.indexOf('endstream', p);
+      if (end < 0) continue; if (!len) { while (end > p && (str[end - 1] === '\n' || str[end - 1] === '\r')) end--; }
+      const data = u8.subarray(p, end);
+      from = Math.max(from, end);
+      const filt = /\/Filter\s*(?:\[\s*)?\/(\w+)/.exec(dict); const f = filt ? filt[1] : '';
+      if (f === 'DCTDecode'){ out.push({ kind:'jpeg', bytes:data, w, h }); continue; }
+      if (f === 'FlateDecode'){
+        let raw = await inflate(data);
+        const pr = /\/Predictor\s+(\d+)/.exec(dict), pred = pr ? +pr[1] : 1;
+        const comps = /DeviceGray|\/N\s+1\b/.test(dict) && !/DeviceRGB/.test(dict) ? 1 : 0;
+        const col = /\/Colors\s+(\d+)/.exec(dict);
+        let c = comps || (col ? +col[1] : 0);
+        if (pred >= 10){ c = c || 3; raw = unpredict(raw, c, w, pred); }
+        if (!c) c = raw.length === w * h ? 1 : raw.length === w * h * 3 ? 3 : 0;
+        if (!(c === 1 || c === 3) || raw.length < w * h * c || !/\/BitsPerComponent\s+8\b/.test(dict)) continue;
+        out.push({ kind:'raw', w, h, comps:c, data:raw });
+      }
+    }
+    return out;
+  }
+
+  /* ---------- Priprava slike in OCR (samo v brskalniku) ---------- */
+  const MAXSIDE = 2600;
+  async function toCanvas(src){
+    let cv, w, h;
+    if (src.kind === 'raw'){
+      w = src.w; h = src.h; cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d'), im = ctx.createImageData(w, h), d = im.data, s = src.data;
+      if (src.comps === 3) for (let i = 0, j = 0, n = w * h; i < n; i++, j += 3){ d[i * 4] = s[j]; d[i * 4 + 1] = s[j + 1]; d[i * 4 + 2] = s[j + 2]; d[i * 4 + 3] = 255; }
+      else for (let i = 0, n = w * h; i < n; i++){ d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = s[i]; d[i * 4 + 3] = 255; }
+      ctx.putImageData(im, 0, 0);
+    } else {
+      const bmp = await createImageBitmap(src.kind === 'jpeg' ? new Blob([src.bytes], { type:'image/jpeg' }) : src.blob);
+      w = bmp.width; h = bmp.height; cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(bmp, 0, 0); if (bmp.close) bmp.close();
+    }
+    const k = Math.min(1, MAXSIDE / Math.max(w, h));
+    if (k < 1){ const c2 = document.createElement('canvas'); c2.width = Math.round(w * k); c2.height = Math.round(h * k); const x = c2.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(cv, 0, 0, c2.width, c2.height); cv = c2; }
+    return cv;
+  }
+  /* sivine + raztegnitev kontrasta (2.–98. percentil): zeleni okvirji obrazca ne motijo OCR */
+  function enhance(cv){
+    const ctx = cv.getContext('2d'), im = ctx.getImageData(0, 0, cv.width, cv.height), d = im.data, hist = new Uint32Array(256), n = cv.width * cv.height;
+    for (let i = 0; i < n; i++){ const g = (d[i * 4] * 30 + d[i * 4 + 1] * 59 + d[i * 4 + 2] * 11) / 100 | 0; d[i * 4] = g; hist[g]++; }
+    let acc = 0, lo = 0, hi = 255; for (let v = 0; v < 256; v++){ acc += hist[v]; if (acc > n * .02){ lo = v; break; } }
+    acc = 0; for (let v = 255; v >= 0; v--){ acc += hist[v]; if (acc > n * .02){ hi = v; break; } }
+    const span = Math.max(40, hi - lo);
+    for (let i = 0; i < n; i++){ const g = Math.max(0, Math.min(255, ((d[i * 4] - lo) * 255 / span) | 0)); d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = g; }
+    ctx.putImageData(im, 0, 0); return cv;
+  }
+  const toBlob = cv => new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('Slike ni mogoče pripraviti.')), 'image/png'));
+  /* datoteka → PNG blob prve strani (PDF: prva slika) */
+  async function prepare(file){
+    const isPdf = /pdf$/i.test(file.type) || /\.pdf$/i.test(file.name || '');
+    let src;
+    if (isPdf){
+      const imgs = await pdfImages(await file.arrayBuffer());
+      if (!imgs.length) throw new Error('V tem PDF ni slike strani. Če ima besedilo, ga označi, kopiraj in prilepi; sicer naredi fotografijo naloga.');
+      src = imgs[0];
+    } else src = { kind:'blob', blob:file };
+    return toBlob(enhance(await toCanvas(src)));
+  }
+  /* OCR v izoliranem okvirju (brez dostopa do podatkov aplikacije); okvir naloži knjižnico samo ob uporabi */
+  /* poti iz config.js so relativne na stran aplikacije; okvir je v mapi ocr/, zato jih pretvorimo v absolutne naslove */
+  const abs = u => u ? new URL(String(u), (typeof location !== 'undefined' && location.href) || 'http://localhost/').href : '';
+  function ocr(png, onProgress, cfg = (typeof window !== 'undefined' && window.KP_CONFIG && window.KP_CONFIG.ocr) || {}){
+    return new Promise((resolve, reject) => {
+      const fr = document.createElement('iframe'); let done = false, timer = 0;
+      fr.setAttribute('sandbox', 'allow-scripts'); fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1; fr.style.cssText = 'position:fixed;width:1px;height:1px;left:-9px;top:-9px;border:0;opacity:0';
+      const end = (fn, v) => { if (done) return; done = true; clearTimeout(timer); window.removeEventListener('message', onMsg); fr.remove(); fn(v); };
+      const onMsg = async e => {
+        if (e.source !== fr.contentWindow) return;
+        const m = e.data || {};
+        if (m.type === 'ready'){ fr.contentWindow.postMessage({ type:'run', cfg:{ lib:abs(cfg.lib), lang:cfg.lang || 'slv+eng', langPath:abs(cfg.langPath), workerPath:abs(cfg.workerPath), corePath:abs(cfg.corePath) }, image:await png.arrayBuffer() }, '*'); }
+        else if (m.type === 'progress'){ if (onProgress) onProgress(m); }
+        else if (m.type === 'done') end(resolve, S_(m.text));
+        else if (m.type === 'error') end(reject, new Error(S_(m.msg) || 'Razpoznava besedila ni uspela.'));
+      };
+      window.addEventListener('message', onMsg);
+      timer = setTimeout(() => end(reject, new Error('Razpoznava besedila je trajala predolgo. Poskusi znova ali prilepi besedilo.')), 240000);
+      fr.onerror = () => end(reject, new Error('Okvir za razpoznavo besedila se ni naložil.'));
+      fr.src = (cfg.frame || 'ocr/ocr.html');
+      document.body.appendChild(fr);
+    });
+  }
+  const ocrEnabled = (cfg = (typeof window !== 'undefined' && window.KP_CONFIG && window.KP_CONFIG.ocr) || {}) => cfg.on !== false && !!cfg.lib;
+
+  return { parse, matchPatient, apply, pdfImages, prepare, ocr, ocrEnabled, lines, zzzsIn, dates, title, fixDigits };
+})();
+
+/* =====================================================================
+   TISK DOPOLNIL NA OBRAZEC »NALOG ZA PREVOZ« (Obr. NLG/05)
+   Papirnati nalog ima na sprednji strani polja 1–13 (izpolni zdravnik) in tabelo PREVOZI; hrbtna stran je nadaljevanje tabele.
+   Reševalec list položi v tiskalnik, aplikacija natisne SAMO podatke, ki jih izpolni posadka, v pravo vrstico tabele:
+   datum, čas (od–do), reg. št. vozila, km, štartnina, spremljevalec in ime voznika (podpis ostane lastnoročen).
+   NIČ od pacienta (ime, naslov, številka zavarovane osebe) se ne natisne.
+   Položaj je v milimetrih (list A4), izmerjen na fotografiji praznega obrazca; zaradi razlik v tiskalnikih in obrazcih ga je mogoče
+   v Nastavitve → Tisk naloga premakniti (mm) in raztegniti (%). Preizkusna stran s črtami celic pomaga pri poravnavi.
+   ===================================================================== */
+const NP = (() => {
+  const PT = 0.3528;                                   // 1 pt v mm
+  /* Stolpci (mm od levega roba lista): Datum | Čas (od-do) | Reg. št. vozila | km/min | Štartnina | Spremljevalec | Podpis voznika | Podpis zavarovane osebe */
+  const COLS = [9.6, 33.6, 57.8, 85.0, 96.4, 108.0, 141.0, 171.9, 200.0];
+  const PAGES = {
+    f:{ head:178.0, top:186.4, pitch:8.56, rows:11 },   // sprednja stran: glava tabele, prva vrstica, višina vrstice, število vrstic
+    b:{ head:11.8, top:20.2, pitch:8.45, rows:29 }      // hrbtna stran
+  };
+  const SHEET = PAGES.f.rows + PAGES.b.rows;           // 40 vrstic na list
+  const FIELDS = ['datum', 'od', 'do', 'reg', 'km', 'st', 'spr', 'voz'];
+  const DEF = { startnina:'', kmDec:1, voznik:true, od:'v_vozilu', dx:0, dy:0, sx:100, sy:100, fs:9 };
+  const cfg = () => Object.assign({}, DEF, (typeof S !== 'undefined' && S && S.settings && S.settings.tisk) || {});
+  const num = v => { const x = parseFloat(String(v ?? '').replace(',', '.')); return isFinite(x) ? x : null; };
+  const clamp = (v, a, b, d) => { const x = num(v); return x == null ? d : Math.min(b, Math.max(a, x)); };
+
+  /* ---------- Oblikovanje ---------- */
+  const fmtDate = d => { if (!d) return ''; const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d)); return m ? `${m[3]}.${m[2]}.${m[1]}` : String(d); };
+  const fmtKm = v => { const x = num(v); if (x == null) return ''; const dec = clamp(cfg().kmDec, 0, 1, 1); return x.toFixed(dec).replace('.', ','); };
+  const fmtMoney = v => { const s = String(v ?? '').trim(); if (!s) return ''; const x = num(s); return x == null ? s : x.toFixed(2).replace('.', ','); };
+  const hm = iso => { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+
+  /* ---------- Mesto vrstice: vrstica 1–40 na listu, 41+ je naslednji list ---------- */
+  function loc(row){
+    const k = (row - 1) % SHEET, sheet = Math.floor((row - 1) / SHEET) + 1, front = k < PAGES.f.rows;
+    return { sheet, page:front ? 'f' : 'b', line:front ? k : k - PAGES.f.rows, key:sheet + (front ? 'f' : 'b') };
+  }
+
+  /* ---------- Posadka in vozilo, s katerim je bil prevoz opravljen ---------- */
+  function crewOf(date, r){
+    let veh = null, voz = '', spr = [], plan = null;
+    const fromCrew = c => { veh = S.vehicles.find(v => v.id === c.id) || c.vehicle; voz = c.driver ? c.driver.name : ''; spr = (c.escorts || []).map(e => e.name).filter(Boolean); };
+    try {
+      plan = computePlan(date);
+      const a = plan && plan.assign[r.id], c = a && plan.crews.find(x => x.id === a.crewId);
+      if (c) fromCrew(c);
+    } catch (e) { /* brez razporeda: poskusi drugje */ }
+    /* objavljen razpored / ključ ekipe (»datum_idVozila«) */
+    if (!veh && r.runKey){
+      const run = (((S.published || {})[date] || {}).runs || []).find(x => x.key === r.runKey);
+      if (run){ veh = S.vehicles.find(v => v.id === run.vehId) || { name:run.vehName, reg:'' }; const nm = run.names || []; voz = nm[0] || ''; spr = nm.slice(1); }
+      else if (String(r.runKey).startsWith(date + '_')) veh = S.vehicles.find(v => v.id === String(r.runKey).slice(date.length + 1)) || null;
+    }
+    /* opravljen prevoz ni več v razporedu: ekipo poišči po imenu v »Kdo je naredil odvoz«, sicer če je tisti dan le ena ekipa */
+    if (!veh && plan && plan.crews && plan.crews.length){
+      const by = norm(r.doneBy || '');
+      let c = by ? plan.crews.find(x => (x.driver && x.driver.name && by.includes(norm(x.driver.name))) || (x.escorts || []).some(e => e.name && by.includes(norm(e.name)))) : null;
+      if (!c && plan.crews.length === 1) c = plan.crews[0];
+      if (c) fromCrew(c);
+    }
+    if (!voz && r.doneBy){ const parts = String(r.doneBy).split(/\s*,\s*/).filter(Boolean); voz = parts[0] || ''; spr = parts.slice(1); }
+    return { veh, vehName:veh ? veh.name : '', reg:veh && veh.reg ? String(veh.reg).trim().toUpperCase() : '', voz, spr:spr.join(', ') };
+  }
+
+  /* ---------- Vrednosti vrstice: shranjene (r.pr) > izračunane ---------- */
+  function defaults(date, r){
+    const c = cfg(), cr = crewOf(date, r), t = r.times || {};
+    let pl = null; try { const p = computePlan(date); pl = p && p.assign[r.id] || null; } catch (e) { /* ni razporeda */ }
+    const od = hm(t[c.od === 'na_poti' ? 'na_poti' : 'v_vozilu'] || t.v_vozilu || t.na_poti || t.na_kraju) || (pl ? fmtT(pl.pickT) : '');
+    const doo = hm(t.na_cilju || t.zakljucena) || (pl ? fmtT(pl.dropT) : '');
+    let km = '';
+    try { const i = KM.info(r); if (i && i.total != null) km = fmtKm(i.total); } catch (e) { /* brez km */ }
+    return { datum:fmtDate(date), od:od === '–' ? '' : od, do:doo === '–' ? '' : doo, reg:cr.reg, km, st:fmtMoney(c.startnina), spr:cr.spr, voz:c.voznik ? cr.voz : '', _veh:cr.vehName };
+  }
+  function entryFor(date, r){
+    const d = defaults(date, r), s = r.pr && r.pr.f ? r.pr.f : {};
+    const f = {}; FIELDS.forEach(k => { f[k] = s[k] != null ? s[k] : d[k]; });
+    return f;
+  }
+
+  /* ---------- Prevozi, ki spadajo k nalogu ---------- */
+  function ridesFor(p, n){
+    const out = [];
+    Object.keys(S.rides).sort().forEach(date => {
+      S.rides[date].forEach((r, i) => {
+        if (!r || r.patientId !== p.id || r.odpovedano || r.status === 'preklicana') return;
+        if (r.nalogId ? r.nalogId !== n.id : !(n.veljaOd && n.veljaDo && date >= n.veljaOd && date <= n.veljaDo && (p.naloge || []).filter(x => !x.preklican && x.veljaOd <= date && x.veljaDo >= date).length === 1)) return;
+        out.push({ date, r, nr:i + 1, f:entryFor(date, r), printed:!!(r.pr && r.pr.row), row:r.pr ? r.pr.row : 0, done:!!(r.done || (r.times && (r.times.zakljucena || r.times.na_cilju))) });
+      });
+    });
+    return out;
+  }
+  const nextRow = n => Math.max(0, Math.floor(+n.tiskRows || 0)) + 1;
+
+  /* ---------- Besedilo v celici: pomanjšaj, da stane; nikoli ne prelomi vrstice ---------- */
+  function fitPt(text, widthMm, ptMax, ptMin = 6){
+    const len = Math.max(1, String(text).length);
+    const pt = widthMm / (len * 0.52 * PT);            // ocena povprečne širine znaka 0,52 em
+    return Math.max(ptMin, Math.min(ptMax, Math.round(pt * 10) / 10));
+  }
+  function cell(page, line, col, text, o = {}){
+    if (text == null || String(text).trim() === '') return '';
+    const g = PAGES[page], x0 = COLS[col], w = COLS[col + 1] - COLS[col], y0 = g.top + line * g.pitch;
+    const pad = o.pad == null ? 1 : o.pad, ww = w - 2 * pad;
+    const ptMax = o.pt || clamp(cfg().fs, 6, 14, 9), min = o.min || 6, len = Math.max(1, String(text).length);
+    const al = o.al || 'center', top = o.top;
+    let pt = fitPt(text, ww, ptMax, min), two = false;
+    if (!top && o.wrap && pt < 7.5 && /[\s-]/.test(String(text))){ pt = Math.max(min, Math.min(ptMax, Math.round(ww * 1.85 / (len * 0.52 * PT) * 10) / 10)); two = true; }   // predolgo za eno vrstico: dve vrstici
+    const st = `left:${(x0 + pad).toFixed(2)}mm;top:${top ? (y0 + 0.6).toFixed(2) : y0.toFixed(2)}mm;width:${ww.toFixed(2)}mm;height:${top ? (g.pitch * .42).toFixed(2) : g.pitch.toFixed(2)}mm;font-size:${pt}pt;text-align:${al};${top ? '' : 'align-items:center;display:flex;justify-content:' + (al === 'left' ? 'flex-start' : al === 'right' ? 'flex-end' : 'center')}${two ? ';white-space:normal;line-height:1.05' : ''}`;
+    return `<div class="nc${top ? ' nc-top' : ''}" style="${st}"><span>${esc(String(text))}</span></div>`;
+  }
+  /* vrstica 'line' (0-based) strani 'page' z vrednostmi f */
+  function rowHTML(page, line, f){
+    const c = cfg(), time = [f.od, f.do].some(Boolean) ? `${f.od || ''}–${f.do || ''}` : '';
+    return cell(page, line, 0, f.datum) + cell(page, line, 1, time) + cell(page, line, 2, f.reg) + cell(page, line, 3, f.km) + cell(page, line, 4, f.st)
+      + cell(page, line, 5, f.spr, { al:'left', pad:1.2, wrap:true }) + (c.voznik ? cell(page, line, 6, f.voz, { al:'left', pad:1.2, top:true, pt:7.5, min:5.5 }) : '');
+  }
+  /* črte celic (samo za preizkusno stran in predogled; na pravem natisu jih ni) */
+  function guideHTML(page){
+    const g = PAGES[page], x0 = COLS[0], x1 = COLS[COLS.length - 1], y0 = g.head, y1 = g.top + g.rows * g.pitch;
+    let h = '';
+    for (let i = 0; i <= g.rows + 1; i++){ const y = i === 0 ? g.head : g.top + (i - 1) * g.pitch; h += `<i class="ng ng-h" style="left:${x0}mm;top:${y.toFixed(2)}mm;width:${(x1 - x0).toFixed(2)}mm"></i>`; }
+    COLS.forEach(x => { h += `<i class="ng ng-v" style="left:${x}mm;top:${y0}mm;height:${(y1 - y0).toFixed(2)}mm"></i>`; });
+    [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].forEach(([x, y]) => { h += `<i class="ng ng-x" style="left:${(x - 3).toFixed(2)}mm;top:${(y - 3).toFixed(2)}mm"></i>`; });
+    return h;
+  }
+  /* ena stran: entries = [{ line, f }] */
+  function pageHTML(page, entries, o = {}){
+    const c = cfg(), sx = clamp(c.sx, 80, 120, 100) / 100, sy = clamp(c.sy, 80, 120, 100) / 100, dx = clamp(c.dx, -30, 30, 0), dy = clamp(c.dy, -30, 30, 0);
+    const body = (o.guide ? guideHTML(page) : '') + entries.map(e => rowHTML(page, e.line, e.f)).join('');
+    const label = o.label ? `<div class="ng-lbl" style="left:12mm;top:${page === 'f' ? 289 : 4}mm">${esc(o.label)}</div>` : '';
+    return `<section class="npg${o.guide ? ' npg-guide' : ''}"><div class="npg-in" style="transform:translate(${dx}mm,${dy}mm) scale(${sx},${sy})">${body}</div>${label}</section>`;
+  }
+
+  /* ---------- Razporeditev izbranih prevozov po vrsticah in straneh ---------- */
+  function layout(rows, start){
+    const groups = [], by = {};
+    rows.forEach((x, i) => {
+      const row = start + i, L = loc(row);
+      let g = by[L.key]; if (!g){ g = by[L.key] = { key:L.key, sheet:L.sheet, page:L.page, items:[], from:row, to:row }; groups.push(g); }
+      g.items.push({ line:L.line, row, x }); g.to = row;
+    });
+    return groups;
+  }
+  const groupLabel = g => `List ${g.sheet} · ${g.page === 'f' ? 'sprednja stran' : 'hrbtna stran'} · vrstic ${g.items.length} (št. ${g.from}${g.to > g.from ? '–' + g.to : ''})`;
+
+  /* ---------- Tisk ---------- */
+  function printArea(html){
+    let el = document.getElementById('printArea');
+    if (!el){ el = document.createElement('div'); el.id = 'printArea'; document.body.appendChild(el); }
+    el.className = 'pnalog'; el.innerHTML = html;
+    window.print();
+  }
+  function printGroup(g){
+    printArea(pageHTML(g.page, g.items.map(it => ({ line:it.line, f:it.x.f })), {}));
+  }
+  /* Preizkusna stran: črte celic + nekaj izmišljenih vrstic. Natisni na navaden papir in primerjaj z obrazcem proti svetlobi. */
+  const SAMPLE = [{ datum:'01.01.2026', od:'08:00', do:'09:15', reg:'KK AB-123', km:'23,4', st:'3,50', spr:'Ime Spremljevalec', voz:'Ime Voznik' },
+    { datum:'02.01.2026', od:'10:30', do:'12:05', reg:'KK AB-123', km:'61,0', st:'3,50', spr:'Ime Spremljevalec', voz:'Ime Voznik' }];
+  function calibHTML(page){
+    const g = PAGES[page], last = g.rows - 1;
+    const items = [{ line:0, f:SAMPLE[0] }, { line:1, f:SAMPLE[1] }, { line:last, f:{ ...SAMPLE[0], datum:'31.12.2026' } }];
+    return pageHTML(page, items, { guide:true, label:'PREIZKUSNA STRAN: črte morajo ležati na črtah obrazca (' + (page === 'f' ? 'sprednja' : 'hrbtna') + ' stran)' });
+  }
+  function printCalib(page){ printArea(calibHTML(page)); }
+
+  return { COLS, PAGES, SHEET, FIELDS, DEF, cfg, loc, crewOf, defaults, entryFor, ridesFor, nextRow, fitPt, pageHTML, guideHTML, rowHTML, layout, groupLabel, printGroup, printCalib, calibHTML,
+    fmtDate, fmtKm, fmtMoney, hm, SAMPLE };
+})();
+
+/* =====================================================================
    ZASLONI
    ===================================================================== */
 const UI = { copy:null, view:'knjiga', month:null, date:null, dDate:null, lDate:null, cDate:null, filter:'vsi', q:'', setTab:'vozila', bookRev:'', pid:'', nid:'', pf:'vsi', pq:'', modal:null, stale:false, selfTest:null, maps:{}, routeBusy:'', sect:{}, openRide:'', kmRep:false, gTest:null, kmTried:{} };
@@ -3314,7 +3850,7 @@ function placesTab(){
 
 const field = (path, val, opts={}) => `<input data-path="${path}" ${opts.num ? 'type="number" data-num="1" step="' + (opts.step || 1) + '"' : (opts.time ? 'type="time"' : 'type="text"')} value="${esc(val)}" ${opts.sug ? 'data-suggest="from"' : ''} ${opts.ph ? 'placeholder="' + esc(opts.ph) + '"' : ''} ${opts.label ? 'aria-label="' + esc(opts.label) + '"' : ''}>`;
 function settingsTabs(){
-  const t = [['vozila','Vozila',true],['zaposleni','Zaposleni',false],['dializa','Dializa',false],['ustanove','Klinike',false],['planiranje','Izračun',true],['pravila','Pravila',true],['naslovi','Naslovi in naselja',true],['uporabniki','Uporabniki',true],['varnost','Varnost',true],['logotipi','Logotipi',true],['podatki','Podatki',false]];
+  const t = [['vozila','Vozila',true],['zaposleni','Zaposleni',false],['dializa','Dializa',false],['ustanove','Klinike',false],['planiranje','Izračun',true],['tisk','Tisk naloga',true],['pravila','Pravila',true],['naslovi','Naslovi in naselja',true],['uporabniki','Uporabniki',true],['varnost','Varnost',true],['logotipi','Logotipi',true],['podatki','Podatki',false]];
   return `<div class="tabs" role="tablist">${t.filter(x => !x[2] || isAdmin()).map(x => `<button type="button" role="tab" data-act="setTab" data-k="${x[0]}" aria-selected="${UI.setTab === x[0]}">${x[1]}</button>`).join('')}</div>`;
 }
 const accountOptions = cur => {
@@ -3322,15 +3858,15 @@ const accountOptions = cur => {
   return `<option value="">brez računa</option>` + list.map(u => `<option value="${esc(u.id)}" ${cur === u.id ? 'selected' : ''}>${esc(u.name)} (${esc(ROLES[u.role] || u.role)})</option>`).join('');
 };
 function renderSettings(){
-  if (!isAdmin() && ['vozila','pravila','planiranje','naslovi','uporabniki','varnost','logotipi'].includes(UI.setTab)) UI.setTab = 'dializa';
+  if (!isAdmin() && ['vozila','pravila','planiranje','tisk','naslovi','uporabniki','varnost','logotipi'].includes(UI.setTab)) UI.setTab = 'dializa';
   let body = '';
   const T = UI.setTab;
   if (T === 'vozila'){
     const num = (i, k, v, lbl) => field(`vehicles.${i}.${k}`, v, { num:1, label:lbl });
     body = `<div class="card card-pad stack"><div class="card-head" style="margin:0"><h3>Vozila in kapaciteta</h3><button type="button" class="btn primary sm" data-act="addVeh">${IC.plus} Dodaj vozilo</button></div>
       <div class="banner"><span>${IC.info}</span><div><b>Običajno</b> je število pacientov, ki jih vozilo vozi po pravilih. <b>Izjemoma</b> je največ, kar vozilo še lahko pelje, kadar je treba pravila prilagoditi (npr. vozilo s 6 sedeži, ki običajno vozi 4 paciente). Prilagoditev se uporabi samo, ko je potrebna, in je vedno izpisana. Vrstica »OSTALO« ni vozilo, ampak mesto za zaposlene brez vozila. Začetne številke so ocena, popravi jih.</div></div>
-      <div class="tablewrap"><table class="edtable"><thead><tr><th rowspan="2">Ime</th><th rowspan="2">Vrsta</th><th rowspan="2">Tip vozila</th><th rowspan="2">Namen</th><th rowspan="2">Ekipa</th><th colspan="4">Običajno</th><th colspan="4">Izjemoma največ</th><th rowspan="2">Aktivno</th><th rowspan="2"></th></tr><tr><th>Sede</th><th>Leže</th><th>Utila</th><th>Skupaj</th><th>Sede</th><th>Leže</th><th>Utila</th><th>Skupaj</th></tr></thead><tbody>
-      ${S.vehicles.map((v, i) => `<tr><td>${field(`vehicles.${i}.name`, v.name, { label:'Ime' })}</td>
+      <div class="tablewrap"><table class="edtable"><thead><tr><th rowspan="2">Ime</th><th rowspan="2">Reg. tablica</th><th rowspan="2">Vrsta</th><th rowspan="2">Tip vozila</th><th rowspan="2">Namen</th><th rowspan="2">Ekipa</th><th colspan="4">Običajno</th><th colspan="4">Izjemoma največ</th><th rowspan="2">Aktivno</th><th rowspan="2"></th></tr><tr><th>Sede</th><th>Leže</th><th>Utila</th><th>Skupaj</th><th>Sede</th><th>Leže</th><th>Utila</th><th>Skupaj</th></tr></thead><tbody>
+      ${S.vehicles.map((v, i) => `<tr><td>${field(`vehicles.${i}.name`, v.name, { label:'Ime' })}</td><td>${field(`vehicles.${i}.reg`, v.reg || '', { label:'Registrska tablica', ph:'KK AB-123' })}</td>
         <td><select data-path="vehicles.${i}.tip" aria-label="Vrsta"><option value="sanitetno" ${v.tip==='sanitetno'?'selected':''}>Sanitetno</option><option value="resevalno" ${v.tip==='resevalno'?'selected':''}>Reševalno</option><option value="ostalo" ${v.tip==='ostalo'?'selected':''}>Ostalo (brez vozila)</option></select></td>
         <td><select data-path="vehicles.${i}.vrsta" aria-label="Tip vozila">${Object.entries(VEH_VRSTE).map(([k, l]) => `<option value="${k}" ${v.vrsta === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
         <td><select data-path="vehicles.${i}.fn" aria-label="Namen">${Object.entries(VEH_FN).map(([k, l]) => `<option value="${k}" ${v.fn === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
@@ -3352,6 +3888,8 @@ function renderSettings(){
     body = diaTab();
   } else if (T === 'ustanove'){
     body = placesTab();
+  } else if (T === 'tisk'){
+    body = tiskCard();
   } else if (T === 'planiranje'){
     const k = (label, path, step=1, unit='') => `<label for="k-${path}">${label}${unit ? ' <span class="dim">(' + unit + ')</span>' : ''}</label>${field(path, S.settings[path.split('.')[1]], { num:1, step, label })}`.replace('data-path', `id="k-${path}" data-path`);
     const kl = (label, key) => `<label for="k-lim-${key}">${label} <span class="dim">(km/h)</span></label>${field('settings.lim.' + key, S.settings.lim[key], { num:1, step:1, label }).replace('data-path', 'id="k-lim-' + key + '" data-path')}`;
@@ -3458,6 +3996,7 @@ function nalogCardHTML(p, n){
   const acts = `<div class="row" style="gap:6px">
     <button type="button" class="btn sm" data-act="editNalog" data-id="${n.id}">${open ? 'Zapri' : 'Uredi'}</button>
     <button type="button" class="btn sm" data-act="previewNalog" data-id="${n.id}" ${miss.length ? 'disabled title="Najprej izpolni vsa polja"' : ''}>${IC.eye} Predogled</button>
+    <button type="button" class="btn sm" data-act="npOpen" data-id="${n.id}" data-pid="${p.id}" title="Natisne samo podatke posadke v tabelo PREVOZI na papirnatem nalogu">${IC.print || ''} Natisni v nalog</button>
     <button type="button" class="btn sm" data-act="renewNalog" data-id="${n.id}">Podaljšaj</button>
     ${n.vrsta === 'enkratna' ? `<button type="button" class="btn sm" data-act="usedNalog" data-id="${n.id}">${n.porabljen ? 'Odznači porabljen' : 'Označi porabljen'}</button>` : ''}
     <button type="button" class="btn sm" data-act="cancelNalog" data-id="${n.id}">${n.preklican ? 'Obnovi' : 'Prekliči'}</button>
@@ -3515,7 +4054,7 @@ function renderPatients(){
   $('#view').innerHTML = `${demoBanner()}${alertsBanner()}
     <div class="plist ${sel ? 'has-sel' : ''}">
       <div class="stack" style="gap:12px">
-        <div class="toolbar"><input type="search" id="patSearch" placeholder="Išči po imenu, naslovu, telefonu" value="${esc(UI.pq)}" aria-label="Išči pacienta"><button type="button" class="btn primary" data-act="newPatient">${IC.plus} Nov pacient</button></div>
+        <div class="toolbar"><input type="search" id="patSearch" placeholder="Išči po imenu, naslovu, telefonu" value="${esc(UI.pq)}" aria-label="Išči pacienta"><button type="button" class="btn primary" data-act="newPatient">${IC.plus} Nov pacient</button><button type="button" class="btn" data-act="nsOpen" title="Fotografiraj ali naloži nalog in podatke izpolni samodejno">Skeniraj nalog</button></div>
         <div class="seg" role="group" aria-label="Filter">${[['vsi', `Vsi (${all.length})`], ['opozorila', `Opozorila (${al.length})`], ['brez', 'Brez naloga']].map(([k, l]) => `<button type="button" data-act="pf" data-k="${k}" aria-pressed="${UI.pf === k}">${l}</button>`).join('')}</div>
         <div class="prows">${rows || '<div class="empty-state">Ni pacientov za ta filter. Pacienta dodaš z gumbom »Nov pacient« ali v dnevni knjigi z »Shrani v bazo«.</div>'}</div>
       </div>
@@ -3750,6 +4289,8 @@ function renderModal(){
   const host = $('#modal'), m = UI.modal;
   if (!m){ host.hidden = true; host.innerHTML = ''; delete host.dataset.pk; return; }
   if (m.type === 'pick'){ renderPick(host, m); return; }
+  if (m.type === 'nscan'){ renderScan(host, m); return; }
+  if (m.type === 'nprint'){ renderNPrint(host, m); return; }
   delete host.dataset.pk;
   const v = m.variants[m.idx], lines = v.text.split('\n');
   host.hidden = false;
@@ -3886,6 +4427,191 @@ function printDay(date){
   el.className = 'pday'; el.innerHTML = printDayHTML(date);
   audit('knjiga.tisk', { dan:date });
   window.print();
+}
+
+/* =====================================================================
+   VMESNIK: skeniranje naloga (pregled prebranega) in tisk dopolnil na nalog; nastavitve tiska
+   ===================================================================== */
+
+/* ---------- Skeniranje naloga ---------- */
+const NS_FIELDS = [
+  ['name', 'Ime in priimek', 'text'], ['zzzs', 'Številka zavarovane osebe', 'text'], ['addr', 'Domači naslov (ulica hišna št., kraj)', 'text', 'full'], ['phone', 'Telefon', 'text'],
+  ['stevilka', 'Številka naloga', 'text'], ['narocnik', 'Naročnik (izvajalec, ki je izdal nalog)', 'text', 'full'], ['zdravnik', 'Zdravnik', 'text'],
+  ['od', 'Relacija: OD', 'text', 'full'], ['do', 'Relacija: DO', 'text', 'full'], ['razlog', 'Razlog prevoza', 'text'],
+  ['izdan', 'Velja od (datum izdaje)', 'date'], ['veljaDo', 'Velja do', 'date']
+];
+function nsOpen(){
+  UI.modal = { type:'nscan', step:'in', text:'', busy:'', err:'', f:{}, src:{}, notes:[], match:null, usePid:'', raw:'' };
+  renderModal();
+}
+function nsSetText(m, text){
+  m.raw = text;
+  if (!String(text).trim()){ m.err = 'Besedila ni; prilepi besedilo ali izberi sliko.'; return false; }
+  const r = NSCAN.parse(text);
+  m.f = Object.assign({}, r.fields); m.src = r.src; m.notes = r.notes; m.found = r.found; m.total = r.total;
+  const mt = NSCAN.matchPatient(m.f); m.match = mt; m.usePid = mt ? mt.p.id : '';
+  m.step = 'review'; m.err = ''; return true;
+}
+async function nsFile(file){
+  const m = UI.modal; if (!m || m.type !== 'nscan' || !file) return;
+  m.err = ''; m.busy = 'Pripravljam sliko …'; renderModal();
+  try {
+    const png = await NSCAN.prepare(file);
+    if (!NSCAN.ocrEnabled()) throw new Error('Razpoznava besedila iz slike ni vklopljena (config.js → ocr). Prilepi besedilo, ki ga prebere telefon (Kamera → Skeniraj besedilo).');
+    m.busy = 'Razpoznavam besedilo (prvič lahko traja minuto ali dve) …'; renderModal();
+    const text = await NSCAN.ocr(png, p => { const el = document.querySelector('[data-role=nsbusy]'); if (el){ const pc = p.pct != null && isFinite(p.pct) ? ' ' + Math.round(p.pct * 100) + ' %' : ''; el.textContent = (p.stage === 'lib' ? 'Nalagam razpoznavo besedila …' : 'Razpoznavam besedilo …' + pc); } });
+    m.busy = ''; if (UI.modal !== m) return;
+    if (!nsSetText(m, text)) m.text = text;
+  } catch (e) { m.busy = ''; m.err = String(e && e.message || e); }
+  if (UI.modal === m) renderModal();
+}
+function nsSave(){
+  const m = UI.modal; if (!m || m.type !== 'nscan') return;
+  const f = m.f;
+  if (!String(f.name || '').trim()){ m.err = 'Vpiši vsaj ime in priimek pacienta.'; renderModal(); return; }
+  const r = NSCAN.apply(f, { pid:m.usePid });
+  UI.pid = r.p.id; UI.nid = r.n.id; UI.modal = null; renderModal();
+  toast(r.created ? 'Pacient in nalog shranjena. Preveri podatke.' : r.updated ? 'Nalog posodobljen.' : 'Nalog dodan pacientu.');
+  go('pacienti');
+}
+function renderScan(host, m){
+  host.hidden = false; delete host.dataset.pk;
+  const f = m.f || {}, miss = k => !String(f[k] || '').trim();
+  const ocrOn = NSCAN.ocrEnabled();
+  let body;
+  if (m.step === 'review'){
+    const grid = NS_FIELDS.map(([k, l, type, cls]) => `<div class="field ${cls || ''} ${miss(k) ? 'ns-miss' : ''}"><label for="ns-${k}">${esc(l)}${miss(k) ? ' <span class="dim">· ni prebrano</span>' : ''}</label><input id="ns-${k}" data-ns="${k}" type="${type}" value="${esc(f[k] || '')}" autocomplete="off"></div>`).join('');
+    const sel = (k, label, opts) => `<div class="field"><label for="ns-${k}">${label}</label><select id="ns-${k}" data-ns="${k}">${opts.map(([v, l]) => `<option value="${v}" ${f[k] === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`;
+    const known = m.match ? `<div class="banner"><span>${IC.info}</span><div>Pacient je že v bazi (${esc(m.match.how)}). <label class="row" style="gap:8px;flex-wrap:nowrap;margin-top:6px"><input type="radio" name="nsWho" data-nswho="${m.match.p.id}" ${m.usePid === m.match.p.id ? 'checked' : ''}> Dodaj nalog pacientu <b>${esc(m.match.p.name)}</b></label>
+      <label class="row" style="gap:8px;flex-wrap:nowrap"><input type="radio" name="nsWho" data-nswho="" ${m.usePid ? '' : 'checked'}> Ustvari novega pacienta</label></div></div>` : '';
+    body = `${known}
+      <p class="hint" style="margin:0">Prebrano je ${m.found || 0} od ${m.total || 5} ključnih podatkov. Preveri vsako polje, popravi, kar je narobe, in shrani. Polja z oznako »ni prebrano« izpolni ročno.${(m.notes || []).length ? ' ' + esc(m.notes.join(' ')) : ''}</p>
+      <div class="formgrid">${grid}
+        ${sel('mode', 'Način prevoza', Object.entries(MODES))}
+        ${sel('vrsta', 'Vrsta naloga', Object.entries(NALOG_VRSTE).map(([k, v]) => [k, v.l]))}
+        <div class="field full"><label for="ns-opombe">Opombe</label><textarea id="ns-opombe" data-ns="opombe" rows="2">${esc(f.opombe || '')}</textarea></div></div>
+      <details class="hintdet"><summary>Prebrano besedilo (za primerjavo)</summary><pre class="nsraw">${esc(m.raw)}</pre></details>
+      <p class="hint" style="margin:0">Datum rojstva in e-pošta se ne shranita. Slika in besedilo se ne hranita; shrani se samo, kar potrdiš.</p>
+      ${m.err ? `<div class="banner" style="background:var(--warn-soft);color:var(--warn)"><span>${IC.info}</span><div>${esc(m.err)}</div></div>` : ''}
+      <div class="row" style="justify-content:space-between"><button type="button" class="btn" data-act="nsBack">Nazaj</button><button type="button" class="btn primary" data-act="nsSave">Shrani pacienta in nalog</button></div>`;
+  } else {
+    body = `<div class="banner"><span>${IC.info}</span><div>Fotografiraj nalog ali izberi PDF-sken. Aplikacija prebere besedilo in izpolni podatke; pred shranjevanjem vse preveriš. <b>Slika se ne pošlje nikamor in se ne shrani</b>; branje poteka v tej napravi (prvič se prenese program za razpoznavo besedila).</div></div>
+      <div class="stack" style="gap:8px"><label class="btn primary" for="nsFile" style="cursor:pointer;justify-self:start">${ocrOn ? 'Izberi fotografijo ali PDF' : 'Izberi fotografijo ali PDF (razpoznava izklopljena)'}</label>
+        <input id="nsFile" type="file" accept="image/*,application/pdf,.pdf" style="position:absolute;opacity:0;width:1px;height:1px" ${m.busy ? 'disabled' : ''}>
+        ${m.busy ? `<div class="row" style="gap:8px"><span class="spin" aria-hidden="true"></span><span data-role="nsbusy" role="status">${esc(m.busy)}</span></div>` : ''}</div>
+      <div class="field"><label for="nsText">ali prilepi besedilo</label><textarea id="nsText" rows="7" placeholder="Prilepi besedilo naloga …">${esc(m.text)}</textarea>
+        <span class="hint">iPhone: v polje se dotakni → ikona kamere → »Skeniraj besedilo«. Android: Google Lens → kopiraj besedilo. PDF z besedilom: označi vse, kopiraj, prilepi.</span></div>
+      ${m.err ? `<div class="banner" style="background:var(--warn-soft);color:var(--warn)"><span>${IC.info}</span><div>${esc(m.err)}</div></div>` : ''}
+      <div class="row" style="justify-content:flex-end"><button type="button" class="btn" data-act="closeModal">Zapri</button><button type="button" class="btn primary" data-act="nsParse" ${m.busy ? 'disabled' : ''}>Preberi besedilo</button></div>`;
+  }
+  host.innerHTML = `<div class="modal-back" data-act="closeModal"></div><div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="modal-head"><h3 id="mTitle">Skeniraj nalog za prevoz</h3><button type="button" class="icon-btn" data-act="closeModal" aria-label="Zapri">${IC.x}</button></div><div class="stack" style="gap:12px">${body}</div></div>`;
+}
+
+/* ---------- Tisk dopolnil na nalog ---------- */
+function npOpen(pid, nid){
+  const p = patientById(pid), n = p && (p.naloge || []).find(x => x.id === nid); if (!p || !n) return;
+  const today = todayStr();
+  const rows = NP.ridesFor(p, n).map(x => Object.assign(x, { on:!x.printed && x.done && x.date <= today }));
+  UI.modal = { type:'nprint', pid, nid, rows, start:NP.nextRow(n), printed:{}, saved:false, err:'' };
+  renderModal();
+}
+function npGroups(m){
+  const sel = m.rows.filter(x => x.on);
+  return NP.layout(sel, Math.max(1, Math.floor(+m.start) || 1));
+}
+function npDynHTML(m){
+  const groups = npGroups(m), n = groups.reduce((a, g) => a + g.items.length, 0);
+  if (!n) return `<div class="empty-state">Izberi vsaj en prevoz.</div>`;
+  const pend = groups.filter(g => m.printed[g.key]);
+  const btns = groups.map(g => `<button type="button" class="btn ${m.printed[g.key] ? '' : 'primary'}" data-act="npPrint" data-k="${g.key}">${IC.print || ''} ${esc(NP.groupLabel(g))}${m.printed[g.key] ? ' · natisnjeno' : ''}</button>`).join('');
+  const first = groups[0], pv = NP.pageHTML(first.page, first.items.map(it => ({ line:it.line, f:it.x.f })), { guide:true });
+  const sheets = new Set(groups.map(g => g.sheet));
+  return `<div class="npv-wrap"><div class="npv" aria-label="Predogled: ${esc(NP.groupLabel(first))}">${pv}</div>
+    <div class="stack" style="gap:8px">
+      <p class="hint" style="margin:0">Predogled prve strani. Rdeče črte so samo pomoč pri poravnavi in se ne natisnejo.</p>
+      ${sheets.size > 1 ? `<div class="banner"><span>${IC.info}</span><div>Prevozov je več, kot jih stane na en list (40 vrstic): za vsak list vstavi nov obrazec.</div></div>` : ''}
+      <div class="stack" style="gap:6px">${btns}</div>
+      <p class="hint" style="margin:0">Tiskalnik: papir A4, merilo <b>100 %</b> (ne »prilagodi strani«), brez glave in noge. Obrazec položi tako, da se natisne na stran s tabelo PREVOZI (sprednja stran: spodaj; hrbtna: od vrha).</p>
+      ${pend.length ? `<div class="banner" style="background:var(--ok-soft,var(--soft));"><span>${IC.info}</span><div>Je izpis uspel? <button type="button" class="btn sm primary" data-act="npDone">Da, zapomni vrstice</button> Potem teh prevozov ne ponudimo več.</div></div>` : ''}</div></div>`;
+}
+function renderNPrint(host, m){
+  host.hidden = false; delete host.dataset.pk;
+  const p = patientById(m.pid), n = p && (p.naloge || []).find(x => x.id === m.nid);
+  const cell = (i, k, v, w, cls = '') => `<td><input data-np="${i}|${k}" value="${esc(v)}" style="width:${w}" class="${cls}" autocomplete="off" aria-label="${k}"></td>`;
+  const rows = m.rows.map((x, i) => `<tr class="${x.printed ? 'np-done' : ''}"><td><input type="checkbox" data-npon="${i}" ${x.on ? 'checked' : ''} aria-label="Natisni"></td>
+    ${cell(i, 'datum', x.f.datum, '88px')}${cell(i, 'od', x.f.od, '58px')}${cell(i, 'do', x.f.do, '58px')}${cell(i, 'reg', x.f.reg, '92px')}${cell(i, 'km', x.f.km, '56px')}${cell(i, 'st', x.f.st, '52px')}${cell(i, 'spr', x.f.spr, '130px')}${cell(i, 'voz', x.f.voz, '120px')}
+    <td class="dim">${x.printed ? `natisnjeno (št. ${x.row})` : x.done ? '' : 'še ni opravljen'}</td></tr>`).join('');
+  host.innerHTML = `<div class="modal-back" data-act="closeModal"></div><div class="modal modal-wide nprint" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="modal-head"><h3 id="mTitle">Natisni v nalog ${n && n.stevilka ? '· ' + esc(n.stevilka) : ''}</h3><button type="button" class="icon-btn" data-act="closeModal" aria-label="Zapri">${IC.x}</button></div>
+    <div class="stack" style="gap:12px">
+      <div class="banner"><span>${IC.info}</span><div>Natisnejo se <b>samo podatki posadke</b> v tabelo PREVOZI: datum, čas od–do, reg. št., km, štartnina, spremljevalec in ime voznika (podpis voznika in pacienta ostane lastnoročen). Podatki pacienta se ne natisnejo. Vrednosti lahko popraviš pred tiskom.</div></div>
+      ${m.rows.length ? `<div class="tablewrap"><table class="edtable"><thead><tr><th></th><th>Datum</th><th>Od</th><th>Do</th><th>Reg. št.</th><th>km</th><th>Štartnina</th><th>Spremljevalec</th><th>Voznik</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="row"><label for="npStart">Začni v vrstici št.</label><input id="npStart" data-npstart="1" type="number" min="1" max="400" value="${m.start}" style="width:72px"><span class="hint">Prva prosta vrstica po že natisnjenih je ${NP.nextRow(n)}. Vrstice 1–11 so na sprednji strani, 12–40 na hrbtni.</span></div>
+      <div data-role="npdyn" class="stack" style="gap:10px">${npDynHTML(m)}</div>` : `<div class="empty-state">Za ta nalog še ni prevozov v knjigi. Prevoz dodaj v dnevno knjigo in izberi pacienta; nato ga tukaj natisneš.</div>`}
+      <div class="row" style="justify-content:space-between"><span class="hint">Poravnavo položaja nastaviš v Nastavitve → Tisk naloga.</span><button type="button" class="btn" data-act="closeModal">Zapri</button></div>
+    </div></div>`;
+}
+function npRefreshDyn(){
+  const m = UI.modal; if (!m || m.type !== 'nprint') return;
+  const d = document.querySelector('[data-role=npdyn]'); if (d) d.innerHTML = npDynHTML(m);
+}
+function npPrintGroup(key){
+  const m = UI.modal; if (!m || m.type !== 'nprint') return;
+  const g = npGroups(m).find(x => x.key === key); if (!g) return;
+  NP.printGroup(g); m.printed[key] = true; npRefreshDyn();
+}
+function npDone(){
+  const m = UI.modal; if (!m || m.type !== 'nprint') return;
+  const p = patientById(m.pid), n = p && (p.naloge || []).find(x => x.id === m.nid); if (!n) return;
+  const at = new Date().toISOString(); let cnt = 0, max = +n.tiskRows || 0;
+  npGroups(m).filter(g => m.printed[g.key]).forEach(g => g.items.forEach(it => {
+    const hit = rideById(it.x.date, it.x.r.id); if (!hit) return;
+    hit.r.pr = { row:it.row, sheet:g.sheet, at, f:Object.assign({}, it.x.f) }; cnt++; max = Math.max(max, it.row);
+  }));
+  if (cnt){ n.tiskRows = max; audit('nalog.tisk', { pid:p.id, nid:n.id, vrstic:cnt }); save(); toast(`Zapomnjenih vrstic: ${cnt}.`); }
+  UI.modal = null; renderModal(); if (UI.view === 'pacienti') render();
+}
+
+/* ---------- Nastavitve → Tisk naloga ---------- */
+function tiskCard(){
+  const T = NP.cfg(), pv = (page) => `<div class="npv npv-s" aria-label="Preizkusna stran (${page === 'f' ? 'sprednja' : 'hrbtna'})">${NP.calibHTML(page)}</div>`;
+  const num = (path, v, step, label, unit) => `<div class="field"><label for="tk-${path}">${label} <span class="dim">(${unit})</span></label>${field(path, v, { num:1, step, label })}</div>`;
+  const regs = S.vehicles.filter(v => v.tip !== 'ostalo');
+  return `<div class="card card-pad stack" style="gap:14px"><div class="card-head" style="margin:0"><h3>Tisk naloga za prevoz (dopolnila na obrazec)</h3></div>
+    <div class="banner"><span>${IC.info}</span><div>Papirnati obrazec <b>Nalog za prevoz (NLG/05)</b> položiš v tiskalnik; aplikacija natisne <b>samo podatke posadke</b> v tabelo PREVOZI (datum, čas od–do, reg. št., km, štartnina, spremljevalec, ime voznika). Pacientovih podatkov ne natisne. Gumb »Natisni v nalog« je pri nalogu pacienta (Pacienti).</div></div>
+    <div class="formgrid">
+      <div class="field"><label for="tk-st">Štartnina <span class="dim">(€, natisne se pri vsakem prevozu; prazno = ne natisne)</span></label>${field('settings.tisk.startnina', T.startnina, { label:'Štartnina', ph:'npr. 3,50' })}</div>
+      <div class="field"><label for="tk-kd">Decimalke pri km</label><select data-path="settings.tisk.kmDec" id="tk-kd"><option value="1" ${+T.kmDec === 1 ? 'selected' : ''}>ena (23,4)</option><option value="0" ${+T.kmDec === 0 ? 'selected' : ''}>cele km (23)</option></select></div>
+      <div class="field"><label for="tk-od">Čas »od« je</label><select data-path="settings.tisk.od" id="tk-od"><option value="v_vozilu" ${T.od !== 'na_poti' ? 'selected' : ''}>pacient v vozilu (začetek poti OD → DO)</option><option value="na_poti" ${T.od === 'na_poti' ? 'selected' : ''}>odhod posadke k pacientu</option></select></div>
+      <div class="field"><span class="lbl">Ime voznika</span><label class="row" style="gap:8px;flex-wrap:nowrap"><input type="checkbox" data-path="settings.tisk.voznik" data-bool="1" ${T.voznik ? 'checked' : ''}> natisni v celico »Podpis voznika« (podpis ostane lastnoročen)</label></div>
+    </div>
+    <div class="card-head" style="margin:4px 0 0"><h3 style="font-size:15px">Poravnava na obrazec</h3></div>
+    <p class="hint" style="margin:0">Obrazec predpostavlja list A4. Natisni preizkusno stran na navaden papir, jo skupaj z obrazcem pridrži proti svetlobi in popravi, če črte ne sedejo. Premik: pozitivno pomakne desno/navzdol.</p>
+    <div class="formgrid">${num('settings.tisk.dx', T.dx, 0.5, 'Premik vodoravno', 'mm')}${num('settings.tisk.dy', T.dy, 0.5, 'Premik navpično', 'mm')}${num('settings.tisk.sx', T.sx, 0.5, 'Širina', '%')}${num('settings.tisk.sy', T.sy, 0.5, 'Višina', '%')}${num('settings.tisk.fs', T.fs, 0.5, 'Velikost pisave', 'pt')}</div>
+    <div class="row"><button type="button" class="btn" data-act="npCalib" data-p="f">Natisni preizkus: sprednja stran</button><button type="button" class="btn" data-act="npCalib" data-p="b">Natisni preizkus: hrbtna stran</button></div>
+    <div class="row" style="gap:16px;align-items:flex-start">${pv('f')}${pv('b')}</div>
+    <p class="hint" style="margin:0">Registrske tablice so pri vozilih (Nastavitve → Vozila): ${regs.length ? regs.map(v => `${esc(v.name)} ${v.reg ? '<b>' + esc(v.reg) + '</b>' : '<span class="dim">(ni vnešena)</span>'}`).join(' · ') : 'ni vozil'}. Posadka (voznik, spremljevalec) in vozilo se vzamejo iz razporeda dneva, čas in km iz zabeleženih časov in kilometrine.</p></div>`;
+}
+
+/* ---------- Dogodki obrazcev (vnos v modalih) ---------- */
+if (typeof document !== 'undefined' && document.addEventListener){
+  document.addEventListener('input', e => {
+    const t = e.target, m = UI.modal; if (!t || !m) return;
+    if (m.type === 'nscan'){ if (t.id === 'nsText') m.text = t.value; else if (t.dataset && t.dataset.ns){ m.f[t.dataset.ns] = t.value; } }
+  });
+  document.addEventListener('change', e => {
+    const t = e.target, m = UI.modal; if (!t || !m) return;
+    if (m.type === 'nscan'){
+      if (t.id === 'nsFile'){ const fl = t.files && t.files[0]; t.value = ''; nsFile(fl); }
+      else if (t.dataset && t.dataset.ns !== undefined){ m.f[t.dataset.ns] = t.value; if (t.dataset.ns === 'vrsta' || t.dataset.ns === 'izdan'){ if (t.dataset.ns === 'vrsta' && !m.f.veljaDo){ /* privzeta veljavnost se izračuna ob shranjevanju */ } } }
+      else if (t.dataset && t.dataset.nswho !== undefined){ m.usePid = t.dataset.nswho; }
+    } else if (m.type === 'nprint'){
+      if (t.dataset && t.dataset.npon !== undefined){ m.rows[+t.dataset.npon].on = t.checked; npRefreshDyn(); }
+      else if (t.dataset && t.dataset.np){ const [i, k] = t.dataset.np.split('|'); m.rows[+i].f[k] = t.value; npRefreshDyn(); }
+      else if (t.dataset && t.dataset.npstart){ m.start = Math.max(1, Math.floor(+t.value) || 1); npRefreshDyn(); }
+    }
+  });
 }
 
 /* ============================================================================
@@ -4751,6 +5477,14 @@ document.addEventListener('click', async e => {
     case 'delPlace': { const pl = S.places[+el.dataset.i]; if (!pl) break; if (el.dataset.arm){ S.places.splice(+el.dataset.i, 1); save(); rerender(); } else armBtn(el, 'Potrdi'); break; }
     case 'gkeySave': { const v = ($('#gkey').value || '').trim(); if (!/^[A-Za-z0-9_\-]{20,}$/.test(v)){ toast('Ključ ni videti veljaven (vsaj 20 znakov: črke, številke, - in _)'); break; } store.set('kp.gkey', v); GOOGLE.clear(); UI.gTest = null; audit('google.kljuc.shranjen', {}); toast('Ključ shranjen na tej napravi'); rerender(); break; }
     case 'gkeyClear': store.del('kp.gkey'); GOOGLE.forget(); UI.gTest = null; audit('google.kljuc.odstranjen', {}); toast('Ključ odstranjen s te naprave'); rerender(); break;
+    case 'nsOpen': nsOpen(); break;
+    case 'nsParse': { const m = UI.modal; if (m && m.type === 'nscan'){ nsSetText(m, m.text); renderModal(); } break; }
+    case 'nsBack': { const m = UI.modal; if (m && m.type === 'nscan'){ m.step = 'in'; m.err = ''; renderModal(); } break; }
+    case 'nsSave': nsSave(); break;
+    case 'npOpen': npOpen(el.dataset.pid, el.dataset.id); break;
+    case 'npPrint': npPrintGroup(el.dataset.k); break;
+    case 'npDone': npDone(); break;
+    case 'npCalib': NP.printCalib(el.dataset.p === 'b' ? 'b' : 'f'); break;
     case 'geoTest': { UI.geoTest = { running:true }; rerender(); UI.geoTest = await GEOC.test(); audit('naslovi.preizkus', { uspeh:!!UI.geoTest.ok }); rerender(); break; }
     case 'gTest': { UI.gTest = { running:true }; rerender(); UI.gTest = await GOOGLE.test(); audit('google.preizkus', { uspeh:!!UI.gTest.ok }); rerender(); break; }
     case 'loadDia': { const n = loadDialysis(UI.date); if (n && KM.auto()) KM.day(UI.date).catch(() => {}); toast(n ? `Dodanih ${n} dializnih prevozov` : 'Dializni pacienti so že v knjigi ali jih ni v bazi'); rerender(); break; }
@@ -4801,7 +5535,7 @@ document.addEventListener('click', async e => {
     case 'closeNotice': { const n = S.notices.find(x => x.id === el.dataset.id); if (n){ n.closed = true; if (!n.to || n.to > todayStr()) n.to = todayStr(); save(); render(); } break; }
     case 'delNotice': S.notices = S.notices.filter(x => x.id !== el.dataset.id); save(); render(); break;
     case 'setTab': UI.setTab = el.dataset.k; if (UI.setTab === 'varnost') loadAudit(); if (UI.setTab === 'uporabniki') loadRemoteUsers(); render(); break;
-    case 'addVeh': S.vehicles.push({ id:uid(), name:'Novo vozilo', vrsta:'osebno', fn:'vse', tip:'sanitetno', ns:'redna', sede:3, leze:0, utila:0, skupaj:3, sedeMax:3, lezeMax:0, utilaMax:0, skupajMax:3, aktiv:true }); save(); rerender(); break;
+    case 'addVeh': S.vehicles.push({ id:uid(), name:'Novo vozilo', reg:'', vrsta:'osebno', fn:'vse', tip:'sanitetno', ns:'redna', sede:3, leze:0, utila:0, skupaj:3, sedeMax:3, lezeMax:0, utilaMax:0, skupajMax:3, aktiv:true }); save(); rerender(); break;
     case 'delVeh': { const v = S.vehicles[+el.dataset.i]; if (!v) break; if (el.dataset.arm){ S.vehicles.splice(+el.dataset.i, 1); save(); rerender(); } else { el.dataset.arm = '1'; el.classList.add('danger'); el.style.width = 'auto'; el.style.padding = '0 8px'; el.textContent = 'Potrdi'; } break; }
     case 'delStaff': S.staff.splice(+el.dataset.i, 1); save(); rerender(); break;
     case 'exportAddr': {

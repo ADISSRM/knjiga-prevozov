@@ -58,7 +58,7 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   const errors = [], csp = [];
   const notFound = []; page.on('response', r => { if (r.status() === 404) notFound.push(r.url().replace(/^http:\/\/127\.0\.0\.1:\d+/, '')); });
   page.on('console', m => { if (m.type() === 'error' && !/status of 404/.test(m.text()) && !(routeMode === 'down' && /ERR_FAILED/.test(m.text()))) errors.push(m.text()); });
-  page.on('pageerror', e => errors.push('pageerror: ' + e.message));
+  page.on('pageerror', e => { if (/serviceWorker.*sandboxed/.test(e.message)) return; errors.push('pageerror: ' + e.message); });   // artefakt Playwrighta (serviceWorkers:'block') v sandbox okvirju OCR; v pravem brskalniku te napake ni
   page.on('console', m => { if (/Content Security Policy/i.test(m.text())) csp.push(m.text()); });
 
   await page.goto(base);
@@ -300,9 +300,11 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   await page.click('[data-act="pickSave"]'); await page.waitForFunction(() => !UI.modal, null, { timeout: 10000 }); await settle();
   const pk2 = await page.evaluate(() => { const r = filledRides(UI.date).find(y => y.r.name === 'Pacient 71').r; return { gp:r.gp, gf:r.gf, km:r.km, fix:S.geoFix['dobova 25'] }; });
   ok('točka na zemljevidu: shranjena kot popravek naslova, prevoz preračunan s točko, natančnost »rocno«', pk2.fix && Math.abs(pk2.fix[1] - picked[0]) < 1e-5 && Math.abs(pk2.fix[0] - picked[1]) < 1e-5 && pk2.gp && pk2.gp[0] === 'rocno' && Math.abs(pk2.gf[0] - picked[1]) < 1e-5 && pk2.km !== p71.km, JSON.stringify(pk2));
+  { let last = -1; for (let i = 0; i < 25 && nseen.length !== last; i++){ last = nseen.length; await page.waitForTimeout(1400); } }   // počakaj, da se čakalna vrsta geokodiranja (1 zahtevek/s) sprazni
   const nBefore = nseen.length;
   await page.evaluate(() => { const x = filledRides(UI.date).find(y => y.r.name === 'Pacient 71'); UI.openRide = x.r.id; rerender(); });
   await page.click('.editor [data-act="kmRecalc"]'); await page.waitForTimeout(600); await settle();
+  { let last = -1; for (let i = 0; i < 6 && nseen.length !== last; i++){ last = nseen.length; await page.waitForTimeout(1400); } }
   ok('ponovni izračun uporabi ročno točko (brez novega iskanja naslova)', nseen.length === nBefore && (await page.evaluate(() => filledRides(UI.date).find(y => y.r.name === 'Pacient 71').r.gp[0])) === 'rocno', nseen.length + ' vs ' + nBefore);
   await page.evaluate(() => { UI.openRide = ''; rerender(); });
   // nastavitve: kartica brezplačnega iskanja naslovov in preizkus
@@ -403,6 +405,121 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   const pdfPath = OUT + '/tisk-knjiga-dneva.pdf'; await page.emulateMedia({ media:'print' }); await page.pdf({ path:pdfPath, format:'A4', preferCSSPageSize:true, printBackground:true }); await page.emulateMedia({ media:'screen' });
   ok('tisk dneva: PDF se ustvari', fs.existsSync(pdfPath) && fs.statSync(pdfPath).size > 5000, fs.statSync(pdfPath).size + ' B');
   await page.evaluate(() => { const el = document.getElementById('printArea'); if (el) { el.innerHTML = ''; el.className = ''; } });
+
+  // ---------- skeniranje naloga (prilepljeno besedilo, slika, PDF; OCR je v tem preizkusu posnetek) in tisk dopolnil na nalog ----------
+  const { makePdf } = require(SRC + '/tests/pdfmake.js');
+  const FIXT = fs.readFileSync(SRC + '/tests/fixtures/nalog-ocr-psm4.txt', 'utf8');
+  const tessSeen = [];
+  const TESS_STUB = `self.Tesseract={createWorker:async function(lang,n,o){ if(o&&o.logger)o.logger({status:'recognizing text',progress:.5});
+    return{setParameters:async function(){},recognize:async function(b){return{data:{text:(b&&b.size>1000)?${JSON.stringify(FIXT)}:'PRAZNO'}}},terminate:async function(){}}}};`;
+  await ctx.route('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js', route => { tessSeen.push(route.request().url()); route.fulfill({ status:200, contentType:'text/javascript', headers:{ 'access-control-allow-origin':'*' }, body:TESS_STUB }); });
+  const vendorSeen = [];
+  await ctx.route(/\/ocr\/vendor\/tess-stub\.js$/, route => { vendorSeen.push(route.request().url()); route.fulfill({ status:200, contentType:'text/javascript', body:TESS_STUB }); });
+  await page.evaluate(() => { window.__ifr = []; new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.tagName === 'IFRAME') window.__ifr.push((n.getAttribute('sandbox') || '') + '|' + n.getAttribute('src')); }))).observe(document.body, { childList:true }); });
+  await page.click('[data-nav="pacienti"]'); await page.waitForTimeout(200);
+  const nPat0 = await page.evaluate(() => S.patients.length);
+  await page.click('[data-act="nsOpen"]'); await page.waitForSelector('#nsText');
+  ok('skeniranje: gumb odpre okno z izbiro slike/PDF in poljem za besedilo', !!(await page.$('#nsFile')) && /Skeniraj nalog/.test(await page.textContent('#mTitle')));
+  await page.screenshot({ path: OUT + '/9a-scan-in.png' });
+  await page.fill('#nsText', FIXT); await page.click('[data-act="nsParse"]'); await page.waitForSelector('#ns-name');
+  const rv = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-ns]')].map(e => [e.dataset.ns, e.value])));
+  const r1 = await rv();
+  ok('skeniranje (prilepljeno besedilo): ime, številka zavarovane osebe, naslov, telefon, relacija, razlog', /^Marija Novakova/.test(r1.name) && r1.zzzs === '012345678' && /Primerna ulica 12/.test(r1.addr) && r1.phone === '031 123 456' && /Dializni center/.test(r1.do) && r1.razlog === 'Dializa' && r1.izdan === '2026-11-02', JSON.stringify(r1).slice(0, 220));
+  ok('skeniranje: prilepljeno besedilo ne naloži programa za razpoznavo in ne kliče omrežja', tessSeen.length === 0 && external.length === 0, String(tessSeen.length));
+  await page.screenshot({ path: OUT + '/9b-scan-review.png', fullPage: true });
+  ok('skeniranje: neprebrana polja so označena, datum rojstva in e-pošta se ne shranita', (await page.$$('.ns-miss')).length >= 0 && !/rojstva/i.test(await page.evaluate(() => [...document.querySelectorAll('[data-ns]')].map(e => e.dataset.ns).join())));
+  // slika: ustvari PNG v strani in ga izberi (razpoznava: posnetek knjižnice, ki vrne besedilo samo, če dobi pravo sliko)
+  await page.click('[data-act="nsBack"]'); await page.waitForSelector('#nsFile');
+  const png = Buffer.from(await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 900; c.height = 1200; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 900, 1200); g.fillStyle = '#222'; for (let i = 0; i < 40; i++) g.fillRect(40, 30 + i * 28, 300 + (i * 37) % 400, 8); return c.toDataURL('image/png').split(',')[1]; }, null), 'base64');
+  await page.setInputFiles('#nsFile', { name:'nalog.png', mimeType:'image/png', buffer:png });
+  await page.waitForSelector('#ns-name', { timeout: 20000 });
+  const r2 = await rv();
+  ok('skeniranje (slika): OCR v izoliranem okvirju (sandbox brez allow-same-origin), knjižnica naložena šele zdaj, rezultat izpolni polja', tessSeen.length === 1 && r2.zzzs === '012345678' && /^Marija Novakova/.test(r2.name), JSON.stringify({ t:tessSeen.length, zzzs:r2.zzzs }));
+  const ifr = await page.evaluate(() => ({ seen:window.__ifr.slice(), left:document.querySelectorAll('iframe').length }));
+  ok('skeniranje: okvir je »allow-scripts« brez dostopa do podatkov aplikacije in se po branju odstrani', ifr.seen.length === 1 && ifr.seen[0] === 'allow-scripts|ocr/ocr.html' && ifr.left === 0, JSON.stringify(ifr));
+  // lasten izvod knjižnice: relativna pot iz config.js (ocr.lib) se mora razrešiti glede na stran aplikacije, ne glede na okvir v mapi ocr/
+  const own = await page.evaluate(async b64 => { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    try { return await NSCAN.ocr(new Blob([u], { type:'image/png' }), null, { on:true, lib:'ocr/vendor/tess-stub.js', lang:'slv' }); } catch (e) { return 'NAPAKA ' + e.message; } }, png.toString('base64'));
+  ok('skeniranje: lasten izvod knjižnice (relativna pot ocr/vendor/…) se naloži s prave poti in ne kliče tretjih strani', /012345678/.test(own) && vendorSeen.length === 1 && /\/ocr\/vendor\/tess-stub\.js$/.test(vendorSeen[0]) && tessSeen.length === 1, (own || '').slice(0, 60) + ' | ' + vendorSeen.length);
+  // PDF-sken (slika strani v PDF): prva slika se prebere; PDF brez slike da razumljivo napako
+  await page.click('[data-act="nsBack"]'); await page.waitForSelector('#nsFile');
+  await page.setInputFiles('#nsFile', { name:'sken.pdf', mimeType:'application/pdf', buffer:makePdf([{ w:600, h:800, comps:3, raw:require('crypto').randomBytes(600 * 800 * 3) }]) });   // ~1,4 MB: velik PDF (telefonski skeni so 5–15 MB)
+  await page.waitForSelector('#ns-name', { timeout: 20000 });
+  ok('skeniranje (PDF): slika strani se izvleče in prebere', tessSeen.length === 2 && (await rv()).zzzs === '012345678', String(tessSeen.length));
+  await page.click('[data-act="nsBack"]'); await page.waitForSelector('#nsFile');
+  await page.setInputFiles('#nsFile', { name:'prazen.pdf', mimeType:'application/pdf', buffer:Buffer.from('%PDF-1.4\n%%EOF\n') });
+  await page.waitForSelector('.banner:has-text("ni slike strani")', { timeout: 10000 });
+  ok('skeniranje: PDF brez slike pokaže razumljivo napako (ne obvisi)', !(await page.$('.spin')));
+  // shrani: nov pacient in nalog; ponovni sken istega pacienta ga ujame in nalog posodobi (ne podvoji)
+  await page.fill('#nsText', FIXT); await page.click('[data-act="nsParse"]'); await page.waitForSelector('#ns-name');
+  await page.click('[data-act="nsSave"]'); await page.waitForTimeout(400);
+  const sv1 = await page.evaluate(() => { const p = S.patients[S.patients.length - 1]; return { n:S.patients.length, name:p.name, zzzs:p.zzzs, nal:p.naloge.length, st:p.naloge[0].stevilka, vr:p.naloge[0].vrsta, razlog:p.naloge[0].razlog, view:UI.view }; });
+  ok('skeniranje: pacient in nalog sta shranjena, pogled prikaže nalog', sv1.n === nPat0 + 1 && /^Marija Novakova/.test(sv1.name) && sv1.zzzs === '012345678' && sv1.nal === 1 && !!sv1.st && sv1.view === 'pacienti', JSON.stringify(sv1));
+  ok('skeniranje: po shranjevanju se okno zapre', !(await page.$('#modal .modal')) && !(await page.$('#ns-name')));
+  await page.screenshot({ path: OUT + '/9c-scan-saved.png', fullPage: true });
+  await page.evaluate(() => { UI.pid = ''; UI.nid = ''; rerender(); }); await page.waitForSelector('[data-act="nsOpen"]');
+  await page.click('[data-act="nsOpen"]'); await page.fill('#nsText', FIXT); await page.click('[data-act="nsParse"]'); await page.waitForSelector('#ns-name');
+  ok('skeniranje: že znan pacient je prepoznan in ponujena je ponovna uporaba', /že v bazi/.test(await page.textContent('.modal')) && (await page.$$('[data-nswho]')).length === 2);
+  await page.click('[data-act="nsSave"]'); await page.waitForTimeout(300);
+  const sv2 = await page.evaluate(() => ({ n:S.patients.length, nal:S.patients[S.patients.length - 1].naloge.length }));
+  ok('skeniranje: ponovni vnos istega naloga ne podvoji pacienta in naloga', sv2.n === nPat0 + 1 && sv2.nal === 1, JSON.stringify(sv2));
+  ok('skeniranje: dnevnik sprememb ne vsebuje imena, naslova in številke zavarovane osebe', await page.evaluate(() => { const s = JSON.stringify(AUDIT); return !/Novakova|012345678|Primerna/.test(s); }));
+
+  // registrska tablica vozila in nastavitve tiska
+  await page.click('[data-nav="nastavitve"]'); await page.click('[data-act="setTab"][data-k="vozila"]');
+  const vi = await page.evaluate(() => S.vehicles.findIndex(v => v.id === 'v13'));
+  await page.fill(`input[data-path="vehicles.${vi}.reg"]`, ' kk ab-123 '); await page.press(`input[data-path="vehicles.${vi}.reg"]`, 'Tab'); await page.waitForTimeout(150);
+  ok('vozila: registrska tablica se vpiše in shrani', (await page.evaluate(i => String(S.vehicles[i].reg).trim().toUpperCase(), vi)) === 'KK AB-123');
+  await page.click('[data-act="setTab"][data-k="tisk"]'); await page.waitForSelector('.npv-s');
+  await page.fill('input[data-path="settings.tisk.startnina"]', '3,5'); await page.press('input[data-path="settings.tisk.startnina"]', 'Tab');
+  await page.fill('input[data-path="settings.tisk.dx"]', '1.5'); await page.press('input[data-path="settings.tisk.dx"]', 'Tab'); await page.waitForTimeout(150);
+  const tk = await page.evaluate(() => ({ st:S.settings.tisk.startnina, dx:S.settings.tisk.dx, prev:document.querySelectorAll('.npv-s').length, guides:document.querySelectorAll('.npv-s .ng').length }));
+  ok('nastavitve: Tisk naloga (štartnina, premik), dve preizkusni strani s črtami', String(tk.st).replace(',', '.') === '3.5' && +tk.dx === 1.5 && tk.prev === 2 && tk.guides > 0, JSON.stringify(tk));
+  await page.screenshot({ path: OUT + '/9d-settings-tisk.png', fullPage: true });
+  await page.evaluate(() => { window.__prints = []; window.print = function(){ const a = document.getElementById('printArea'); window.__prints.push({ html:a ? a.innerHTML : '', cls:a ? a.className : '' }); }; });
+  await page.click('[data-act="npCalib"][data-p="b"]');
+  ok('tisk: preizkusna stran se pošlje v tiskalnik', (await page.evaluate(() => window.__prints.length)) === 1 && /PREIZKUSNA STRAN/.test(await page.evaluate(() => window.__prints[0].html)));
+
+  // opravljen prevoz pacienta z nalogom: posadka z vozilom je v razporedu dneva (ena ekipa) → tablica, voznik, spremljevalec, časi, km, štartnina
+  const pr = await page.evaluate(() => {
+    let d = addDays(todayStr(), -1); while (isStandby(d)) d = addDays(d, -1);
+    S.duty[d] = [{ name:'Voznik Test', team:'redna', role:'voznik', vehicleId:'v13' }, { name:'Sprem Test', team:'redna', role:'spremljevalec', vehicleId:'v13' }].map((x, i) => ({ id:'t' + i, staffId:'', from:'', to:'', ot:0, ...x }));
+    S.dayRules[d] = { mode:'samodejno' };
+    const p = S.patients[S.patients.length - 1], n = p.naloge[0];
+    const a = ensureDay(d); while (a.length < 1) a.push(blankRide());
+    Object.assign(a[0], blankRide(), { id:'pr0', name:p.name, from:'Dobova 25', to:'SB Brežice', time:'09:00', phone:'031 123 456', patientId:p.id, nalogId:n.id, done:true, doneBy:'Voznik Test, Sprem Test', km:23.4, times:{ v_vozilu:d + 'T09:05:00', na_cilju:d + 'T09:50:00' } });
+    rev++; PLAN_CACHE.clear(); UI.pid = p.id; UI.nid = n.id; return { d, pid:p.id, nid:n.id, name:p.name };
+  });
+  await page.click('[data-nav="pacienti"]'); await page.evaluate(() => { rerender(); }); await page.waitForSelector('[data-act="npOpen"]');
+  await page.click('[data-act="npOpen"]'); await page.waitForSelector('.nprint input[data-np]');
+  const row = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.nprint input[data-np]')].map(e => [e.dataset.np.split('|')[1], e.value])));
+  ok('tisk v nalog: vrstica je izpolnjena iz razporeda (voznik, spremljevalec, reg. št., čas od–do, štartnina, km, datum)', row.voz === 'Voznik Test' && row.spr === 'Sprem Test' && row.reg === 'KK AB-123' && row.od === '09:05' && row.do === '09:50' && row.st === '3,50' && /^\d{2}\.\d{2}\.\d{4}$/.test(row.datum) && /^\d+(,\d)?$/.test(row.km), JSON.stringify(row));
+  ok('tisk v nalog: prevoz je predizbran, začetna vrstica je 1', await page.evaluate(() => document.querySelector('[data-npon="0"]').checked && +document.getElementById('npStart').value === 1));
+  await page.screenshot({ path: OUT + '/9e-print-modal.png', fullPage: true });
+  const pvTxt = await page.textContent('.npv');
+  ok('tisk v nalog: predogled vsebuje samo podatke posadke, nič od pacienta', /KK AB-123/.test(pvTxt) && /09:05–09:50/.test(pvTxt) && !new RegExp(pr.name.split(' ')[0] + '|Dobova|Brežice|012345678|Dializ').test(pvTxt), pvTxt.slice(0, 120));
+  await page.click('[data-act="npPrint"]');
+  const pp = await page.evaluate(() => window.__prints[window.__prints.length - 1]);
+  ok('tisk v nalog: v tiskalnik gre ena stran (A4, brez ozadja obrazca) brez podatkov pacienta', pp.cls === 'pnalog' && (pp.html.match(/class="npg"/g) || []).length === 1 && !/ng-h|ng-v|ng-x|ng-lbl/.test(pp.html) && !new RegExp(pr.name.split(' ')[0] + '|Dobova|Brežice|012345678').test(pp.html), pp.cls);
+  // položaj v tisku: celica »datum« prve vrstice mora biti 9,6 mm od levega roba + premik 1,5 mm, vrstica na 186,4 mm (sprednja stran)
+  await page.emulateMedia({ media:'print' }); await page.waitForTimeout(100);
+  const geo = await page.evaluate(() => { const g = document.querySelector('#printArea .npg'), r = g.getBoundingClientRect(), mm = px => px * 25.4 / 96; const c = [...g.querySelectorAll('.nc')].map(e => { const b = e.getBoundingClientRect(); return { t:e.textContent.trim(), x:mm(b.left - r.left), y:mm(b.top - r.top), w:mm(b.width), h:mm(b.height) }; }); return { w:mm(r.width), c }; });
+  const dat = geo.c.find(c => /^\d{2}\.\d{2}\.\d{4}$/.test(c.t));
+  ok('tisk v nalog: položaj celic v mm (datum 11,1 mm od levega roba = 9,6 + 1,5 premik; zgornji rob vrstice 186,4 mm)', !!dat && Math.abs(dat.x - 11.1) < 1.3 && Math.abs(dat.y - 186.4) < 1.3 && Math.abs(geo.w - 210) < 1, JSON.stringify({ w:geo.w, dat }));
+  const pdf2 = OUT + '/tisk-v-nalog.pdf'; await page.pdf({ path:pdf2, format:'A4', preferCSSPageSize:true, printBackground:true });
+  const pdfTxt = fs.readFileSync(pdf2).toString('latin1');
+  let info = ''; try { info = require('child_process').execFileSync('pdfinfo', [pdf2]).toString(); } catch (e) { info = ''; }
+  const nPg = info ? +((/Pages:\s+(\d+)/.exec(info) || [])[1]) : (pdfTxt.match(/\/Type\s*\/Page[^s]/g) || []).length, sz = (/Page size:\s+([\d.]+) x ([\d.]+)/.exec(info) || []);
+  ok('tisk v nalog: PDF ima natanko eno stran A4', nPg === 1 && (!info || (Math.abs(+sz[1] - 595.3) < 1.5 && Math.abs(+sz[2] - 841.9) < 1.5)), nPg + ' stran' + (sz[1] ? ', ' + sz[1] + ' x ' + sz[2] + ' pt' : ''));
+  await page.emulateMedia({ media:'screen' });
+  await page.click('[data-act="npDone"]'); await page.waitForTimeout(300);
+  const sv = await page.evaluate(d => { const r = rideById(d, 'pr0').r, p = S.patients[S.patients.length - 1]; return { row:r.pr && r.pr.row, reg:r.pr && r.pr.f.reg, rows:p.naloge[0].tiskRows, mod:!!UI.modal }; }, pr.d);
+  ok('tisk v nalog: »Da, zapomni vrstice« shrani vrstico 1 pri prevozu in nalogu', sv.row === 1 && sv.reg === 'KK AB-123' && sv.rows === 1 && !sv.mod, JSON.stringify(sv));
+  await page.click('[data-act="npOpen"]'); await page.waitForSelector('#npStart');
+  const again = await page.evaluate(() => ({ start:+document.getElementById('npStart').value, on:document.querySelector('[data-npon="0"]').checked, txt:document.querySelector('.nprint tbody').textContent }));
+  ok('tisk v nalog: ob ponovnem odprtju je naslednja vrstica 2 in že natisnjen prevoz ni več predizbran', again.start === 2 && !again.on && /natisnjeno \(št\. 1\)/.test(again.txt), JSON.stringify(again));
+  await page.click('.nprint [data-act="closeModal"] >> nth=-1');
+  ok('tisk: dnevnik sprememb ne vsebuje podatkov pacienta', await page.evaluate(() => !/Novakova|012345678|Primerna|Dobova/.test(JSON.stringify(AUDIT))));
 
   // objava razporeda: lokalni način nima Firebase, zato samo preveri, da gumb ne sproži napake
   ok('brez zunanjih klicev razen OSRM', external.length === 0, external.slice(0, 3).join(', '));

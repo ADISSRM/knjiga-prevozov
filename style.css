@@ -507,6 +507,32 @@ a.btn{text-decoration:none}
 .box.cancelled .bgrid input,.box.cancelled .bgrid select{color:var(--bad);text-decoration:line-through;background:transparent}
 .cancel-chip{background:var(--bad);color:#fff;font-weight:700}
 .check.cancel-check{color:var(--bad);font-weight:600}
+/* Skeniranje naloga in tisk dopolnil na obrazec NLG/05 */
+.ns-miss input,.ns-miss select{border-color:var(--warn);background:var(--warn-soft)}
+.nsraw{margin:6px 0 0;padding:8px;max-height:220px;overflow:auto;white-space:pre-wrap;font:12px/1.4 ui-monospace,Menlo,monospace;background:var(--soft,#f4f5f7);border-radius:8px}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--accent,#DD5207);border-radius:50%;animation:kpspin .8s linear infinite}
+@keyframes kpspin{to{transform:rotate(360deg)}}
+.nprint .edtable input{padding:4px 6px;min-width:0}
+.nprint tr.np-done td{opacity:.65}
+.npv-wrap{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:start}
+@media(max-width:760px){.npv-wrap{grid-template-columns:1fr}}
+.npv{position:relative;width:105mm;height:148.5mm;max-width:100%;overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:6px}
+.npv .npg{transform:scale(.5);transform-origin:0 0;position:absolute;left:0;top:0}
+.npv-s{width:63mm;height:89.1mm}.npv-s .npg{transform:scale(.3)}
+.npg{position:relative;width:210mm;height:297mm;background:#fff;overflow:hidden;break-after:page}
+.npg-in{position:absolute;left:0;top:0;width:210mm;height:297mm;transform-origin:0 0}
+.nc{position:absolute;box-sizing:border-box;overflow:hidden;white-space:nowrap;line-height:1.1;color:#000;font-family:Arial,Helvetica,sans-serif}
+.nc span{display:block;overflow:hidden}
+.ng{position:absolute;display:block;background:rgba(214,40,40,.6)}
+.ng-h{height:.25mm}.ng-v{width:.25mm}
+.ng-x{width:6mm;height:6mm;background:none;border:.25mm solid rgba(214,40,40,.7);border-radius:50%}
+.ng-lbl{position:absolute;font:3.2mm Arial,Helvetica,sans-serif;color:#c62828}
+@page nalogf{size:210mm 297mm;margin:0}
+@media print{
+  #printArea.pnalog{page:nalogf;margin:0;padding:0;font:9pt Arial,Helvetica,sans-serif}
+  #printArea.pnalog .npg{height:296.5mm;break-after:page}
+  #printArea.pnalog .npg:last-child{break-after:auto}
+}
 /* Tisk meseca */
 #printArea{display:none}
 @media print{

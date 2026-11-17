@@ -30,6 +30,16 @@ window.KP_CONFIG = {
     url: 'https://nominatim.openstreetmap.org',
     email: ''
   },
+  // SKENIRANJE NALOGA (razpoznava besedila s fotografije ali PDF-skena). Poteka v tej napravi, v izoliranem okvirju (ocr/ocr.html); slika se nikamor ne pošlje in se ne shrani.
+  // Program Tesseract.js (odprtokoden) in slovenski jezikovni model se ob prvi uporabi naložita s spodnjih naslovov (jsDelivr, projectnaptha) in ostaneta v predpomnilniku brskalnika.
+  // Prilepljeno besedilo (iPhone: Kamera → Skeniraj besedilo) deluje tudi brez tega. Lastna kopija: datoteke položi v ocr/vendor/ in kazalce spremeni (glej NAVODILA.md 11.10).
+  //   on: false  → samo prilepljeno besedilo      lib: '' → isto
+  ocr: {
+    on: true,
+    lib: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+    lang: 'slv',
+    langPath: '', workerPath: '', corePath: ''      // prazno = privzete lokacije knjižnice; lastna kopija: npr. 'ocr/vendor/lang', 'ocr/vendor/worker.min.js', 'ocr/vendor/core'
+  },
   // NEOBVEZNO: NATANČNA KILOMETRINA Z GOOGLOM (Google Zemljevidi, Routes API; plačljivo, če ključ vneseš). Kilometrina prevoza = razdalja OD → DO po najboljši poti.
   // Google dobi SAMO besedilo naslova OD in DO (brez imen, telefonov, nalogov). Naslovi pacientov so osebni podatki:
   // pred uporabo se posvetuj s pooblaščencem za varstvo podatkov (glej NAVODILA.md).

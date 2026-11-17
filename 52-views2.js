@@ -53,6 +53,7 @@ function nalogCardHTML(p, n){
   const acts = `<div class="row" style="gap:6px">
     <button type="button" class="btn sm" data-act="editNalog" data-id="${n.id}">${open ? 'Zapri' : 'Uredi'}</button>
     <button type="button" class="btn sm" data-act="previewNalog" data-id="${n.id}" ${miss.length ? 'disabled title="Najprej izpolni vsa polja"' : ''}>${IC.eye} Predogled</button>
+    <button type="button" class="btn sm" data-act="npOpen" data-id="${n.id}" data-pid="${p.id}" title="Natisne samo podatke posadke v tabelo PREVOZI na papirnatem nalogu">${IC.print || ''} Natisni v nalog</button>
     <button type="button" class="btn sm" data-act="renewNalog" data-id="${n.id}">Podaljšaj</button>
     ${n.vrsta === 'enkratna' ? `<button type="button" class="btn sm" data-act="usedNalog" data-id="${n.id}">${n.porabljen ? 'Odznači porabljen' : 'Označi porabljen'}</button>` : ''}
     <button type="button" class="btn sm" data-act="cancelNalog" data-id="${n.id}">${n.preklican ? 'Obnovi' : 'Prekliči'}</button>
@@ -110,7 +111,7 @@ function renderPatients(){
   $('#view').innerHTML = `${demoBanner()}${alertsBanner()}
     <div class="plist ${sel ? 'has-sel' : ''}">
       <div class="stack" style="gap:12px">
-        <div class="toolbar"><input type="search" id="patSearch" placeholder="Išči po imenu, naslovu, telefonu" value="${esc(UI.pq)}" aria-label="Išči pacienta"><button type="button" class="btn primary" data-act="newPatient">${IC.plus} Nov pacient</button></div>
+        <div class="toolbar"><input type="search" id="patSearch" placeholder="Išči po imenu, naslovu, telefonu" value="${esc(UI.pq)}" aria-label="Išči pacienta"><button type="button" class="btn primary" data-act="newPatient">${IC.plus} Nov pacient</button><button type="button" class="btn" data-act="nsOpen" title="Fotografiraj ali naloži nalog in podatke izpolni samodejno">Skeniraj nalog</button></div>
         <div class="seg" role="group" aria-label="Filter">${[['vsi', `Vsi (${all.length})`], ['opozorila', `Opozorila (${al.length})`], ['brez', 'Brez naloga']].map(([k, l]) => `<button type="button" data-act="pf" data-k="${k}" aria-pressed="${UI.pf === k}">${l}</button>`).join('')}</div>
         <div class="prows">${rows || '<div class="empty-state">Ni pacientov za ta filter. Pacienta dodaš z gumbom »Nov pacient« ali v dnevni knjigi z »Shrani v bazo«.</div>'}</div>
       </div>
@@ -345,6 +346,8 @@ function renderModal(){
   const host = $('#modal'), m = UI.modal;
   if (!m){ host.hidden = true; host.innerHTML = ''; delete host.dataset.pk; return; }
   if (m.type === 'pick'){ renderPick(host, m); return; }
+  if (m.type === 'nscan'){ renderScan(host, m); return; }
+  if (m.type === 'nprint'){ renderNPrint(host, m); return; }
   delete host.dataset.pk;
   const v = m.variants[m.idx], lines = v.text.split('\n');
   host.hidden = false;

@@ -9,6 +9,14 @@ Interna PWA za iPhone in Android: dispečer (knjiga, pacienti in nalogi, razpore
 
 **Pred prvim pravim pacientom** potrebuješ odobritev vodstva in pooblaščenca za varstvo podatkov (glej NAVODILA.md, razdelek 0.2). Do takrat uporabljaj samo izmišljene podatke.
 
+## Spremembe v2_9 (november 2026): skeniranje naloga in tisk podatkov posadke na papirnat nalog
+- **Skeniraj nalog** (Pacienti): fotografija, PDF-sken ali prilepljeno besedilo naloga NLG/05 → aplikacija prebere pacienta, naslov, telefon, številko naloga, izvajalca, zdravnika, relacijo, razlog, veljavnost in opombe → **pregled in popravek** → shrani pacienta in nalog (že znan pacient se prepozna, isti nalog se posodobi). Branje poteka **v tvoji napravi** (izoliran okvir, Tesseract.js); slika se ne pošlje in se ne shrani. Datum rojstva in e-pošta se ne shranita. Rokopisa in polj s kodami ne bere.
+- **Natisni v nalog** (nalog pacienta): na **prazen papirnat obrazec** natisne **samo podatke posadke** v tabelo PREVOZI: **datum, čas od–do, reg. št., km, štartnina, spremljevalec, ime voznika**. Pacientovih podatkov ne natisne. Pomni, katere vrstice (1–40 na list) so že natisnjene.
+- **Registrske tablice** vozil (Nastavitve → Vozila); posadka in vozilo se izberejo samodejno iz razporeda dneva; če ekipe ni mogoče določiti, tablica ostane prazna (ne ugiba).
+- **Nastavitve → Tisk naloga** (skrbnik): štartnina, decimalke km, izvor časa »od«, ime voznika, **poravnava** (premik, raztegnitev, pisava) s preizkusnima stranema (sprednja/hrbtna). **Prvi korak je obvezen: natisni preizkus in poravnaj.**
+- Popravljeno med preizkusom: velik PDF (> 125 kB) je sprožil napako »Maximum call stack size exceeded«; okno skeniranja se po shranjevanju ni zaprlo; preizkus iskanja naslovov je bil odvisen od hitrosti omrežja.
+- Preizkusi: 63 (planer, razpoznava, naslovi, kilometrina, skeniranje, tisk) + 114 v brskalniku. **Ni preizkušeno:** živ Tesseract.js (jsDelivr + slovenski model), natis na pravem tiskalniku in papirju (predpostavljen A4), rokopis (NAVODILA.md, razdelek 14). Novi razdelki: 0.2 (točka 7), 10.10, 10.11, 11.10.
+
 ## Spremembe v2_8 (november 2026): brezplačna točna kilometrina po naslovih (brez Google Zemljevidov)
 - **Kilometrina OD → DO po hišnem naslovu je zdaj brezplačna:** aplikacija iz vpisanega naslova (ulica + hišna številka, »Dobova 25«) poišče točko v OpenStreetMap (Nominatim), cestno pot izračuna OSRM. Prej je za naslov brez znane točke vzela središče naselja, zato kilometrina ni bila točna. Google ostane neobvezen (ključ v Nastavitve → Izračun).
 - **Natančnost je vidna:** vir »naslov + ceste OSM«, pri naslovu brez hišne številke v OSM oznaka ~ in razlog; aplikacija zavrne zadetek v drugem kraju.

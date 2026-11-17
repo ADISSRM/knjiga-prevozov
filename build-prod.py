@@ -14,7 +14,7 @@ css = '\n'.join(re.findall(r'<style>(.*?)</style>', head, re.S))
 assert css.strip(), 'CSS ni najden'
 (out / 'style.css').write_text(css, encoding='utf-8')
 
-order = ['20-data', '30-core', '35-db', '37-geocode', '38-routing', '39-google', '40-planner', '45-pacienti', '50-views', '52-views2', '54-quick', '55-live', '56-map', '60-main']
+order = ['20-data', '30-core', '35-db', '37-geocode', '38-routing', '39-google', '40-planner', '45-pacienti', '46-nalogscan', '47-nalogprint', '50-views', '52-views2', '53-nalogui', '54-quick', '55-live', '56-map', '60-main']
 js = '\n'.join((src / f'{n}.js').read_text(encoding='utf-8') for n in order)
 (out / 'app.js').write_text(js, encoding='utf-8')
 body = (src / '10-body.html').read_text(encoding='utf-8')
@@ -29,7 +29,8 @@ csp = "; ".join([
     "font-src 'self'",
     # povezave: Firebase + strežnik za cestno usmerjanje (OSRM; samo koordinate) + iskanje naslovov (Nominatim; samo besedilo naslova). Če ju zamenjaš (config.js → routing / geocode), dodaj izvor sem.
     "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://router.project-osrm.org https://routing.openstreetmap.de https://nominatim.openstreetmap.org",
-    "manifest-src 'self'", "worker-src 'self'",
+    "manifest-src 'self'", "worker-src 'self'", "frame-src 'self'",   # izoliran okvir za OCR (ocr/ocr.html) ima svoj, ločen CSP
+   
     "base-uri 'none'", "form-action 'self'", "object-src 'none'"])
 html = f'''<!doctype html>
 <html lang="sl">
@@ -82,6 +83,10 @@ ai = icon(180, True); ai.convert('RGB').save(out / 'icons/apple-touch-icon.png')
 for lf in (dep / 'logos').glob('*.png'): shutil.copy(lf, out / 'logos' / lf.name)      # logotipa ZD Brežice in NMP (Nastavitve → Logotipi ju lahko zamenja na posamezni napravi)
 shutil.copy(dep / 'logos' / 'README.txt', out / 'logos' / 'README.txt') if (dep / 'logos' / 'README.txt').exists() else None
 for f in ('config.js', 'boot.js', 'manifest.webmanifest', '.nojekyll'): shutil.copy(dep / f, out / f)
+(out / 'ocr').mkdir(exist_ok=True)
+for of in (dep / 'ocr').glob('*'):
+    if of.is_file(): shutil.copy(of, out / 'ocr' / of.name)
+    elif of.is_dir(): shutil.copytree(of, out / 'ocr' / of.name, dirs_exist_ok=True)   # ocr/vendor/: lasten izvod knjižnice       # okvir za razpoznavo besedila (neobvezno: ocr/vendor/ za lastno kopijo knjižnice)
 if (dep / 'naslovi.json').exists(): shutil.copy(dep / 'naslovi.json', out / 'naslovi.json')
 if (dep / 'razdalje.json').exists(): shutil.copy(dep / 'razdalje.json', out / 'razdalje.json')
 build = hashlib.sha256(''.join((out / n).read_text(encoding='utf-8') for n in ('app.js', 'style.css', 'index.html', 'boot.js')).encode()).hexdigest()[:10]

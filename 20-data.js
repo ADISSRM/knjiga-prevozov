@@ -145,6 +145,7 @@ function defaultState(){
       stayDef:45, extraDef:5,                               // privzet čas pregleda, ko reševalec počaka; privzeta pot od vhoda do ambulante
       diaT:{ dop:{ start:'06:30', end:'10:30' }, pop:{ start:'11:30', end:'15:30' } },   // dializa: dopoldanska in popoldanska
       google:{ on:true, auto:true, traffic:false },         // natančni km prek Google Maps (neobvezno; ključ v config.js ali v tej napravi)
+      tisk:{ startnina:'', kmDec:1, voznik:true, od:'v_vozilu', dx:0, dy:0, sx:100, sy:100, fs:9 },   // tisk dopolnil na papirnati nalog (NLG/05)
       geocode:{ on:true, auto:true }                        // brezplačno iskanje naslovov (ulica + hišna številka) v OpenStreetMap; km = točka naslova + cestna pot OSRM
     },
     /* Prilagodljiva pravila: "običajno" velja, "prilagoditev" se uporabi samo, ko je potrebna (ali ko dispečer tako izbere). */
@@ -155,8 +156,8 @@ function defaultState(){
       opozoriloDni:30, opozoriloKratki:7
     },
     vehicles:[
-      { id:'v04', name:'Avto 04', tip:'sanitetno', ns:'redna', sede:3, leze:1, utila:0, skupaj:4, sedeMax:3, lezeMax:1, utilaMax:0, skupajMax:4, aktiv:true },
-      { id:'v13', name:'Avto 13', tip:'sanitetno', ns:'redna', sede:4, leze:0, utila:0, skupaj:4, sedeMax:6, lezeMax:0, utilaMax:0, skupajMax:6, aktiv:true },
+      { id:'v04', name:'Avto 04', reg:'', tip:'sanitetno', ns:'redna', sede:3, leze:1, utila:0, skupaj:4, sedeMax:3, lezeMax:1, utilaMax:0, skupajMax:4, aktiv:true },
+      { id:'v13', name:'Avto 13', reg:'', tip:'sanitetno', ns:'redna', sede:4, leze:0, utila:0, skupaj:4, sedeMax:6, lezeMax:0, utilaMax:0, skupajMax:6, aktiv:true },
       { id:'c1', name:'C1 rdeči', tip:'sanitetno', ns:'oboje', sede:2, leze:0, utila:0, skupaj:2, sedeMax:2, lezeMax:0, utilaMax:0, skupajMax:2, aktiv:true },
       { id:'ost', name:'OSTALO', tip:'ostalo', ns:'oboje', sede:0, leze:0, utila:0, skupaj:0, sedeMax:0, lezeMax:0, utilaMax:0, skupajMax:0, aktiv:true }
     ],

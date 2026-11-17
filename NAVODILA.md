@@ -40,6 +40,8 @@ Aplikacija obdeluje **zdravstvene podatke** (ime, naslov, razlog prevoza, števi
 
 6. **Podlaga zemljevida (ploščice OpenStreetMap)**: brskalnik pri strežniku ploščic zahteva slike za prikazano območje. Strežnik vidi IP naslov naprave, izvor strani (brez poti) in koordinate ploščic; imen, naslovov in podatkov o pacientih ne vidi (točke in poti se rišejo v brskalniku). DPO vprašaj, ali je to sprejemljivo ali naj se podlaga izklopi (Nastavitve → Izračun → Zemljevid poti) oziroma uporabi lasten strežnik ploščic (11.8).
 
+7. **Skeniranje naloga (razpoznava besedila)**: fotografija ali PDF naloga se **bere v tvoji napravi** (v izoliranem okvirju brez dostopa do podatkov aplikacije) in se **nikamor ne pošlje in se ne shrani**; shrani se samo, kar potrdiš na pregledu. Ob prvi uporabi brskalnik **prenese program** (Tesseract.js z `cdn.jsdelivr.net`) **in slovenski jezikovni model** (`tessdata.projectnaptha.com`): ta strežnika vidita IP naslov naprave in da je bil program zahtevan, **ne pa slike ali besedila**. Če to ni sprejemljivo: v `config.js` nastavi `ocr.on: false` (ostane vnos s prilepljenim besedilom, ki ga prebere telefon) ali program in model postavi na lasten naslov (11.10).
+
 Če odobritve ne dobiš, aplikacijo še vedno uporabljaš v **lokalnem načinu** (podatki samo v tvojem brskalniku, brez oblaka) – glej razdelek 12.
 
 ### 0.3 Kaj potrebuješ
@@ -449,6 +451,25 @@ Analiza fotografij papirne knjige za deset dni (7., 8., 20., 22. 10. ter 5., 6.,
 
 ---
 
+### 10.10 Skeniranje naloga za prevoz (samodejno izpolnjevanje)
+**Pacienti → Skeniraj nalog.** Fotografiraj nalog (ali izberi PDF-sken) **ali prilepi besedilo**; aplikacija prebere številko naloga, zavarovano osebo (ime, številko zavarovane osebe, naslov, telefon), izvajalca in zdravnika, relacijo OD–DO, razlog, datum izdaje in veljavnost ter opombe. Nato se odpre **pregled**: vsako polje preveriš in popraviš, neprebrana polja so označena »ni prebrano«, prebrano besedilo je na voljo za primerjavo. **Šele »Shrani pacienta in nalog« kaj zapiše.**
+- **Obstoječ pacient:** če ga aplikacija prepozna (po številki zavarovane osebe, sicer po imenu), ponudi **dodajanje naloga pacientu**; obstoječi podatki pacienta se ne prepišejo (izpolnijo se samo prazna polja). Isti nalog (ista številka) se **posodobi**, ne podvoji.
+- **Datum rojstva in e-pošta se ne shranita.** V dnevnik sprememb gre samo, da je bil nalog skeniran (brez imen, naslovov in številk).
+- **Prilepljeno besedilo** deluje vedno in brez omrežja: iPhone → v polje se dotakni → ikona kamere → »Skeniraj besedilo«; Android → Google Lens → kopiraj besedilo; PDF z besedilnim slojem → označi, kopiraj, prilepi.
+- **Slika ali PDF:** velik PDF-sken s telefona (5–15 MB, slika strani) je podprt; prebere se prva stran. Slika se pred branjem pretvori v sivine z razširjenim kontrastom. Prvi prenos programa (11.10) lahko traja minuto ali dve, nato je v predpomnilniku brskalnika.
+- **Kaj se ne prebere:** rokopis (razen če je zelo čitljiv), polja s kodami (5 razlog, 10 vrsta prevoza, 11 …) in kar je prečrtano. Aplikacija tega ne ugiba: polje ostane prazno in te opozori. Obrazec je **brez besedilnega sloja** (slika), zato je pri PDF-skenu potrebna razpoznava iz slike.
+
+### 10.11 Natisni v nalog: samo podatki posadke na papirnat obrazec
+Papirnati **Nalog za prevoz (Obr. NLG/05)** položiš v tiskalnik, aplikacija pa natisne **samo** podatke, ki jih izpolni posadka, v tabelo **PREVOZI** (sprednja stran: vrstice 1–11, hrbtna: 12–40 = 40 vrstic na list): **datum, čas od–do, reg. št. vozila, km, štartnina, spremljevalec in ime voznika** (v celico »Podpis voznika«, drobno zgoraj; podpis ostane lastnoročen, izklop: Nastavitve → Tisk naloga). **Imena, naslova in drugih podatkov pacienta se ne natisne**; natisnjeni so samo ti podatki na belem papirju, vse drugo je že na obrazcu.
+- **Kako:** Pacienti → nalog pacienta → **Natisni v nalog**. Opravljeni prevozi tega naloga so že označeni, vrstice lahko popraviš (vsaka celica je polje) ali izklopiš. Za vsak list in stran je svoj gumb (npr. »List 1 · sprednja stran · vrstic 3 (št. 1–3)«). Tiskalnik: **A4, merilo 100 %** (ne »prilagodi strani«), brez glave in noge.
+- **Vrstice se pomnijo:** po izpisu potrdiš **»Da, zapomni vrstice«**: aplikacija si zapomni, katere vrstice naloga so že natisnjene (pri prevozu in nalogu). Naslednjič je začetna vrstica prva prosta, že natisnjeni prevozi niso več predizbrani. Če izpis ni uspel, ne potrdiš in ponoviš.
+- **Registrske tablice:** Nastavitve → **Vozila** → stolpec **Reg. tablica** (npr. KK AB-123). Natisne se tablica vozila, v katerem je bil prevoz.
+- **Od kod so podatki (samodejno):** posadka in vozilo iz **razporeda dneva**; pri že opravljenem prevozu (ni več v razporedu) po objavljenem razporedu (ključ ekipe), sicer po imenu v polju »Kdo je naredil odvoz«, sicer če je tisti dan samo ena ekipa. **Če ekipe ni mogoče določiti, tablica ostane prazna** (ne ugiba): vpišeš jo v pregledu. **Čas od** = pacient v vozilu (ali odhod k pacientu: Nastavitve → Tisk naloga → »Čas od je«), **čas do** = na cilju; če časov ni zabeleženih, se vzame čas iz razporeda. **km** = kilometrina iz knjige (pri čakanju na pregled vključuje pot nazaj); decimalke nastaviš (0 ali 1).
+- **Štartnina:** Nastavitve → **Tisk naloga** → polje Štartnina (npr. 3,50): natisne se pri vsakem prevozu. **Zneska ne poznam in ga nisem vpisal**: prazno polje pomeni, da se štartnina ne natisne. Vpiši veljavni znesek po pravilih ZZZS/pogodbe.
+- **Poravnava (obvezno enkrat):** tiskalniki se razlikujejo za nekaj milimetrov. Nastavitve → Tisk naloga → **Natisni preizkus: sprednja stran / hrbtna stran**: natisne črte celic in nekaj izmišljenih vrstic na navaden papir; papir in obrazec pridrži proti svetlobi in po potrebi popravi **premik (mm), širino/višino (%) in pisavo (pt)**. Ko črte sedejo, je poravnava shranjena za vse. Hrbtna stran ima lahko drugačen odmik kot sprednja (obrazec je dvostranski): preveri obe.
+- **Več kot 40 vrstic:** aplikacija ti pove, da je za nov list potreben nov obrazec.
+- Gumb je na voljo dispečerju; nastavitve tiska ureja skrbnik.
+
 ## 11. Vzdrževanje
 
 ### 11.1 Posodobitev aplikacije
@@ -522,6 +543,13 @@ Neobvezno; **brez njega kilometrina deluje brezplačno (10.3, 11.9)**. Najprej 0
 
 **Podatki:** © prispevajoči OpenStreetMap (ODbL); pripis je viden ob zemljevidu. Če boš za redno delo vseeno želel uradne hišne številke GURS, jih uvoziš po razdelku 11.3 (`naslovi.json`); uvožen naslov ima prednost in ne zahteva iskanja.
 
+### 11.10 Razpoznava besedila (OCR): nastavitev, lasten strežnik, odpravljanje težav
+`config.js` → `ocr`: `on` (privzeto `true`), `lib` (naslov programa Tesseract.js, privzeto `https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js`), `lang` (privzeto `slv`), `langPath`, `workerPath`, `corePath` (prazno = privzete lokacije knjižnice). `on: false` ali prazen `lib` izklopi branje iz slike; prilepljeno besedilo še vedno deluje.
+- **Kako je izolirano:** branje poteka v okvirju `ocr/ocr.html` z `sandbox="allow-scripts"` (brez `allow-same-origin`: okvir ne vidi prijave, pacientov ali baze) in z lastnim CSP; slika se okviru preda v spominu naprave. Glavna stran ima samo `frame-src 'self'`.
+- **Lasten ali brez zunanjega prenosa:** datoteke Tesseract.js (`tesseract.min.js`, `worker.min.js`, jedro `tesseract-core*.wasm.js`) in `slv.traineddata.gz` položi v mapo `web/ocr/vendor/` (pri lastni gradnji v `source/deploy/ocr/vendor/`; gradnja jo prekopira), v `config.js` kazalce spremeni (`lib: 'ocr/vendor/tesseract.min.js'`, `workerPath: 'ocr/vendor/worker.min.js'`, `corePath: 'ocr/vendor'`, `langPath: 'ocr/vendor/lang'`; poti so relativne na stran aplikacije). V `ocr/ocr.html` ostane dovoljen izvor `'self'`; če uporabljaš lasten drug izvor, ga dodaj v `script-src`, `worker-src` in `connect-src` tega okvirja in ponovno zgradi. Tako je celotno branje brez omrežnih klicev na tretje strani.
+- **Napake:** »Programa … ni mogoče naložiti« = ni povezave ali omrežje blokira `cdn.jsdelivr.net` (poskusi z lastno kopijo ali prilepi besedilo); »Razpoznava je trajala predolgo« = počasna naprava ali prenos (poskusi znova); »V tem PDF ni slike strani« = PDF je brez slike (ali ima besedilo: kopiraj in prilepi).
+- **Točnost:** boljše fotografije (ravno, brez sence, cel list, ločljivost vsaj 1500 px po širini) dajo bistveno boljše rezultate; vedno preglej polja na pregledu.
+
 ## 12. Lokalni (demo) način – brez oblaka
 
 Če v `config.js` pustiš `VSTAVI` ali nastaviš `mode: 'local'`, aplikacija deluje samo v tvojem brskalniku: račun se ustvari ob prvem zagonu, podatki ostanejo na napravi. Namenjen je **preizkušanju z izmišljenimi podatki**. Voznik na svojem telefonu v tem načinu ne vidi razporeda, ker podatkov ne deli nihče.
@@ -541,13 +569,17 @@ Neobvezno; **brez njega kilometrina deluje brezplačno (10.3, 11.9)**. Najprej 0
 | Prijava na iPhonu ne ostane | Vključena je samodejna odjava po 30 min; po odjavi se zahteva ponovna prijava. Obkljukaj »Ostani prijavljen« samo na osebnem, zaklenjenem telefonu. |
 | Vrstica »Cestni podatki: ni povezave« ali ure so označene z ~ | Strežnik za ceste ni dosegljiv ali ni nastavljen. Razpored deluje z oceno (zračna razdalja × faktor). Klikni **Poskusi znova**; v Nastavitve → Izračun klikni **Preveri cestne podatke**. Če sporoča napako CSP, izvor strežnika ni v `connect-src` (11.6). |
 | Čas ali kilometri se ne ujemajo z navigacijo | Aplikacija ne pozna prometa v živo, naselja so predstavljena s središčno točko. Nastavi popravek časa vožnje ali vpiši točnejše koordinate naselja (Nastavitve → Naslovi in naselja). |
+| Skeniranje: »Programa za razpoznavo besedila ni mogoče naložiti« | Brez povezave ali omrežje blokira `cdn.jsdelivr.net` / `tessdata.projectnaptha.com`. Prilepi besedilo (iPhone: Skeniraj besedilo) ali nastavi lasten naslov programa (11.10). |
+| Skeniranje prebere napačne ali manjkajoče podatke | Rokopis, senca ali nagnjena fotografija; polja »ni prebrano« vpiši ročno. Poskusi z ravno fotografijo celega lista ali s prilepljenim besedilom. |
+| Tisk na nalog je premaknjen ali ne sedi na črte | Nastavitve → Tisk naloga: natisni preizkus, nastavi premik/širino/višino; tiskalnik naj bo A4 in 100 % (brez »prilagodi strani«, brez glave in noge). Sprednjo in hrbtno stran nastavi ločeno preveri. |
+| Pri tisku na nalog manjka reg. št. ali ime voznika | Tablica: Nastavitve → Vozila. Posadke ni bilo mogoče določiti (več ekip in opravljen prevoz brez zapisa ekipe): vpiši jo v pregledu natisa. |
 | Zapisi se čez dan nenadoma ne shranjujejo | Morda je presežena dnevna kvota Firestore Spark (razdelek 0.1): preveri **Usage** v Firebase konzoli; kvota se ponastavi vsak dan, ali zmanjšaj število hkrati odprtih naprav. |
 
 ---
 
 ## 14. Kaj je preizkušeno in kaj ne
 
-**Preizkušeno (88 samodejnih preverjanj v brskalniku, 55 preizkusov planerja, razpoznave in kilometrine):**
+**Preizkušeno (114 samodejnih preverjanj v brskalniku, 63 preizkusov planerja, razpoznave, skeniranja in tiska):**
 - Dispečer objavi razpored, voznik in spremljevalec prejmeta svoj del, koraki (sprejem → na poti → na kraju → v vozilu → na cilju → zaključi, »ni doma«, odklonitev, popravek ure) pridejo do dispečerja; v knjigo se samodejno vpišeta čas in »Kdo je naredil odvoz«.
 - Planer: strogo, samodejno, prosto; 6 pacientov v Avto 13 (običajno 4, največ 6); nadure; ležeči brez nosil ostane nerazporejen; izjema pri prevozu v strogem načinu; vse prilagoditve so izpisane.
 - Nalogi: izračun veljavnosti, opozorilo na mejnem dnevu (30 dni letni, 7 dni mesečni), podaljšanje utiša opozorilo, samodejno izpolnjevanje iz baze pacientov, predogled za kopiranje.
@@ -557,7 +589,13 @@ Neobvezno; **brez njega kilometrina deluje brezplačno (10.3, 11.9)**. Najprej 0
 
 - **Iskanje naslovov in kilometrina OSM** (`node tests/run.js`, `tests/browser.js`): oblika zahtevka Nominatim (samo besedilo naslova, omejitev na kraj, Referer samo izvor), vrsta z razmikom in enim zahtevkom naenkrat, pomnilnik, točka pri pacientu, 429/403/izpad, zavrnitev zadetka v drugem kraju, razvrstitev natančnosti, km iz točke naslova in OSRM, pot nazaj, ročni vnos ima prednost (tudi med tekočim izračunom), popravek točke na zemljevidu in preračun, prenos popravkov med napravami, nastavitve. Vse **proti posnetku (lažnemu) Nominatim in OSRM** z izmišljenimi naslovi.
 
+- **Skeniranje naloga** (`tests/run.js`, `tests/browser.js`): razčlenjevalnik je preizkušen na treh izpisih razpoznave **izmišljenega** izpolnjenega obrazca (vsi trije načini členitve strani) in na čistem besedilu, napakah v številkah (O/0, B/8 …), smeteh, praznem vnosu in telefonski številki, ki ni številka zavarovane osebe; shranjevanje (nov pacient, ponovni vnos istega naloga, obstoječi pacient se ne prepiše, v dnevniku brez imen); izvlek slike iz PDF-ja (Flate RGB, sivinski, s predikatorjem PNG, JPEG; majhne slike se preskočijo); **pravi prazen obrazec Obr. NLG/05 (10,6 MB)** da dve sliki 1895×2895 in 1771×2570, enaki izpisu orodja `pdfimages`; v brskalniku okvir OCR (sandbox, CSP, protokol sporočil, odstranitev okvira, program se naloži šele ob uporabi, ne ob prilepljenem besedilu) s **posnetkom** knjižnice Tesseract.js.
+- **Tisk na nalog:** mesto vrstice (11 + 29 = 40 na list), razporeditev po straneh in listih, vrednosti iz posadke/vozila/časov/km/štartnine, ročni popravek ima prednost, pacient se ne natisne (preverjeno na HTML izpisu in v tiskalniški predlogi), pomanjšanje in prelom dolgih imen, premik/raztegnitev, položaj celic v mm v tiskalniškem načinu, PDF je ena stran A4, zapomnitev vrstic in naslednja prosta vrstica. Poravnava je preverjena **vizualno**: izpis sem nanesel na poravnan sken praznega obrazca (sprednja stran sede dobro; hrbtna se na fotografiji zaradi perspektive odmakne za nekaj mm).
+
 **NI preizkušeno (v mojem okolju ni bilo dostopa do Googlovih strežnikov):**
+- **Skeniranje naloga: živa knjižnica Tesseract.js, prenos z jsDelivr, slovenski jezikovni model in točnost na pravih fotografijah.** Omrežje do teh strežnikov v mojem okolju ni bilo dosegljivo, zato je okvir OCR preizkušen s posnetkom knjižnice, razčlenjevalnik pa na izpisih razpoznave izmišljenega obrazca (ki sem ga razpoznal z lokalnim Tesseractom). **Prvi pravi preizkus:** skeniraj nekaj nalogov z izmišljenimi podatki in primerjaj; če je prenos blokiran, uporabi prilepljeno besedilo ali lasten naslov (11.10). **Rokopisa in polj s kodami ne bere.**
+- **Tisk na nalog na pravem tiskalniku in papirju:** predpostavil sem **list A4 (210 × 297 mm)** in izmeril tabelo na fotografiji praznega obrazca; **dejanskega papirja nisem mogel izmeriti**, tiskalnik pa ne zna natisniti čisto do roba. Zato je **preizkusna stran + premik/raztegnitev (10.11) obvezen prvi korak**. Hrbtno stran preveri posebej. Ime voznika (drobno, zgoraj v celici) je lahko pretesno, če je na obrazcu manj prostora, kot je videti: izklopiš ga v nastavitvah.
+- **Štartnina:** znesek nisem vpisal (ne poznam ga); vpiši ga v Nastavitve → Tisk naloga.
 - **Pravi zemljevid s prvimi ploščicami OpenStreetMap**: v mojem okolju ni bilo dostopa do strežnika ploščic, zato je zemljevid preizkušen s posnetkom strežnika ploščic (postavitev ploščic, povečava, povleci, okna, Referer samo z izvorom, izpad podlage). Videz prave podlage in odziv javnega strežnika (omejitve, glava Referer) preveri ob prvem zagonu.
 - **Tisk knjige dneva** je preizkušen kot PDF; poravnavo na pravem tiskalniku preveri (A4, pokončno, brez prilagajanja strani).
 - **Razpoznava hitrega vnosa** je preizkušena na primerih iz fotografij (izmišljena imena); resnični zapisi dispečerja bodo pokazali, katere kratice manjkajo (Nastavitve → Klinike in Naslovi).
