@@ -9,6 +9,10 @@ Interna PWA za iPhone in Android: dispečer (knjiga, pacienti in nalogi, razpore
 
 **Pred prvim pravim pacientom** potrebuješ odobritev vodstva in pooblaščenca za varstvo podatkov (glej NAVODILA.md, razdelek 0.2). Do takrat uporabljaj samo izmišljene podatke.
 
+## Spremembe v2_9_1 (november 2026): jasen razlog za lokalni način
+- Če aplikacija teče v **lokalnem načinu**, prijavni zaslon in Nastavitve → Varnost zdaj napišeta **zakaj**: prazna ali nadomestna vrednost (apiKey, authDomain, projectId, appId), napaka v zapisu `config.js`, `mode`, manjkajoč `config.js` ali **samostojna predstavitvena stran** (predogled v Claudu), ki `config.js` ne prebere. Skupna baza se vklopi samo, če so vpisane vse štiri vrednosti.
+- Samostojna stran se je prej imenovala `source/index.html` (zamenljiva s pravo stranjo): zdaj je `source/predogled.html`; objavlja se samo mapa `web/`. Navodila (korak 4, 5 in odpravljanje težav) to pojasnjujejo. Preizkusi: 65 + 114 v brskalniku + `node tests/config-scenarios.js` (7).
+
 ## Spremembe v2_9 (november 2026): skeniranje naloga in tisk podatkov posadke na papirnat nalog
 - **Skeniraj nalog** (Pacienti): fotografija, PDF-sken ali prilepljeno besedilo naloga NLG/05 → aplikacija prebere pacienta, naslov, telefon, številko naloga, izvajalca, zdravnika, relacijo, razlog, veljavnost in opombe → **pregled in popravek** → shrani pacienta in nalog (že znan pacient se prepozna, isti nalog se posodobi). Branje poteka **v tvoji napravi** (izoliran okvir, Tesseract.js); slika se ne pošlje in se ne shrani. Datum rojstva in e-pošta se ne shranita. Rokopisa in polj s kodami ne bere.
 - **Natisni v nalog** (nalog pacienta): na **prazen papirnat obrazec** natisne **samo podatke posadke** v tabelo PREVOZI: **datum, čas od–do, reg. št., km, štartnina, spremljevalec, ime voznika**. Pacientovih podatkov ne natisne. Pomni, katere vrstice (1–40 na list) so že natisnjene.

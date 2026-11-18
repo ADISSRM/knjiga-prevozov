@@ -339,7 +339,10 @@ const NSCAN = (() => {
   /* OCR v izoliranem okvirju (brez dostopa do podatkov aplikacije); okvir naloži knjižnico samo ob uporabi */
   /* poti iz config.js so relativne na stran aplikacije; okvir je v mapi ocr/, zato jih pretvorimo v absolutne naslove */
   const abs = u => u ? new URL(String(u), (typeof location !== 'undefined' && location.href) || 'http://localhost/').href : '';
-  function ocr(png, onProgress, cfg = (typeof window !== 'undefined' && window.KP_CONFIG && window.KP_CONFIG.ocr) || {}){
+  /* privzete vrednosti: tudi config.js iz starejše izdaje (brez bloka »ocr«) ohrani skeniranje slik; lib: '' ali on: false ga izklopi */
+  const OCR_DEFAULT = { on:true, lib:'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js', lang:'slv' };
+  const ocrCfg = () => Object.assign({}, OCR_DEFAULT, (typeof window !== 'undefined' && window.KP_CONFIG && window.KP_CONFIG.ocr) || {});
+  function ocr(png, onProgress, cfg = ocrCfg()){
     return new Promise((resolve, reject) => {
       const fr = document.createElement('iframe'); let done = false, timer = 0;
       fr.setAttribute('sandbox', 'allow-scripts'); fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1; fr.style.cssText = 'position:fixed;width:1px;height:1px;left:-9px;top:-9px;border:0;opacity:0';
@@ -359,7 +362,7 @@ const NSCAN = (() => {
       document.body.appendChild(fr);
     });
   }
-  const ocrEnabled = (cfg = (typeof window !== 'undefined' && window.KP_CONFIG && window.KP_CONFIG.ocr) || {}) => cfg.on !== false && !!cfg.lib;
+  const ocrEnabled = (cfg = ocrCfg()) => cfg.on !== false && !!cfg.lib;
 
   return { parse, matchPatient, apply, pdfImages, prepare, ocr, ocrEnabled, lines, zzzsIn, dates, title, fixDigits };
 })();

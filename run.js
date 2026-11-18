@@ -916,6 +916,24 @@ test('Tisk naloga: vrednosti iz posadke, vozila, časov, km in štartnine; ročn
   assert.strictEqual(t.ev('NP.fmtKm("23.46")'), '23');
   assert.ok(/white-space:normal/.test(t.ev(`NP.pageHTML('f', [{ line:0, f:{ spr:'Ana Dolgopriimkova-Testna Dolgoimenska' } }], {})`)), 'dolgo ime gre v dve vrstici');
 });
+test('Skeniranje slik: config.js brez bloka ocr (starejša izdaja) še vedno deluje; lib "" ali on:false izklopi', () => {
+  const q = cfg => { const c = load(['20-data.js', '30-core.js', '35-db.js', '46-nalogscan.js'].map(f => SRC + f), { config:cfg }); return vm.runInContext('NSCAN.ocrEnabled()', c); };
+  assert.strictEqual(q({ mode:'local' }), true, 'brez bloka ocr');
+  assert.strictEqual(q({ mode:'local', ocr:{ on:false } }), false);
+  assert.strictEqual(q({ mode:'local', ocr:{ lib:'' } }), false);
+  assert.strictEqual(q({ mode:'local', ocr:{ lang:'slv' } }), true, 'lib se vzame iz privzetih');
+});
+test('config.js: samo popolna nastavitev Firebase vklopi skupno bazo; sicer lokalni način z razlogom', () => {
+  const real = { apiKey:'AIzaSyD-test1234567890abcdefghijklmnopq', authDomain:'moj.firebaseapp.com', projectId:'moj', appId:'1:123:web:abc' };
+  const q = cfg => { const c = load(['20-data.js', '30-core.js', '35-db.js'].map(f => SRC + f), { config:cfg }); return vm.runInContext('BACKEND + "|" + LOCAL_WHY', c).split('|'); };
+  assert.deepStrictEqual(q({ mode:'firebase', firebase:real }), ['firebase', '']);
+  assert.strictEqual(q({ mode:'firebase', firebase:{ ...real, apiKey:'VSTAVI-API-KEY' } })[0], 'local');
+  assert.ok(/apiKey/.test(q({ mode:'firebase', firebase:{ ...real, apiKey:'VSTAVI-API-KEY' } })[1]));
+  assert.ok(/projectId/.test(q({ mode:'firebase', firebase:{ ...real, projectId:'VSTAVI-PROJECT-ID' } })[1]), 'tudi druge vrednosti, ne samo apiKey');
+  assert.ok(/appId/.test(q({ mode:'firebase', firebase:{ ...real, appId:'' } })[1]));
+  assert.ok(/mode/.test(q({ mode:'local', firebase:real })[1]));
+  assert.ok(/blok .firebase./.test(q({ mode:'firebase' })[1]));
+});
 test('Tisk naloga: opravljen prevoz najde ekipo po imenu, ključu ekipe ali edini ekipi dneva; brez dokaza ostane tablica prazna', () => {
   const t = boot();
   day(t, { vehicles:['v04', 'v13'], duty:[{ name:'Voznik Ena', team:'redna', role:'voznik', vehicleId:'v04' }, { name:'Sprem Ena', team:'redna', role:'spremljevalec', vehicleId:'v04' }, { name:'Voznik Dve', team:'redna', role:'voznik', vehicleId:'v13' }],

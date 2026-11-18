@@ -383,7 +383,11 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
 
   /* ================= Kopiranje z drugega dne, ponavljanje, tisk knjige dneva ================= */
   const nextDay = await page.evaluate(d => { let x = addDays(d, 1); while (isStandby(x)) x = addDays(x, 1); UI.date = x; UI.view = 'dan'; UI.copy = null; render(); return x; }, date);
-  await page.click('details.menu > summary'); await page.click('[data-act="copyOpen"]'); await page.waitForSelector('.copypanel');
+  for (let i = 0; i < 5 && !(await page.$('.copypanel')); i++){   // ozadnji izris (geokodiranje, km) lahko zapre meni sredi klika: poskusi znova
+    await page.evaluate(() => { const m = document.querySelector('details.menu'); if (m) m.open = true; const b = document.querySelector('[data-act="copyOpen"]'); if (b) b.click(); });
+    await page.waitForTimeout(500);
+  }
+  await page.waitForSelector('.copypanel');
   const cp = await page.evaluate(() => ({ src:UI.copy.src, n:UI.copy.sel.size, rows:document.querySelectorAll('.copyrow').length }));
   ok('kopiranje: plošča pokaže prevoze prejšnjega dne z vpisi', cp.rows >= 5 && cp.n === cp.rows && cp.src !== nextDay, JSON.stringify(cp));
   await page.screenshot({ path: OUT + '/5c-copy.png' });

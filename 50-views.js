@@ -816,7 +816,7 @@ function renderSettings(){
 function renderAuth(mode, msg=''){
   const first = BACKEND !== 'firebase' && USERS.length === 0;
   const card = $('#authCard');
-  const local = BACKEND !== 'firebase' ? `<div class="banner warn" style="font-size:12.5px"><span>${IC.info}</span><div><b>Lokalni način.</b> Podatki so samo v tem brskalniku. Uporabi samo izmišljene podatke. Za pravo uporabo glej navodila (Firebase).</div></div>` : '';
+  const local = BACKEND !== 'firebase' ? `<div class="banner warn" style="font-size:12.5px"><span>${IC.info}</span><div><b>Lokalni način.</b> Podatki so samo v tem brskalniku. Uporabi samo izmišljene podatke.${LOCAL_WHY ? `<br><b>Zakaj:</b> ${esc(LOCAL_WHY)}` : ' Za pravo uporabo glej navodila (Firebase).'}</div></div>` : '';
   if (first){
     card.innerHTML = `<h2>Prvi zagon</h2><p class="muted" style="margin:0">Ustvari račun skrbnika. Pozneje dodaš še račune za dispečerje in posadke.</p>${local}
       <form id="setupForm"><div class="field"><label for="su">Uporabniško ime</label><input id="su" name="username" required autocomplete="username"></div>

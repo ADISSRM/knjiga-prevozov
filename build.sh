@@ -1,5 +1,6 @@
 #!/bin/bash
-# Sestavi app.html (vsebina za Artifact) in index.html (samostojna stran za GitHub Pages)
+# Sestavi app.html (vsebina za Artifact) in predogled.html (samostojna predstavitvena stran, LOKALNI način, brez config.js in CSP: NI za objavo).
+# Za objavo (GitHub Pages) je mapa web/ (gradnja: python3 build-prod.py → dist/).
 set -e
 cd "$(dirname "$0")"
 {
@@ -28,5 +29,5 @@ cd "$(dirname "$0")"
   echo '</script>'
   echo '</body>'
   echo '</html>'
-} > index.html
-wc -c app.html index.html
+} > predogled.html
+wc -c app.html predogled.html

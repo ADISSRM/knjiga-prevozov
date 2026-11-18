@@ -265,15 +265,15 @@ function securityChecks(){
   const out = [];
   const secure = location.protocol === 'https:' || /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
   out.push({ ok:secure, t:'Povezava je šifrirana (HTTPS)', d:secure ? 'Stran se nalaga prek varne povezave.' : 'Stran ni odprta prek HTTPS. Prijava in podatki niso zaščiteni.' });
-  out.push({ ok:BACKEND === 'firebase' ? true : 'warn', t:'Skupna baza z vlogami', d:BACKEND === 'firebase' ? 'Podatki so v Cloud Firestore, dostop urejajo pravila po vlogah (firestore.rules).' : 'Lokalni način: podatki so samo v tem brskalniku. Uporabi samo z izmišljenimi podatki. Za pravo uporabo preklopi na Firebase.' });
+  out.push({ ok:BACKEND === 'firebase' ? true : 'warn', t:'Skupna baza z vlogami', d:BACKEND === 'firebase' ? 'Podatki so v Cloud Firestore, dostop urejajo pravila po vlogah (firestore.rules).' : 'Lokalni način: podatki so samo v tem brskalniku. Uporabi samo z izmišljenimi podatki. ' + (LOCAL_WHY ? 'Razlog: ' + LOCAL_WHY : 'Za pravo uporabo preklopi na Firebase.') });
   const csp = !!document.querySelector('meta[http-equiv="Content-Security-Policy"]');
-  out.push({ ok:csp ? true : 'warn', t:'Content-Security-Policy', d:csp ? 'Brskalnik dovoli samo kodo in povezave, ki jih aplikacija potrebuje.' : 'Ni nastavljena (predogled). Na GitHub Pages je vključena v index.html.' });
+  out.push({ ok:csp ? true : 'warn', t:'Content-Security-Policy', d:csp ? 'Brskalnik dovoli samo kodo in povezave, ki jih aplikacija potrebuje.' : 'Ni nastavljena: to ni stran iz mape web/ (predogled ali samostojna datoteka). Pravi index.html jo vsebuje; za delo s pravimi podatki odpri stran iz GitHub Pages.' });
   out.push({ ok:S.settings.idleMin <= 30, t:'Samodejna odjava', d:`Po ${S.settings.idleMin} min nedejavnosti. Priporočeno je 30 min ali manj.` });
-  const cfgOk = KPC.mode !== 'firebase' || BACKEND === 'firebase';
-  out.push({ ok:cfgOk, t:'Nastavitve Firebase (config.js)', d:cfgOk ? (BACKEND === 'firebase' ? 'Povezava z vašim projektom je nastavljena.' : 'Ni v uporabi (lokalni način).') : 'config.js vsebuje še nadomestne vrednosti.' });
+  const cfgOk = !CFG_BROKEN && (KPC.mode !== 'firebase' || BACKEND === 'firebase');
+  out.push({ ok:cfgOk, t:'Nastavitve Firebase (config.js)', d:cfgOk ? (BACKEND === 'firebase' ? 'Povezava z vašim projektom je nastavljena.' : 'Ni v uporabi (lokalni način).') : (LOCAL_WHY || 'config.js vsebuje še nadomestne vrednosti.') });
   const sw = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
   out.push({ ok:sw ? true : 'warn', t:'Namestljiva aplikacija (PWA)', d:sw ? 'Service worker je aktiven: aplikacija deluje kot nameščena in nalaga zadnjo različico.' : 'Service worker še ni aktiven (potrebuje HTTPS in ponovni zagon).' });
-  out.push({ ok:'warn', t:'Podatki na napravi', d:'Pri vključenem delovanju brez povezave Firebase hrani kopijo podatkov na napravi. Na skupnih računalnikih se po odjavi izbriše; telefone zaščiti z zaklepom zaslona.' });
+  out.push({ ok:'warn', t:'Podatki na napravi (obvestilo, ne napaka)', d:'Pri vključenem delovanju brez povezave Firebase hrani kopijo podatkov na napravi. Na skupnih računalnikih se po odjavi izbriše; telefone zaščiti z zaklepom zaslona.' });
   return out;
 }
 const PERM_EXPECT = { skrbnik:{ book:1, publish:1, patients:1, settings:1, users:1, audit:1, crew:0 }, dispecer:{ book:1, publish:1, patients:1, settings:0, users:0, audit:0, crew:0 }, voznik:{ book:0, publish:0, patients:0, settings:0, users:0, audit:0, crew:1 }, spremljevalec:{ book:0, publish:0, patients:0, settings:0, users:0, audit:0, crew:1 } };

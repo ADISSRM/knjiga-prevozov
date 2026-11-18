@@ -495,7 +495,25 @@ function learnAddress(text){
    Dokumenti: cfg/main, days/{datum}, patients/{id}, crew/{datum}_{uid}, runs/{datum}_{vozilo}[/events/{id}], users/{uid}, audit/{id}
    ===================================================================== */
 const KPC = window.KP_CONFIG || {};
-const BACKEND = (KPC.mode === 'firebase' && KPC.firebase && KPC.firebase.apiKey && !/VSTAVI|YOUR_|xxxx/i.test(String(KPC.firebase.apiKey))) ? 'firebase' : 'local';
+const fbMissing = () => {   // katere vrednosti v config.js so prazne ali še »VSTAVI…«
+  const f = KPC.firebase || {}, bad = k => !f[k] || /VSTAVI|YOUR_/i.test(String(f[k])) || (k === 'apiKey' && /xxxx/i.test(String(f[k])));
+  return ['apiKey', 'authDomain', 'projectId', 'appId'].filter(bad);
+};
+const BACKEND = (KPC.mode === 'firebase' && KPC.firebase && fbMissing().length === 0) ? 'firebase' : 'local';
+const CFG_BROKEN = !window.KP_CONFIG && (!!window.__kpCfgErr || (typeof document !== 'undefined' && !!document.querySelector('script[src*="config.js"]')));   // config.js naložen z napako ali manjka
+/* Zakaj teče aplikacija v lokalnem načinu (prikaz na prijavi in v Varnost) */
+const LOCAL_WHY = (() => {
+  if (BACKEND === 'firebase') return '';
+  const inDoc = typeof document !== 'undefined', hasCfgTag = inDoc && !!document.querySelector('script[src*="config.js"]');
+  if (!window.KP_CONFIG){
+    if (window.__kpCfgErr) return 'config.js vsebuje napako v zapisu (' + String(window.__kpCfgErr).slice(0, 90) + '). Odpri ga v Beležnici: pogosto manjka vejica, narekovaj ali zaklepaj.';
+    return hasCfgTag ? 'config.js ni bil naložen (datoteke ni poleg index.html ali ima napako).' : 'To je samostojna predstavitvena stran brez config.js (npr. predogled v Claudu ali datoteka predogled.html). Nastavitve Firebase se berejo samo na strani iz mape web/ (index.html skupaj s config.js, objavljena prek GitHub Pages).';
+  }
+  if (KPC.mode !== 'firebase') return 'V config.js je mode »' + KPC.mode + '« (za skupno bazo mora biti »firebase«).';
+  if (!KPC.firebase) return 'V config.js manjka blok »firebase«.';
+  const m = fbMissing();
+  return m.length ? 'V config.js so še prazne ali nadomestne vrednosti: ' + m.join(', ') + '.' : '';
+})();
 const FB_USER_DOMAIN = KPC.userDomain || 'rp-brezice.example';
 let DB = null;
 
@@ -2911,7 +2929,10 @@ const NSCAN = (() => {
   /* OCR v izoliranem okvirju (brez dostopa do podatkov aplikacije); okvir naloži knjižnico samo ob uporabi */
   /* poti iz config.js so relativne na stran aplikacije; okvir je v mapi ocr/, zato jih pretvorimo v absolutne naslove */
   const abs = u => u ? new URL(String(u), (typeof location !== 'undefined' && location.href) || 'http://localhost/').href : '';
-  function ocr(png, onProgress, cfg = (typeof window !== 'undefined' && window.KP_CONFIG && window.KP_CONFIG.ocr) || {}){
+  /* privzete vrednosti: tudi config.js iz starejše izdaje (brez bloka »ocr«) ohrani skeniranje slik; lib: '' ali on: false ga izklopi */
+  const OCR_DEFAULT = { on:true, lib:'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js', lang:'slv' };
+  const ocrCfg = () => Object.assign({}, OCR_DEFAULT, (typeof window !== 'undefined' && window.KP_CONFIG && window.KP_CONFIG.ocr) || {});
+  function ocr(png, onProgress, cfg = ocrCfg()){
     return new Promise((resolve, reject) => {
       const fr = document.createElement('iframe'); let done = false, timer = 0;
       fr.setAttribute('sandbox', 'allow-scripts'); fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1; fr.style.cssText = 'position:fixed;width:1px;height:1px;left:-9px;top:-9px;border:0;opacity:0';
@@ -2931,7 +2952,7 @@ const NSCAN = (() => {
       document.body.appendChild(fr);
     });
   }
-  const ocrEnabled = (cfg = (typeof window !== 'undefined' && window.KP_CONFIG && window.KP_CONFIG.ocr) || {}) => cfg.on !== false && !!cfg.lib;
+  const ocrEnabled = (cfg = ocrCfg()) => cfg.on !== false && !!cfg.lib;
 
   return { parse, matchPatient, apply, pdfImages, prepare, ocr, ocrEnabled, lines, zzzsIn, dates, title, fixDigits };
 })();
@@ -3922,7 +3943,7 @@ function renderSettings(){
 function renderAuth(mode, msg=''){
   const first = BACKEND !== 'firebase' && USERS.length === 0;
   const card = $('#authCard');
-  const local = BACKEND !== 'firebase' ? `<div class="banner warn" style="font-size:12.5px"><span>${IC.info}</span><div><b>Lokalni način.</b> Podatki so samo v tem brskalniku. Uporabi samo izmišljene podatke. Za pravo uporabo glej navodila (Firebase).</div></div>` : '';
+  const local = BACKEND !== 'firebase' ? `<div class="banner warn" style="font-size:12.5px"><span>${IC.info}</span><div><b>Lokalni način.</b> Podatki so samo v tem brskalniku. Uporabi samo izmišljene podatke.${LOCAL_WHY ? `<br><b>Zakaj:</b> ${esc(LOCAL_WHY)}` : ' Za pravo uporabo glej navodila (Firebase).'}</div></div>` : '';
   if (first){
     card.innerHTML = `<h2>Prvi zagon</h2><p class="muted" style="margin:0">Ustvari račun skrbnika. Pozneje dodaš še račune za dispečerje in posadke.</p>${local}
       <form id="setupForm"><div class="field"><label for="su">Uporabniško ime</label><input id="su" name="username" required autocomplete="username"></div>
@@ -4208,15 +4229,15 @@ function securityChecks(){
   const out = [];
   const secure = location.protocol === 'https:' || /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
   out.push({ ok:secure, t:'Povezava je šifrirana (HTTPS)', d:secure ? 'Stran se nalaga prek varne povezave.' : 'Stran ni odprta prek HTTPS. Prijava in podatki niso zaščiteni.' });
-  out.push({ ok:BACKEND === 'firebase' ? true : 'warn', t:'Skupna baza z vlogami', d:BACKEND === 'firebase' ? 'Podatki so v Cloud Firestore, dostop urejajo pravila po vlogah (firestore.rules).' : 'Lokalni način: podatki so samo v tem brskalniku. Uporabi samo z izmišljenimi podatki. Za pravo uporabo preklopi na Firebase.' });
+  out.push({ ok:BACKEND === 'firebase' ? true : 'warn', t:'Skupna baza z vlogami', d:BACKEND === 'firebase' ? 'Podatki so v Cloud Firestore, dostop urejajo pravila po vlogah (firestore.rules).' : 'Lokalni način: podatki so samo v tem brskalniku. Uporabi samo z izmišljenimi podatki. ' + (LOCAL_WHY ? 'Razlog: ' + LOCAL_WHY : 'Za pravo uporabo preklopi na Firebase.') });
   const csp = !!document.querySelector('meta[http-equiv="Content-Security-Policy"]');
-  out.push({ ok:csp ? true : 'warn', t:'Content-Security-Policy', d:csp ? 'Brskalnik dovoli samo kodo in povezave, ki jih aplikacija potrebuje.' : 'Ni nastavljena (predogled). Na GitHub Pages je vključena v index.html.' });
+  out.push({ ok:csp ? true : 'warn', t:'Content-Security-Policy', d:csp ? 'Brskalnik dovoli samo kodo in povezave, ki jih aplikacija potrebuje.' : 'Ni nastavljena: to ni stran iz mape web/ (predogled ali samostojna datoteka). Pravi index.html jo vsebuje; za delo s pravimi podatki odpri stran iz GitHub Pages.' });
   out.push({ ok:S.settings.idleMin <= 30, t:'Samodejna odjava', d:`Po ${S.settings.idleMin} min nedejavnosti. Priporočeno je 30 min ali manj.` });
-  const cfgOk = KPC.mode !== 'firebase' || BACKEND === 'firebase';
-  out.push({ ok:cfgOk, t:'Nastavitve Firebase (config.js)', d:cfgOk ? (BACKEND === 'firebase' ? 'Povezava z vašim projektom je nastavljena.' : 'Ni v uporabi (lokalni način).') : 'config.js vsebuje še nadomestne vrednosti.' });
+  const cfgOk = !CFG_BROKEN && (KPC.mode !== 'firebase' || BACKEND === 'firebase');
+  out.push({ ok:cfgOk, t:'Nastavitve Firebase (config.js)', d:cfgOk ? (BACKEND === 'firebase' ? 'Povezava z vašim projektom je nastavljena.' : 'Ni v uporabi (lokalni način).') : (LOCAL_WHY || 'config.js vsebuje še nadomestne vrednosti.') });
   const sw = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
   out.push({ ok:sw ? true : 'warn', t:'Namestljiva aplikacija (PWA)', d:sw ? 'Service worker je aktiven: aplikacija deluje kot nameščena in nalaga zadnjo različico.' : 'Service worker še ni aktiven (potrebuje HTTPS in ponovni zagon).' });
-  out.push({ ok:'warn', t:'Podatki na napravi', d:'Pri vključenem delovanju brez povezave Firebase hrani kopijo podatkov na napravi. Na skupnih računalnikih se po odjavi izbriše; telefone zaščiti z zaklepom zaslona.' });
+  out.push({ ok:'warn', t:'Podatki na napravi (obvestilo, ne napaka)', d:'Pri vključenem delovanju brez povezave Firebase hrani kopijo podatkov na napravi. Na skupnih računalnikih se po odjavi izbriše; telefone zaščiti z zaklepom zaslona.' });
   return out;
 }
 const PERM_EXPECT = { skrbnik:{ book:1, publish:1, patients:1, settings:1, users:1, audit:1, crew:0 }, dispecer:{ book:1, publish:1, patients:1, settings:0, users:0, audit:0, crew:0 }, voznik:{ book:0, publish:0, patients:0, settings:0, users:0, audit:0, crew:1 }, spremljevalec:{ book:0, publish:0, patients:0, settings:0, users:0, audit:0, crew:1 } };

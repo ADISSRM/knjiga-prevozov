@@ -154,6 +154,9 @@ window.KP_CONFIG = {
 };
 ```
 3. Shrani datoteko. Če `apiKey` še vsebuje besedo `VSTAVI`, aplikacija **namenoma** teče v lokalnem demo načinu in v oblak ne pošilja ničesar.
+4. **Tudi `authDomain`, `projectId` in `appId` morajo biti vpisani** (nobena ne sme vsebovati `VSTAVI` ali biti prazna): sicer aplikacija ostane v lokalnem načinu. Na prijavnem zaslonu in v **Nastavitve → Varnost** piše točno, kaj manjka (»Zakaj: …«).
+
+> **Config se prebere samo na pravi strani.** `config.js` bere samo stran iz mape `web/` (`index.html` skupaj z `config.js`), objavljena prek GitHub Pages. **Predogled v Claudu in datoteka `source/predogled.html` (samostojna stran) config.js sploh ne prebereta**: vedno sta v lokalnem načinu in nimata CSP, zato se tam skupaj pokažeta rumeni opozorili »Skupna baza z vlogami« in »Content-Security-Policy«. Za preverjanje odpri `https://TVOJE-IME.github.io/knjiga-prevozov/config.js` in poglej, ali so tam tvoje vrednosti (po spremembi počakaj 1–2 minuti in osveži z Ctrl+F5).
 
 > **`routing`**: strežnik za cestno usmerjanje. Pusti kot je, ali zamenjaj z lastnim (11.6). `url: ''` cestno usmerjanje izklopi (ocena po zračni razdalji). Če uporabljaš drug strežnik, ga je treba dovoliti tudi v Content-Security-Policy (`connect-src` v `build-prod.py`, nato ponovna gradnja); javna strežnika sta že dovoljena.
 
@@ -171,7 +174,7 @@ window.KP_CONFIG = {
 2. Vključi dvostopenjsko prijavo: **Settings** (meni pod tvojo sliko desno zgoraj) → **Password and authentication** → **Two-factor authentication** → **Enable**. Shrani obnovitvene kode.
 3. Ustvari repozitorij: **+** (desno zgoraj) → **New repository**. Repository name: `knjiga-prevozov`. Izberi **Public**. **Ne** obkljukaj »Add a README file«. → **Create repository**.
 4. Na prazni strani repozitorija klikni povezavo **uploading an existing file**.
-5. Na računalniku odpri mapo `web/`. **Izberi vse datoteke in mape v njej** (`index.html`, `app.js`, `style.css`, `config.js`, `boot.js`, `sw.js`, `manifest.webmanifest`, mapi `icons` in `logos`) in jih povleci v okno brskalnika. (Povleci vsebino mape, ne same mape `web`.) Počakaj, da se vse naloži.
+5. Na računalniku odpri mapo `web/`. **Izberi vse datoteke in mape v njej** (`index.html`, `app.js`, `style.css`, `config.js`, `boot.js`, `sw.js`, `manifest.webmanifest`, mapi `icons` in `logos`) in jih povleci v okno brskalnika. (Povleci vsebino mape, ne same mape `web`.) Počakaj, da se vse naloži. **Ne nalagaj mape `source/`** (ta je samo za razvijalce; vsebuje `predogled.html`, ki je vedno v lokalnem načinu).
 6. Spodaj klikni **Commit changes**.
 7. Preveri v seznamu datotek, da je `index.html` neposredno v korenu repozitorija (ne v podmapi).
 
@@ -473,7 +476,7 @@ Papirnati **Nalog za prevoz (Obr. NLG/05)** položiš v tiskalnik, aplikacija pa
 ## 11. Vzdrževanje
 
 ### 11.1 Posodobitev aplikacije
-1. Nova različica pride kot nova mapa `web/`. V GitHub repozitoriju naloži datoteke čez stare (**Add file → Upload files**; **ne prepiši `config.js`**, razen če se je spremenil) → **Commit changes**.
+1. Nova različica pride kot nova mapa `web/`. V GitHub repozitoriju naloži datoteke čez stare (**Add file → Upload files**; **ne prepiši `config.js`** s tistim iz paketa: tam so spet `VSTAVI-…` in aplikacija bi prešla v lokalni način; izjema je, če v tej različici piše, da se je spremenil) → **Commit changes**. Različica v2_9/v2_9_1 `config.js` ne zahteva spremeniti: blok `ocr` je neobvezen (privzete vrednosti so vgrajene).
 2. Po 1–3 minutah se aplikacija na napravah posodobi ob naslednjem odprtju (včasih ob drugem odprtju).
 
 ### 11.2 Varnostna kopija (enkrat tedensko, skrbnik)
@@ -560,6 +563,7 @@ Neobvezno; **brez njega kilometrina deluje brezplačno (10.3, 11.9)**. Najprej 0
 
 | Težava | Vzrok / rešitev |
 |---|---|
+| Piše »Lokalni način« in v Varnost sta rumena »Skupna baza z vlogami« in »Content-Security-Policy«, čeprav sem vpisal Firebase | Odprta stran **ni stran iz mape `web/`**: predogled v Claudu ali `source/predogled.html` config.js ne prebereta. Odpri naslov GitHub Pages (`https://…github.io/knjiga-prevozov/`). Če si tam: pod »Zakaj:« na prijavi piše razlog (prazna ali nadomestna vrednost, napaka v zapisu config.js, mode). Rumeno »Podatki na napravi« je samo obvestilo in ostane vedno. |
 | Na prijavi piše »Povezava s Firebase ni uspela« | Preveri `config.js` (štiri vrednosti, brez presledkov, presledki znotraj narekovajev), internet, domeno v **Authorized domains** in omejitev API ključa (5.3). |
 | »Račun nima dodeljene vloge ali je onemogočen« | Dokument `users/{UID}` manjka ali ima napačen UID, `role` ali `active` (razdelek 6). |
 | »Dostop zavrnjen« pri dispečerju | Skrbnik se ni nikoli prijavil (manjka `cfg/main`), ali račun nima vloge. Skrbnik naj se prijavi. |
@@ -579,7 +583,7 @@ Neobvezno; **brez njega kilometrina deluje brezplačno (10.3, 11.9)**. Najprej 0
 
 ## 14. Kaj je preizkušeno in kaj ne
 
-**Preizkušeno (114 samodejnih preverjanj v brskalniku, 63 preizkusov planerja, razpoznave, skeniranja in tiska):**
+**Preizkušeno (114 samodejnih preverjanj v brskalniku, 65 preizkusov planerja, razpoznave, skeniranja, tiska in config.js (+ 7 v brskalniku: `tests/config-scenarios.js`)):**
 - Dispečer objavi razpored, voznik in spremljevalec prejmeta svoj del, koraki (sprejem → na poti → na kraju → v vozilu → na cilju → zaključi, »ni doma«, odklonitev, popravek ure) pridejo do dispečerja; v knjigo se samodejno vpišeta čas in »Kdo je naredil odvoz«.
 - Planer: strogo, samodejno, prosto; 6 pacientov v Avto 13 (običajno 4, največ 6); nadure; ležeči brez nosil ostane nerazporejen; izjema pri prevozu v strogem načinu; vse prilagoditve so izpisane.
 - Nalogi: izračun veljavnosti, opozorilo na mejnem dnevu (30 dni letni, 7 dni mesečni), podaljšanje utiša opozorilo, samodejno izpolnjevanje iz baze pacientov, predogled za kopiranje.
