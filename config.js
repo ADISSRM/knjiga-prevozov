@@ -8,7 +8,7 @@
    ============================================================================ */
 window.KP_CONFIG = {
   mode: 'firebase',                       // 'firebase' = skupna baza za vse; 'local' = samo preizkus v tem brskalniku
-  userDomain: 'rp-brezice.example',       // "uporabniško ime" se v Firebase shrani kot ime@to-domeno (lahko pustiš kot je)
+  userDomain: 'skrbnik@rp-brezice.example',       // "uporabniško ime" se v Firebase shrani kot ime@to-domeno (lahko pustiš kot je)
   sdkVersion: '10.14.1',                  // različica Firebase SDK (fiksirana)
   offline: true,                          // brskalnik hrani začasno kopijo za delo brez signala
   // CESTNO USMERJANJE (prave razdalje in časi vožnje po cestnem omrežju OpenStreetMap).
