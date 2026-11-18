@@ -60,9 +60,9 @@ window.KP_CONFIG = {
     maxZoom: 19
   },
   firebase: {
-    apiKey: 'VSTAVI-API-KEY',
-    authDomain: 'VSTAVI-PROJECT-ID.firebaseapp.com',
-    projectId: 'VSTAVI-PROJECT-ID',
-    appId: 'VSTAVI-APP-ID'
+    apiKey: 'AIzaSyBngMXDNufv2cJ4_F07AFWxYxuVt5Lv9VI',
+    authDomain: 'http://knjiga-prevozov-53d24.firebaseapp.com',
+    projectId: 'knjiga-prevozov-53d24',
+    appId: '1:324547580975:web:fb9c6c452d130925dd22da'
   }
 };
