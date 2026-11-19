@@ -8,7 +8,7 @@
    ============================================================================ */
 window.KP_CONFIG = {
   mode: 'firebase',                       // 'firebase' = skupna baza za vse; 'local' = samo preizkus v tem brskalniku
-  userDomain: 'skrbnik@rp-brezice.example',       // "uporabniško ime" se v Firebase shrani kot ime@to-domeno (lahko pustiš kot je)
+  userDomain: 'rp-brezice.example',       // domena e-naslovov računov v Firebase (Authentication → Users): "matej" se išče kot matej@ta-domena. Če so računi ustvarjeni z drugimi e-naslovi, vpiši njihovo domeno ali več (do 3): 'gmail.com, rp-brezice.example'. Pri prijavi lahko vedno vneseš tudi celoten e-naslov.
   sdkVersion: '10.14.1',                  // različica Firebase SDK (fiksirana)
   offline: true,                          // brskalnik hrani začasno kopijo za delo brez signala
   // CESTNO USMERJANJE (prave razdalje in časi vožnje po cestnem omrežju OpenStreetMap).
@@ -60,9 +60,9 @@ window.KP_CONFIG = {
     maxZoom: 19
   },
   firebase: {
-    apiKey: 'AIzaSyBngMXDNufv2cJ4_F07AFWxYxuVt5Lv9VI',
-    authDomain: 'http://knjiga-prevozov-53d24.firebaseapp.com',
-    projectId: 'knjiga-prevozov-53d24',
-    appId: '1:324547580975:web:fb9c6c452d130925dd22da'
+    apiKey: 'VSTAVI-API-KEY',
+    authDomain: 'VSTAVI-PROJECT-ID.firebaseapp.com',
+    projectId: 'VSTAVI-PROJECT-ID',
+    appId: 'VSTAVI-APP-ID'
   }
 };

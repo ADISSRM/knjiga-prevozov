@@ -533,6 +533,9 @@ a.btn{text-decoration:none}
   #printArea.pnalog .npg{height:296.5mm;break-after:page}
   #printArea.pnalog .npg:last-child{break-after:auto}
 }
+/* preverjanje povezave (prijava) */
+.fbhelp{margin-top:10px;font-size:13px}.fbhelp summary{cursor:pointer;color:var(--ink-2)}.fbhelp .btn{margin:8px 0}
+.fbc{padding:6px 8px;border-left:3px solid var(--line);margin:4px 0;font-size:12.5px;line-height:1.35}.fbc span{color:var(--ink-2)}.fbc.ok{border-color:#2f8f5b}.fbc.bad{border-color:#c0392b;background:rgba(192,57,43,.07)}.fbc.wait{border-color:var(--line)}
 /* Tisk meseca */
 #printArea{display:none}
 @media print{

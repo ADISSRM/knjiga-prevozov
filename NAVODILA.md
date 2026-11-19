@@ -135,7 +135,7 @@ Pravila preizkusiš šele po koraku 7 (ko imaš uporabnike). Takrat v zavihku **
 ```js
 window.KP_CONFIG = {
   mode: 'firebase',
-  userDomain: 'rp-brezice.example',   // pusti
+  userDomain: 'rp-brezice.example',   // domena e-naslovov računov v Firebase (glej razdelek 6, okvir »Kateri e-naslov«); več domen: 'gmail.com, rp-brezice.example'
   sdkVersion: '10.14.1',              // pusti
   offline: true,
   routing: {                          // cestno usmerjanje (razdelek 10.2 in 11.6)
@@ -162,7 +162,7 @@ window.KP_CONFIG = {
 
 > **`google.key`**: neobvezen ključ za natančno kilometrino. Pusti prazno, dokler ne opraviš 11.7 in dobiš odobritve DPO (0.2, točka 5). Ključ v `config.js` je viden vsakomur, ki odpre stran, zato ga **obvezno omeji na naslov te strani (HTTP referrer) in samo na Routes API** (11.7).
 
-> `userDomain` je namišljena domena: uporabnik »matej« se v Firebase vodi kot `matej@rp-brezice.example`. Prijava je v aplikaciji vedno samo z uporabniškim imenom (`matej`); lahko pa vpišeš tudi celoten e-naslov, če računu daš pravi e-naslov.
+> `userDomain` je domena e-naslovov računov: uporabnik »matej« se v Firebase išče kot `matej@rp-brezice.example` (lahko je pravo domeno, npr. `gmail.com`, ali več domen, ločenih z vejico). Prijava je v aplikaciji vedno samo z uporabniškim imenom (`matej`); lahko pa vpišeš tudi celoten e-naslov, če računu daš pravi e-naslov.
 
 ---
 
@@ -204,7 +204,12 @@ window.KP_CONFIG = {
 Prvega skrbnika ustvariš ročno v konzoli (nihče ga ne more ustvariti sam – to je namerno).
 
 1. Firebase konzola → **Authentication** → zavihek **Users** → **Add user**.
-2. Email: `skrbnik@rp-brezice.example` (del pred `@` je uporabniško ime; domena naj bo enaka `userDomain` iz `config.js`). Password: **dolgo geslo (14+ znakov)** → **Add user**.
+2. Email: `skrbnik@rp-brezice.example` (del pred `@` je uporabniško ime; domena naj bo ena od domen v `userDomain` iz `config.js`). Password: **dolgo geslo (14+ znakov)** → **Add user**.
+
+> **Kateri e-naslov ima račun in kaj vpišem pri prijavi?** E-naslov računa vidiš v Firebase → Authentication → Users (stolpec **Identifier**). Pri prijavi imaš dve možnosti:
+> - **A: vpišeš celoten e-naslov** (npr. `matej@gmail.com`): deluje **vedno**, ne glede na `config.js`.
+> - **B: vpišeš samo ime** (`matej`): aplikacija poskusi `matej@` + vsako domeno iz `userDomain` po vrsti (do 3). Če so računi ustvarjeni z `@gmail.com` in `@rp-brezice.example`, nastavi `userDomain: 'gmail.com, rp-brezice.example'`, shrani `config.js` na GitHub (Commit), počakaj 1–2 minuti in osveži stran (Ctrl+F5).
+> Če računi nimajo skupne domene, vedno uporabljaj možnost A. Če prijava ne uspe, sporočilo izpiše, katere e-naslove je aplikacija poskusila.
 3. V vrstici uporabnika kopiraj **User UID** (ikona za kopiranje ali označi celotno vrednost).
 4. **Build** → **Firestore Database** → zavihek **Data** → **Start collection**.
 5. Collection ID: `users` → **Next**.
@@ -564,6 +569,13 @@ Neobvezno; **brez njega kilometrina deluje brezplačno (10.3, 11.9)**. Najprej 0
 | Težava | Vzrok / rešitev |
 |---|---|
 | Piše »Lokalni način« in v Varnost sta rumena »Skupna baza z vlogami« in »Content-Security-Policy«, čeprav sem vpisal Firebase | Odprta stran **ni stran iz mape `web/`**: predogled v Claudu ali `source/predogled.html` config.js ne prebereta. Odpri naslov GitHub Pages (`https://…github.io/knjiga-prevozov/`). Če si tam: pod »Zakaj:« na prijavi piše razlog (prazna ali nadomestna vrednost, napaka v zapisu config.js, mode). Rumeno »Podatki na napravi« je samo obvestilo in ostane vedno. |
+| Ne vem, kje se prijava ustavi | Na prijavi odpri **»Težave s prijavo? → Preveri povezavo«**: preveri config.js, naložen program Firebase, Authentication (ali je Email/Password vključen in API ključ veljaven) in bazo Firestore (ali obstaja in zavrača nepooblaščen dostop). Prva rdeča točka je razlog; če so vse zelene, je težava v računu ali profilu (sporočilo ob prijavi pove razlog). |
+| Prijava: »Napačno uporabniško ime ali geslo. Prijava poteka kot …« | Aplikacija išče račun z e-naslovom, ki ga našteje sporočilo (`ime@` + vsaka domena iz `userDomain` v config.js). V Firebase → Authentication → Users preveri, kakšen **e-naslov** ima račun: če ni `ime@rp-brezice.example`, vpiši pri prijavi celoten e-naslov (z @) ali v Firebase ustvari račun z e-naslovom po vzorcu. Geslo je občutljivo na velike/male črke. |
+| Prijava: »… prijava z e-pošto in geslom izklopljena« | Firebase → Authentication → Sign-in method → **Email/Password** → Enable (razdelek 2.4). |
+| Prijava: »… API ključ je omejen na drug naslov strani« | Google Cloud → APIs & Services → Credentials → API ključ → **HTTP referrers**: dodaj `https://TVOJE-IME.github.io/*` (razdelek 5.3). |
+| Prijava uspe, nato »… manjka dokument users/…« ali »… ne more prebrati profila (permission-denied)« | Prvega skrbnika je treba ustvariti **tudi v Firestore** (razdelek 6, koraki 4–8): zbirka `users`, Document ID = UID računa (izpiše ga sporočilo), polja `name` (string), `role` (string, `skrbnik`), `active` (boolean, `true`). `permission-denied` = pravila baze niso objavljena (razdelek 3) ali baza ni ustvarjena (2.3). |
+| Prijava: »Prijava ni uspela (auth/…)« | Koda v oklepaju pove razlog; če kode ne razumeš, mi jo pošlji. Če vsebuje »recaptcha«: Authentication → Settings → zaščita z reCAPTCHA naj bo za Email/Password izklopljena (aplikacija ne dovoli skripte Googla za reCAPTCHA). |
+| Dispečer ob vsaki prijavi dobi »Dostop zavrnjen« ali ne more shraniti nastavitev | Skrbnik mora po posodobitvi aplikacije **enkrat** odpreti aplikacijo (zapiše nove privzete nastavitve v `cfg/main`; dispečer jih ne sme). Od v2_9_2 dispečer v `cfg/main` ne piše več ničesar, česar pravila ne dovoljujejo. |
 | Na prijavi piše »Povezava s Firebase ni uspela« | Preveri `config.js` (štiri vrednosti, brez presledkov, presledki znotraj narekovajev), internet, domeno v **Authorized domains** in omejitev API ključa (5.3). |
 | »Račun nima dodeljene vloge ali je onemogočen« | Dokument `users/{UID}` manjka ali ima napačen UID, `role` ali `active` (razdelek 6). |
 | »Dostop zavrnjen« pri dispečerju | Skrbnik se ni nikoli prijavil (manjka `cfg/main`), ali račun nima vloge. Skrbnik naj se prijavi. |
@@ -583,10 +595,11 @@ Neobvezno; **brez njega kilometrina deluje brezplačno (10.3, 11.9)**. Najprej 0
 
 ## 14. Kaj je preizkušeno in kaj ne
 
-**Preizkušeno (114 samodejnih preverjanj v brskalniku, 65 preizkusov planerja, razpoznave, skeniranja, tiska in config.js (+ 7 v brskalniku: `tests/config-scenarios.js`)):**
+**Preizkušeno (114 samodejnih preverjanj v brskalniku, 65 preizkusov planerja, razpoznave, skeniranja, tiska in config.js (+ 7 scenarijev config.js in 25 scenarijev prijave v brskalniku: `tests/config-scenarios.js`, `tests/firebase-login.js`)):**
 - Dispečer objavi razpored, voznik in spremljevalec prejmeta svoj del, koraki (sprejem → na poti → na kraju → v vozilu → na cilju → zaključi, »ni doma«, odklonitev, popravek ure) pridejo do dispečerja; v knjigo se samodejno vpišeta čas in »Kdo je naredil odvoz«.
 - Planer: strogo, samodejno, prosto; 6 pacientov v Avto 13 (običajno 4, največ 6); nadure; ležeči brez nosil ostane nerazporejen; izjema pri prevozu v strogem načinu; vse prilagoditve so izpisane.
 - Nalogi: izračun veljavnosti, opozorilo na mejnem dnevu (30 dni letni, 7 dni mesečni), podaljšanje utiša opozorilo, samodejno izpolnjevanje iz baze pacientov, predogled za kopiranje.
+- **Prijava v Firebase** (`node tests/firebase-login.js`, 25 scenarijev proti nadomestnemu SDK-ju v pravem brskalniku): napačno geslo (z izpisom e-naslova), izklopljena prijava z e-pošto, omejen API ključ, neznana koda, napaka obstojnosti, manjkajoč profil `users/UID` (izpiše UID), zavrnjeno branje profila (pravila), `active` in `role` napačnega tipa, uspešna prijava skrbnika (ustvari `cfg/main`), dispečerja, voznika in spremljevalca; dispečer ne piše v dele `cfg/main`, ki jih pravila ne dovoljujejo.
 - Povezava s Firebase: ves koda za prijavo, vloge, sinhronizacijo, objavo in statuse je preizkušena **proti nadomestnemu (lažnemu) Firebase SDK-ju**, vključno s strogim CSP. Preverjeno je, da voznikov brskalnik ne dostopa do `days`, `patients`, `cfg` in `audit`, in da dokumenti ustrezajo pravilom oblike Firestore (npr. brez ugnezdenih tabel).
 - Mobilni zasloni (390 px), temni način, PWA in delovanje brez povezave (lupina aplikacije).
 - **Cestno usmerjanje, kilometrina, klinike, dializa in planer** (mapa `source/tests`, zagon `cd source && node tests/run.js`): 33 preizkusov proti **posnetku (lažnemu) OSRM in Google Routes API-ju**: oblika zahtev, bloki do 40 + 40 točk, izpad in preklop strežnika, omejitev 429 in 403 brez zanke, relacije brez poti, več ciljev v eni vožnji, ležeči, ustrezno vozilo, konflikti, zaklep prevozov v teku, predlogi; **čakanje na pregled** (prevoz nazaj se ne vpisuje posebej, vozilo je zasedeno, združevanje samo z istim ciljem); **klinike** (ime, vzdevki, privzet čas pregleda); **dializa** (termini, dnevi, prosti čas posadke za sede paciente); **kilometrina** (ročni vpis ima prednost, pot nazaj pri čakanju, vir pri vsakem km, mesečno poročilo, CSV z BOM in decimalno vejico); poleg tega 48 preverjanj zgrajene aplikacije v Chromiumu (vrstice prevozov, en odprt urejevalnik, km čip, ročni in Google km, čakanje na pregled, dializa in klinike v nastavitvah, kartica Google s preizkusom, mesečna kilometrina in CSV, brez napak v konzoli, brez kršitev CSP, brez zunanjih klicev razen cestnih strežnikov in Googla ob vpisanem ključu, brez imen pacientov v zahtevkih za Google) ter pregled zaslona na telefonu (390 px, brez vodoravnega drsenja) in v temnem načinu. Izhodiščni izračun planerja je bil primerjan s prvotnim (v2_2) na 120 naključnih dneh: **enak rezultat**, kadar so nove možnosti izklopljene; nov planer v nobenem dnevu ni bil slabši od izhodišča, v 82 od 120 je našel krajši razpored (v povprečju okoli 10 % manj kilometrov po lastni oceni planerja, ne meritev).

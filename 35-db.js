@@ -25,7 +25,10 @@ const LOCAL_WHY = (() => {
   const m = fbMissing();
   return m.length ? 'V config.js so še prazne ali nadomestne vrednosti: ' + m.join(', ') + '.' : '';
 })();
-const FB_USER_DOMAIN = KPC.userDomain || 'rp-brezice.example';
+/* Domene e-naslovov računov: userDomain je ena domena ali seznam (niz z vejicami ali tabela), največ 3; uporabniško ime »ime« se išče kot ime@domena po vrsti */
+const FB_USER_DOMAINS = [].concat(KPC.userDomain || 'rp-brezice.example').join(',').split(/[\s,;]+/).map(x => x.replace(/^@/, '').trim().toLowerCase()).filter(Boolean).slice(0, 3);
+const FB_USER_DOMAIN = FB_USER_DOMAINS[0] || 'rp-brezice.example';
+if (!FB_USER_DOMAINS.length) FB_USER_DOMAINS.push(FB_USER_DOMAIN);
 let DB = null;
 
 /* ---------- Pomočniki: razlika in zlivanje dokumentov (polje za poljem) ---------- */
@@ -228,13 +231,23 @@ const allDays = () => [...new Set([...Object.keys(S.rides), ...Object.keys(S.dut
 
 /* ---------- Sinhronizacija ---------- */
 const SY = { snap:{}, unsubs:[], runUnsubs:{}, cfgReady:false, patReady:false, dayReady:false, range:null, started:false, onRemote:null };
+const CFG_STAFF_KEYS = ['staff', 'notices', 'addrBook', 'coordOv', 'geoFix', 'rules', 'places'];   // enako kot pravila za cfg/main (dispečer)
 async function flush(){
   if (!DB || !ME || !isStaffRole() || !SY.started) return;
   const jobs = [];
   const sync = (path, doc) => {
     const old = SY.snap[path];
     if (!old) jobs.push({ path, doc, p:DB.set(path, doc) });
-    else { const ops = diffDoc(old, doc); if (ops.n) jobs.push({ path, doc, p:DB.patch(path, ops) }); }
+    else {
+      let ops = diffDoc(old, doc);
+      if (path === 'cfg/main' && ME.role !== 'skrbnik'){   // dispečer sme spremeniti samo ključe, ki jih dovoljajo pravila (firestore.rules); privzete vrednosti nove izdaje (npr. settings.tisk) zapiše skrbnik ob prvi prijavi
+        const keep = k => CFG_STAFF_KEYS.includes(String(k).split('.')[0]);
+        const set = {}; Object.keys(ops.set).forEach(k => { if (keep(k)) set[k] = ops.set[k]; });
+        const del = ops.del.filter(keep);
+        ops = { set, del, n:Object.keys(set).length + del.length };
+      }
+      if (ops.n) jobs.push({ path, doc, p:DB.patch(path, ops) });
+    }
   };
   if (SY.cfgReady) sync('cfg/main', cfgDoc());
   if (SY.patReady){

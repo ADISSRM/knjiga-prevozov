@@ -514,7 +514,10 @@ const LOCAL_WHY = (() => {
   const m = fbMissing();
   return m.length ? 'V config.js so še prazne ali nadomestne vrednosti: ' + m.join(', ') + '.' : '';
 })();
-const FB_USER_DOMAIN = KPC.userDomain || 'rp-brezice.example';
+/* Domene e-naslovov računov: userDomain je ena domena ali seznam (niz z vejicami ali tabela), največ 3; uporabniško ime »ime« se išče kot ime@domena po vrsti */
+const FB_USER_DOMAINS = [].concat(KPC.userDomain || 'rp-brezice.example').join(',').split(/[\s,;]+/).map(x => x.replace(/^@/, '').trim().toLowerCase()).filter(Boolean).slice(0, 3);
+const FB_USER_DOMAIN = FB_USER_DOMAINS[0] || 'rp-brezice.example';
+if (!FB_USER_DOMAINS.length) FB_USER_DOMAINS.push(FB_USER_DOMAIN);
 let DB = null;
 
 /* ---------- Pomočniki: razlika in zlivanje dokumentov (polje za poljem) ---------- */
@@ -717,13 +720,23 @@ const allDays = () => [...new Set([...Object.keys(S.rides), ...Object.keys(S.dut
 
 /* ---------- Sinhronizacija ---------- */
 const SY = { snap:{}, unsubs:[], runUnsubs:{}, cfgReady:false, patReady:false, dayReady:false, range:null, started:false, onRemote:null };
+const CFG_STAFF_KEYS = ['staff', 'notices', 'addrBook', 'coordOv', 'geoFix', 'rules', 'places'];   // enako kot pravila za cfg/main (dispečer)
 async function flush(){
   if (!DB || !ME || !isStaffRole() || !SY.started) return;
   const jobs = [];
   const sync = (path, doc) => {
     const old = SY.snap[path];
     if (!old) jobs.push({ path, doc, p:DB.set(path, doc) });
-    else { const ops = diffDoc(old, doc); if (ops.n) jobs.push({ path, doc, p:DB.patch(path, ops) }); }
+    else {
+      let ops = diffDoc(old, doc);
+      if (path === 'cfg/main' && ME.role !== 'skrbnik'){   // dispečer sme spremeniti samo ključe, ki jih dovoljajo pravila (firestore.rules); privzete vrednosti nove izdaje (npr. settings.tisk) zapiše skrbnik ob prvi prijavi
+        const keep = k => CFG_STAFF_KEYS.includes(String(k).split('.')[0]);
+        const set = {}; Object.keys(ops.set).forEach(k => { if (keep(k)) set[k] = ops.set[k]; });
+        const del = ops.del.filter(keep);
+        ops = { set, del, n:Object.keys(set).length + del.length };
+      }
+      if (ops.n) jobs.push({ path, doc, p:DB.patch(path, ops) });
+    }
   };
   if (SY.cfgReady) sync('cfg/main', cfgDoc());
   if (SY.patReady){
@@ -3958,7 +3971,10 @@ function renderAuth(mode, msg=''){
       <div class="field"><label for="lp">Geslo</label><input id="lp" name="pw" type="password" required autocomplete="current-password"></div>
       ${BACKEND === 'firebase' ? '<label class="row" style="gap:8px;flex-wrap:nowrap;font-size:13px"><input type="checkbox" name="remember"> Ostani prijavljen na tej napravi (ne na skupnem računalniku)</label>' : ''}
       <button class="btn primary" type="submit">Prijava</button><div class="auth-err" id="authErr" role="alert">${esc(msg)}</div></form>
+      ${BACKEND === 'firebase' ? `<p class="hint" style="margin:0">Uporabniško ime »ime« se v Firebase išče kot ${FB_USER_DOMAINS.map(d => `<b>ime@${esc(d)}</b>`).join(' ali ')}; z @ vneseš celoten e-naslov računa.</p>` : ''}
+      ${BACKEND === 'firebase' ? '<details class="fbhelp"><summary>Težave s prijavo?</summary><button type="button" class="btn small" id="fbCheck">Preveri povezavo</button><div id="fbCheckOut" aria-live="polite"></div></details>' : ''}
       <p class="legalnote">Podatke o pacientih obravnavaj skladno z internimi pravili zdravstvenega doma. Vsaka prijava in ogled pacienta se beležita.</p>`;
+    const fbb = $('#fbCheck'); if (fbb) fbb.onclick = () => { fbb.disabled = true; fbCheck().finally(() => { fbb.disabled = false; }); };
   }
 }
 
@@ -5781,7 +5797,58 @@ window.addEventListener('scroll', () => { if (sg.input) sgRender(); }, { passive
 window.addEventListener('resize', () => { if (sg.input) sgRender(); });
 
 /* ---------- Obrazci ---------- */
-const AUTH_ERR = { 'auth/invalid-credential':'Napačno uporabniško ime ali geslo.', 'auth/wrong-password':'Napačno uporabniško ime ali geslo.', 'auth/user-not-found':'Napačno uporabniško ime ali geslo.', 'auth/invalid-email':'Neveljavno uporabniško ime.', 'auth/too-many-requests':'Preveč poskusov. Počakaj nekaj minut in poskusi znova.', 'auth/network-request-failed':'Ni povezave z internetom.', 'auth/user-disabled':'Račun je onemogočen.' };
+const AUTH_ERR = { 'auth/invalid-credential':'Napačno uporabniško ime ali geslo.', 'auth/wrong-password':'Napačno uporabniško ime ali geslo.', 'auth/user-not-found':'Napačno uporabniško ime ali geslo.', 'auth/invalid-email':'Neveljavno uporabniško ime.', 'auth/too-many-requests':'Preveč poskusov. Počakaj nekaj minut in poskusi znova.', 'auth/network-request-failed':'Ni povezave z internetom.', 'auth/user-disabled':'Račun je onemogočen.',
+  'auth/operation-not-allowed':'V Firebase je prijava z e-pošto in geslom izklopljena: Authentication → Sign-in method → Email/Password → Enable (razdelek 2.4).',
+  'auth/configuration-not-found':'Authentication v tem Firebase projektu še ni vključen: Authentication → Get started (razdelek 2.4).',
+  'auth/unauthorized-domain':'Ta naslov strani ni dovoljen v Firebase: Authentication → Settings → Authorized domains → dodaj naslov (razdelek 5.2).',
+  'auth/invalid-api-key':'API ključ v config.js ni veljaven (apiKey).',
+  'auth/internal-error':'Notranja napaka Firebase: preveri apiKey in omejitve ključa (5.3) in da je Authentication vključen.' };
+/* »Preveri povezavo«: korak za korakom pove, kje se prijava ustavi (config → program → Authentication → baza) */
+async function fbCheck(){
+  const box = $('#fbCheckOut'); if (!box) return;
+  const rows = []; const show = () => { box.innerHTML = rows.map(r => `<div class="fbc ${r.ok === true ? 'ok' : r.ok === false ? 'bad' : 'wait'}"><b>${r.ok === true ? '✓' : r.ok === false ? '✗' : '…'} ${esc(r.t)}</b>${r.d ? `<br><span>${esc(r.d)}</span>` : ''}</div>`).join(''); };
+  const add = (ok, t, d) => { const r = { ok, t, d:d || '' }; rows.push(r); show(); return r; };
+  const timeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('timeout'), { code:'timeout' })), ms))]);
+  const f = KPC.firebase || {};
+  add(!CFG_BROKEN && !fbMissing().length, 'config.js', LOCAL_WHY || `projekt »${f.projectId}«, domena prijave »${f.authDomain}«, računi: ${FB_USER_DOMAINS.map(d => '…@' + d).join(' ali ')}`);
+  add(!!(DB && DB.auth), 'Program Firebase je naložen', DB && DB.auth ? '' : 'Program ni naložen: preveri internet ali blokado www.gstatic.com.');
+  if (!(DB && DB.auth)) return;
+  const a = add(null, 'Authentication (račun, prijava z e-pošto in geslom)');
+  try { await timeout(DB.AU.signInWithEmailAndPassword(DB.auth, `preverjanje-povezave@${FB_USER_DOMAIN}`, 'neveljavno-geslo-0000'), 15000); a.ok = true; a.d = 'Odgovor je prišel.'; }
+  catch(e){
+    const c = String((e && e.code) || '');
+    if (/^auth\/(invalid-credential|wrong-password|user-not-found|invalid-email)$/.test(c)){ a.ok = true; a.d = 'Deluje: Email/Password je vključen, API ključ je veljaven (poskusna prijava je bila pričakovano zavrnjena).'; }
+    else { a.ok = false; a.d = authErrText(e, FB_USER_DOMAIN) + (c ? ' [' + c + ']' : ''); }
+  }
+  show();
+  const d = add(null, 'Baza Firestore');
+  try { await timeout(DB.get('users/preverjanje'), 15000); d.ok = false; d.d = 'Baza odgovarja, vendar pravila dovoljujejo branje brez prijave: objavi firestore.rules (razdelek 3).'; }
+  catch(e){
+    const c = String((e && e.code) || '');
+    if (c === 'permission-denied'){ d.ok = true; d.d = 'Baza odgovarja in zavrača nepooblaščen dostop, kot mora.'; }
+    else { d.ok = false; d.d = c === 'timeout' || c === 'unavailable' ? 'Baza ne odgovarja (internet, blokada googleapis.com ali baza ni ustvarjena: razdelek 2.3).' : `Napaka baze [${c || 'neznana'}]: ` + (c === 'not-found' || c === 'failed-precondition' ? 'baza Firestore še ni ustvarjena (razdelek 2.3).' : 'preveri razdelka 2.3 in 3.'); }
+  }
+  show();
+  add(rows.every(r => r.ok === true), rows.every(r => r.ok === true) ? 'Povezava je v redu' : 'Odpravi prvo rdečo točko in preveri znova', rows.every(r => r.ok === true) ? 'Če se vseeno ne moreš prijaviti, je težava v računu ali profilu: poskusi prijavo, sporočilo pove razlog (razdelek 6).' : '');
+}
+/* besedilo napake pri prijavi: razlog + ukrep (brez splošnega »Prijava ni uspela«) */
+function authErrText(err, emails){
+  const email = [].concat(emails).join(' ali ');
+  const c = String((err && err.code) || ''), base = AUTH_ERR[c];
+  if (/^auth\/(invalid-credential|wrong-password|user-not-found)$/.test(c)) return base + ` Aplikacija je poskusila: ${email}. Če ima račun v Firebase (Authentication → Users) drug e-naslov, vpiši pri prijavi celoten e-naslov ali v config.js nastavi userDomain na njegovo domeno (več domen: seznam).`;
+  if (base) return base;
+  if (/referer|blocked/i.test(c)) return 'Google je zavrnil zahtevo, ker je API ključ omejen na drug naslov strani: Google Cloud → APIs & Services → Credentials → ključ → HTTP referrers: dodaj naslov te strani (razdelek 5.3).';
+  if (/api-key/i.test(c)) return 'API ključ v config.js ni veljaven ali nima dovoljenja (apiKey, razdelek 5.3).';
+  return 'Prijava ni uspela' + (c ? ' (' + c + ')' : '') + '. Preveri internet, config.js in Firebase Authentication.';
+}
+/* po uspešni prijavi: zakaj profil (users/UID) ne pusti naprej */
+function profileProblem(uid, prof, err){
+  if (err) return `Prijava je uspela, vendar profila ni mogoče prebrati iz baze (${err.code || 'napaka'}). ` + (err.code === 'permission-denied' ? 'Pravila baze zavračajo dostop: prilepi firestore.rules (razdelek 3) in preveri, da je baza Firestore ustvarjena.' : 'Preveri, da je baza Firestore ustvarjena (razdelek 2.3) in da je naprava povezana v internet.');
+  if (!prof) return `Prijava je uspela, vendar v Firestore manjka dokument users/${uid}. Skrbnik ga ustvari (razdelek 6 in 7.2): Document ID mora biti natanko ta UID.`;
+  if (!ROLES[prof.role]) return `Dokument users/${uid} nima veljavne vloge (role: ${prof.role == null ? 'manjka' : '»' + prof.role + '«'}); dovoljene so skrbnik, dispecer, voznik, spremljevalec (natančno tako, male črke).`;
+  if (prof.active !== true) return `Račun je onemogočen ali polje active ni boolean true (zdaj: ${prof.active === undefined ? 'manjka' : typeof prof.active === 'string' ? 'besedilo »' + prof.active + '«' : String(prof.active)}). Popravi dokument users/${uid} (razdelek 6, korak 10).`;
+  return '';
+}
 document.addEventListener('submit', async e => {
   const f = e.target; e.preventDefault();
   const fd = new FormData(f), kind = f.dataset.form || f.id;
@@ -5833,9 +5900,18 @@ document.addEventListener('submit', async e => {
       if (Date.now() < lockUntil){ $('#authErr').textContent = `Preveč poskusov. Počakaj ${Math.ceil((lockUntil - Date.now()) / 1000)} s.`; return; }
       const un = (fd.get('username') || '').trim().toLowerCase();
       if (BACKEND === 'firebase'){
-        const email = un.includes('@') ? un : `${un}@${FB_USER_DOMAIN}`;
-        try { await DB.AU.setPersistence(DB.auth, fd.get('remember') ? DB.AU.browserLocalPersistence : DB.AU.browserSessionPersistence); await DB.AU.signInWithEmailAndPassword(DB.auth, email, fd.get('pw') || ''); fails = 0; }
-        catch(err){ fails++; if (fails >= 5){ lockUntil = Date.now() + 30000; fails = 0; } $('#authErr').textContent = AUTH_ERR[err.code] || 'Prijava ni uspela.'; }
+        const emails = un.includes('@') ? [un] : FB_USER_DOMAINS.map(d => `${un}@${d}`);   // brez @: poskusi vse domene iz config.js po vrsti
+        let lastErr = null;
+        try { await DB.AU.setPersistence(DB.auth, fd.get('remember') ? DB.AU.browserLocalPersistence : DB.AU.browserSessionPersistence); }
+        catch(err){ lastErr = err; }
+        if (!lastErr){
+          for (const email of emails){
+            try { await DB.AU.signInWithEmailAndPassword(DB.auth, email, fd.get('pw') || ''); fails = 0; return; }
+            catch(err){ lastErr = err; if (!/^auth\/(invalid-credential|wrong-password|user-not-found|invalid-email)$/.test(String(err && err.code))) break; }   // druge napake (omrežje, izklopljena prijava …) ne preizkušajo naslednje domene
+          }
+        }
+        fails++; if (fails >= 5){ lockUntil = Date.now() + 30000; fails = 0; }
+        $('#authErr').textContent = authErrText(lastErr, emails);
         return;
       }
       const u = USERS.find(x => x.username.toLowerCase() === un);
@@ -5957,8 +6033,9 @@ async function boot(){
     let authMsg = msg;   // sporočilo, ki preživi odjavo (Firebase po signOut sproži še en klic z user = null)
     DB.AU.onAuthStateChanged(DB.auth, async user => {
       if (ME || !user){ if (!user && !ME){ renderAuth('login', authMsg); authMsg = ''; } return; }
-      let prof = null; try { prof = await DB.get('users/' + user.uid); } catch(e){}
-      if (!prof || !prof.role || prof.active === false){ authMsg = 'Račun nima dodeljene vloge ali je onemogočen. Obrni se na skrbnika.'; await DB.AU.signOut(DB.auth); return; }
+      let prof = null, perr = null; try { prof = await DB.get('users/' + user.uid); } catch(e){ perr = e; }
+      const prob = profileProblem(user.uid, prof, perr);
+      if (prob){ authMsg = prob; await DB.AU.signOut(DB.auth); return; }
       await login({ id:user.uid, name:prof.name || user.email, role:prof.role });
     });
     return;

@@ -831,6 +831,9 @@ function renderAuth(mode, msg=''){
       <div class="field"><label for="lp">Geslo</label><input id="lp" name="pw" type="password" required autocomplete="current-password"></div>
       ${BACKEND === 'firebase' ? '<label class="row" style="gap:8px;flex-wrap:nowrap;font-size:13px"><input type="checkbox" name="remember"> Ostani prijavljen na tej napravi (ne na skupnem računalniku)</label>' : ''}
       <button class="btn primary" type="submit">Prijava</button><div class="auth-err" id="authErr" role="alert">${esc(msg)}</div></form>
+      ${BACKEND === 'firebase' ? `<p class="hint" style="margin:0">Uporabniško ime »ime« se v Firebase išče kot ${FB_USER_DOMAINS.map(d => `<b>ime@${esc(d)}</b>`).join(' ali ')}; z @ vneseš celoten e-naslov računa.</p>` : ''}
+      ${BACKEND === 'firebase' ? '<details class="fbhelp"><summary>Težave s prijavo?</summary><button type="button" class="btn small" id="fbCheck">Preveri povezavo</button><div id="fbCheckOut" aria-live="polite"></div></details>' : ''}
       <p class="legalnote">Podatke o pacientih obravnavaj skladno z internimi pravili zdravstvenega doma. Vsaka prijava in ogled pacienta se beležita.</p>`;
+    const fbb = $('#fbCheck'); if (fbb) fbb.onclick = () => { fbb.disabled = true; fbCheck().finally(() => { fbb.disabled = false; }); };
   }
 }
