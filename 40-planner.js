@@ -9,7 +9,7 @@ const PLAN_CACHE = new Map();
 
 /* ---------- Knjiga: polja ---------- */
 const blankRide = () => ({ id:uid(), name:'', time:'', from:'', to:'', phone:'', mode:'sede', dia:'', diaKey:'', stay:0, km:null, kmBack:null, kmSrc:'', kk:'', gf:null, gt:null, gp:null, kmWarn:'', kmAt:'', done:false, doneBy:'', doneAt:'', pin:'', demo:false,
-  patientId:'', nalogId:'', note:'', exc:false, odpovedano:false, prevStatus:'', status:'nova', times:{}, statusBy:'', runKey:'' });
+  patientId:'', nalogId:'', note:'', exc:false, odpovedano:false, prevStatus:'', status:'nova', times:{}, statusBy:'', runKey:'', chk:'' });
 const isFilled = r => !!((r.name||'').trim() || (r.from||'').trim() || (r.to||'').trim());
 function ensureDay(date){
   let a = S.rides[date]; if (!a) a = S.rides[date] = [];
@@ -811,6 +811,7 @@ function dayWarnings(date){
   const avail = availableVehicles(date);
   rides.forEach(({ r, nr }) => {
     if (r.odpovedano) return;
+    if (r.chk) out.push({ nr, text:`Polje ${nr}: prebrano s fotografije, preveri (${r.chk}) in pritisni »Preverjeno«.` });
     if (!r.name.trim()) out.push({ nr, text:`Polje ${nr}: manjka ime in priimek.` });
     if (!r.time) out.push({ nr, text:`Polje ${nr}: manjka ura preiskave.` });
     if (!r.from.trim() || !r.to.trim()) out.push({ nr, text:`Polje ${nr}: manjka naslov ${!r.from.trim() ? 'od' : 'do'}.` });

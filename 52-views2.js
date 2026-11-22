@@ -348,6 +348,8 @@ function renderModal(){
   if (m.type === 'pick'){ renderPick(host, m); return; }
   if (m.type === 'nscan'){ renderScan(host, m); return; }
   if (m.type === 'nprint'){ renderNPrint(host, m); return; }
+  if (m.type === 'bprint'){ renderBPrint(host, m); return; }
+  if (m.type === 'bscan'){ renderBScan(host, m); return; }
   delete host.dataset.pk;
   const v = m.variants[m.idx], lines = v.text.split('\n');
   host.hidden = false;

@@ -14,7 +14,7 @@ css = '\n'.join(re.findall(r'<style>(.*?)</style>', head, re.S))
 assert css.strip(), 'CSS ni najden'
 (out / 'style.css').write_text(css, encoding='utf-8')
 
-order = ['20-data', '30-core', '35-db', '37-geocode', '38-routing', '39-google', '40-planner', '45-pacienti', '46-nalogscan', '47-nalogprint', '50-views', '52-views2', '53-nalogui', '54-quick', '55-live', '56-map', '60-main']
+order = ['20-data', '30-core', '35-db', '37-geocode', '38-routing', '39-google', '40-planner', '45-pacienti', '46-nalogscan', '47-nalogprint', '48-bookprint', '49-bookscan', '50-views', '52-views2', '53-nalogui', '54-quick', '55-live', '56-map', '57-bookui', '60-main']
 js = '\n'.join((src / f'{n}.js').read_text(encoding='utf-8') for n in order)
 (out / 'app.js').write_text(js, encoding='utf-8')
 body = (src / '10-body.html').read_text(encoding='utf-8')

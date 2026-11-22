@@ -1574,7 +1574,7 @@ const PLAN_CACHE = new Map();
 
 /* ---------- Knjiga: polja ---------- */
 const blankRide = () => ({ id:uid(), name:'', time:'', from:'', to:'', phone:'', mode:'sede', dia:'', diaKey:'', stay:0, km:null, kmBack:null, kmSrc:'', kk:'', gf:null, gt:null, gp:null, kmWarn:'', kmAt:'', done:false, doneBy:'', doneAt:'', pin:'', demo:false,
-  patientId:'', nalogId:'', note:'', exc:false, odpovedano:false, prevStatus:'', status:'nova', times:{}, statusBy:'', runKey:'' });
+  patientId:'', nalogId:'', note:'', exc:false, odpovedano:false, prevStatus:'', status:'nova', times:{}, statusBy:'', runKey:'', chk:'' });
 const isFilled = r => !!((r.name||'').trim() || (r.from||'').trim() || (r.to||'').trim());
 function ensureDay(date){
   let a = S.rides[date]; if (!a) a = S.rides[date] = [];
@@ -2376,6 +2376,7 @@ function dayWarnings(date){
   const avail = availableVehicles(date);
   rides.forEach(({ r, nr }) => {
     if (r.odpovedano) return;
+    if (r.chk) out.push({ nr, text:`Polje ${nr}: prebrano s fotografije, preveri (${r.chk}) in pritisni »Preverjeno«.` });
     if (!r.name.trim()) out.push({ nr, text:`Polje ${nr}: manjka ime in priimek.` });
     if (!r.time) out.push({ nr, text:`Polje ${nr}: manjka ura preiskave.` });
     if (!r.from.trim() || !r.to.trim()) out.push({ nr, text:`Polje ${nr}: manjka naslov ${!r.from.trim() ? 'od' : 'do'}.` });
@@ -2901,7 +2902,7 @@ const NSCAN = (() => {
 
   /* ---------- Priprava slike in OCR (samo v brskalniku) ---------- */
   const MAXSIDE = 2600;
-  async function toCanvas(src){
+  async function toCanvas(src, max = MAXSIDE){
     let cv, w, h;
     if (src.kind === 'raw'){
       w = src.w; h = src.h; cv = document.createElement('canvas'); cv.width = w; cv.height = h;
@@ -2913,7 +2914,7 @@ const NSCAN = (() => {
       const bmp = await createImageBitmap(src.kind === 'jpeg' ? new Blob([src.bytes], { type:'image/jpeg' }) : src.blob);
       w = bmp.width; h = bmp.height; cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(bmp, 0, 0); if (bmp.close) bmp.close();
     }
-    const k = Math.min(1, MAXSIDE / Math.max(w, h));
+    const k = Math.min(1, max / Math.max(w, h));
     if (k < 1){ const c2 = document.createElement('canvas'); c2.width = Math.round(w * k); c2.height = Math.round(h * k); const x = c2.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(cv, 0, 0, c2.width, c2.height); cv = c2; }
     return cv;
   }
@@ -2945,7 +2946,7 @@ const NSCAN = (() => {
   /* privzete vrednosti: tudi config.js iz starejše izdaje (brez bloka »ocr«) ohrani skeniranje slik; lib: '' ali on: false ga izklopi */
   const OCR_DEFAULT = { on:true, lib:'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js', lang:'slv' };
   const ocrCfg = () => Object.assign({}, OCR_DEFAULT, (typeof window !== 'undefined' && window.KP_CONFIG && window.KP_CONFIG.ocr) || {});
-  function ocr(png, onProgress, cfg = ocrCfg()){
+  function ocr(png, onProgress, cfg = ocrCfg(), extra){
     return new Promise((resolve, reject) => {
       const fr = document.createElement('iframe'); let done = false, timer = 0;
       fr.setAttribute('sandbox', 'allow-scripts'); fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1; fr.style.cssText = 'position:fixed;width:1px;height:1px;left:-9px;top:-9px;border:0;opacity:0';
@@ -2953,9 +2954,9 @@ const NSCAN = (() => {
       const onMsg = async e => {
         if (e.source !== fr.contentWindow) return;
         const m = e.data || {};
-        if (m.type === 'ready'){ fr.contentWindow.postMessage({ type:'run', cfg:{ lib:abs(cfg.lib), lang:cfg.lang || 'slv+eng', langPath:abs(cfg.langPath), workerPath:abs(cfg.workerPath), corePath:abs(cfg.corePath) }, image:await png.arrayBuffer() }, '*'); }
+        if (m.type === 'ready'){ fr.contentWindow.postMessage({ type:'run', cfg:{ lib:abs(cfg.lib), lang:cfg.lang || 'slv+eng', langPath:abs(cfg.langPath), workerPath:abs(cfg.workerPath), corePath:abs(cfg.corePath) }, image:await png.arrayBuffer(), words:!!(extra && extra.words), psm:extra && extra.psm ? String(extra.psm) : undefined }, '*'); }
         else if (m.type === 'progress'){ if (onProgress) onProgress(m); }
-        else if (m.type === 'done') end(resolve, S_(m.text));
+        else if (m.type === 'done') end(resolve, extra && extra.words ? { text:S_(m.text), words:Array.isArray(m.words) ? m.words : [], tsv:S_(m.tsv) } : S_(m.text));
         else if (m.type === 'error') end(reject, new Error(S_(m.msg) || 'Razpoznava besedila ni uspela.'));
       };
       window.addEventListener('message', onMsg);
@@ -2967,7 +2968,7 @@ const NSCAN = (() => {
   }
   const ocrEnabled = (cfg = ocrCfg()) => cfg.on !== false && !!cfg.lib;
 
-  return { parse, matchPatient, apply, pdfImages, prepare, ocr, ocrEnabled, lines, zzzsIn, dates, title, fixDigits };
+  return { parse, matchPatient, apply, pdfImages, prepare, ocr, ocrEnabled, ocrCfg, lines, zzzsIn, dates, title, fixDigits, toCanvas, enhance, toBlob };
 })();
 
 /* =====================================================================
@@ -3139,6 +3140,681 @@ const NP = (() => {
 })();
 
 /* =====================================================================
+   TISK KNJIGE ZA CEL MESEC (na koncu meseca): kot papirna knjiga, pripravljena za vezavo
+   Naslovnica → kazalo → vsak dan v obliki obrazca OBR REŠ 08 (prevozi 1–10, 11–24, posadke po vozilih, posebnosti) → mesečni povzetek.
+   Vsi prevozi so zapisani tako, kot so bili opravljeni: ura prevoza, ura pobiranja (dejanska, če jo je posadka zabeležila, sicer po razporedu),
+   vozilo (iz razporeda, objavljenega razporeda ali imena v »Kdo je naredil odvoz«), odpovedani prečrtani, opomba in kdo je prevoz opravil.
+   Stran je A4 pokonci; pri obojestranskem tisku ima notranji rob za vezavo menjajoče strani (lihe: levo, sode: desno),
+   vsak dan se začne na desni strani, zadnja stran dneva pa je črtana stran za opombe.
+   Podatki o pacientih gredo samo na tiskalnik te naprave (kot v papirni knjigi); v dnevnik sprememb se zapiše samo mesec.
+   ===================================================================== */
+const BOOK = (() => {
+  const P1 = 10, P2 = 24, CONT = 14;                   // vrstice: prva stran 1–10, druga 11–24, nadaljevanje po 14
+  const DEF = { front:true, summary:true, duplex:true, skipEmpty:false, km:false, gut:12 };
+  const clampN = (v, a, b, d) => { const x = parseFloat(String(v ?? '').replace(',', '.')); return isFinite(x) ? Math.min(b, Math.max(a, x)) : d; };
+  const opts = o => { const x = Object.assign({}, DEF, o || {}); x.gut = clampN(x.gut, 0, 30, DEF.gut); ['front', 'summary', 'duplex', 'skipEmpty', 'km'].forEach(k => { x[k] = !!x[k]; }); return x; };
+  const hmIso = iso => { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+  const kmTxt = r => { try { const i = KM.info(r); return i.total == null ? '' : (i.exact && i.backExact ? '' : '~') + KM.fmtKm(i.total); } catch (e) { return ''; } };
+  const kmNum = r => { try { const i = KM.info(r); return i.total == null ? null : i.total; } catch (e) { return null; } };
+
+  /* ---------- Podatki enega dne: vsak prevoz z vozilom in uro pobiranja ---------- */
+  function dayData(date){
+    const all = filledRides(date);
+    const pending = all.some(({ r }) => !r.done && !r.odpovedano);
+    let plan = null;
+    try { plan = computePlan(date); } catch (e) { plan = null; }
+    const rides = all.map(({ r, nr }) => {
+      const a = plan && plan.assign ? plan.assign[r.id] : null, t = r.times || {};
+      let veh = a ? a.veh : '', pick = '', ret = '', est = false, crew = null;
+      if (!veh || r.done){
+        try { crew = NP.crewOf(date, r); if (crew && crew.vehName && !veh) veh = crew.vehName; } catch (e) { crew = null; }
+      }
+      const real = hmIso(t.v_vozilu || t.na_kraju || t.na_poti);
+      if (r.done && real) pick = real;
+      else if (a && a.pickT != null){ pick = fmtT(a.pickT); est = a.late > 0; if (a.retPickT != null) ret = fmtT(a.retPickT); }
+      else if (real) pick = real;
+      return { r, nr, veh, pick, ret, est, crew };
+    });
+    return { date, all, rides, plan, pending };
+  }
+
+  function rowHTML(x, o){
+    const r = x.r, can = r.odpovedano;
+    const notes = [r.mode !== 'sede' ? (MODES[r.mode] || r.mode) : '', r.dia ? 'dializa' : '', +r.stay > 0 ? `čaka ${+r.stay} min` : '', r.note || ''].filter(Boolean).join(', ');
+    const by = r.done ? '✓' + (r.doneBy ? ' ' + r.doneBy : '') : '';
+    const pick = can ? '' : (x.est ? '~' : '') + x.pick + (x.ret ? ` · nazaj ${x.ret}` : '');
+    return `<tr class="${can ? 'p-cancel' : ''}"><td class="pd-nr">${x.nr}</td><td>${esc(r.name || '')}</td><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td class="pd-t">${esc(r.time || '')}</td><td class="pd-t">${esc(pick)}</td><td class="pd-v">${can ? '' : esc(x.veh)}</td>${o.km ? `<td class="pd-t">${can ? '' : esc(kmTxt(r))}</td>` : ''}<td>${can ? '<b>ODPOVEDANO</b> ' : ''}${r.chk ? `<b class="pd-chk">⚠ preveri (${esc(r.chk)})</b> ` : ''}${esc(notes)}${by ? `<div class="pd-by">${esc(by)}</div>` : ''}</td></tr>`;
+  }
+  const emptyRow = (nr, o) => `<tr class="pd-empty"><td class="pd-nr">${nr}</td><td></td><td></td><td></td><td></td><td></td><td></td>${o.km ? '<td></td>' : ''}<td></td></tr>`;
+  const colgroup = o => `<colgroup><col style="width:9mm"><col style="width:${o.km ? 27 : 30}mm"><col style="width:${o.km ? 23 : 26}mm"><col style="width:${o.km ? 23 : 26}mm"><col style="width:15mm"><col style="width:20mm"><col style="width:17mm">${o.km ? '<col style="width:13mm">' : ''}<col></colgroup>`;
+  const thead = o => `${colgroup(o)}<thead><tr><th class="pd-nr">Št.</th><th>Ime in priimek</th><th>Od</th><th>Do</th><th>Ura prev.</th><th>Pobere</th><th>Vozilo</th>${o.km ? '<th>Km</th>' : ''}<th>Opomba</th></tr></thead>`;
+
+  function head(date, n, N, title, noDate){
+    const form = esc((S.settings.formCode || 'OBR REŠ 08').trim()), hol = holiday(date);
+    return `<header class="pd-head"><div class="pd-logos">${logoInner()}</div><div class="pd-title"><b>${esc(title || 'KNJIGA REŠEVALNIH PREVOZOV')}</b><span>Reševalna postaja Brežice · ${form}</span></div>
+      <div class="pd-date">${noDate ? '' : `<div>DATUM: <b>${fmtDMY(date)}</b></div><div>DAN: <b>${DOW_LONG[dow(date)]}</b>${hol ? ' · ' + esc(hol) : ''}</div>${n ? `<div class="pd-pg">list ${n}/${N}</div>` : ''}`}</div></header>`;
+  }
+  const lines = h => `<div class="pd-ruled">${'<div class="pd-ln"></div>'.repeat(Math.max(1, Math.floor(h / 22)))}</div>`;
+
+  /* ---------- Strani enega dne ---------- */
+  function dayPages(date, o){
+    const d = dayData(date), by = {}; d.rides.forEach(x => { by[x.nr] = x; });
+    const last = d.all.reduce((m, x) => Math.max(m, x.nr), 0), total = Math.max(P2, last);
+    const book = S.crewBook[date] || {}, ostTxt = (book.ost && book.ost.text) || '';
+    const notices = (S.notices || []).filter(n => !n.closed && n.from <= date && (!n.to || n.to >= date));
+    const posebnosti = [S.dayNote[date] || '', ostTxt ? 'Ostalo: ' + ostTxt : '', ...notices.map(n => `${(S.vehicles.find(v => v.id === n.vehicleId) || {}).name || ''}: ${n.tip}${n.note ? ' – ' + n.note : ''}`)].filter(Boolean);
+    const crewList = [];
+    const seen = new Set();
+    S.vehicles.forEach(v => {
+      if (v.tip === 'ostalo') return;
+      const nrs = d.rides.filter(x => x.veh === v.name && !x.r.odpovedano).map(x => x.nr);
+      const cell = book[v.id] && book[v.id].text;
+      let txt = cell || '', start = '';
+      const pc = d.plan && d.plan.crews ? d.plan.crews.find(c => c.vehicle && c.vehicle.id === v.id) : null;
+      if (!txt && pc){ try { txt = crewLabel(pc); } catch (e) { txt = ''; } }
+      if (!txt){ const dn = d.rides.find(x => x.veh === v.name && x.crew && x.crew.voz); if (dn) txt = [dn.crew.voz, dn.crew.spr ? dn.crew.spr + ' (sp.)' : ''].filter(Boolean).join(', '); }
+      if (pc && pc.trips && pc.trips.length){ try { start = 'ob ' + fmtT(pc.firstDepart); } catch (e) { start = ''; } }
+      if (!txt && !nrs.length) return;
+      seen.add(v.name); crewList.push({ veh:v.name, txt, nrs, start });
+    });
+    d.rides.forEach(x => { if (x.veh && !x.r.odpovedano && !seen.has(x.veh)){ seen.add(x.veh); crewList.push({ veh:x.veh, txt:[x.crew && x.crew.voz, x.crew && x.crew.spr ? x.crew.spr + ' (sp.)' : ''].filter(Boolean).join(', '), nrs:d.rides.filter(y => y.veh === x.veh && !y.r.odpovedano).map(y => y.nr), start:'' }); } });
+    const stats = { n:d.all.filter(x => !x.r.odpovedano).length, canc:d.all.filter(x => x.r.odpovedano).length, done:d.all.filter(x => !x.r.odpovedano && x.r.done).length };
+    const empty = !d.all.length && !posebnosti.length && !crewList.length;
+    const crewRows = crewList.map(c => `<tr><td><b>${esc(c.veh)}</b></td><td>${esc(c.txt || '')}</td><td>${c.nrs.join(', ') || '–'}</td><td>${esc(c.start)}</td></tr>`).join('');
+    const crewTab = `<table class="pd-tab pd-crew"><thead><tr><th>Vozilo</th><th>Posadka</th><th>Prevozi (št.)</th><th>Posebnosti</th></tr></thead><tbody>${crewRows || '<tr><td colspan="4">Ni posadk.</td></tr>'}</tbody></table>`;
+    const posBlock = `<div class="pd-pos"><b>Posebnosti:</b>${posebnosti.length ? '<ul>' + posebnosti.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>' : lines(90)}</div>`;
+    const pages = [];
+    const rowsOf = (a, b) => Array.from({ length:b - a }, (_, j) => by[a + j + 1] ? rowHTML(by[a + j + 1], o) : emptyRow(a + j + 1, o)).join('');
+    const tab = (a, b) => `<table class="pd-tab">${thead(o)}<tbody>${rowsOf(a, b)}</tbody></table>`;
+    const vehLine = crewList.filter(c => c.nrs.length).map(c => esc(c.veh)).join(' · ') || '–';
+    const ctrl = [];   // [html z rezervo za »list n/N«]
+    if (!d.all.length){
+      pages.push({ kind:'prazno', date, inner:() => `${head(date, 0, 0)}<p class="pd-empty-day">Ni vpisanih prevozov.</p>${crewList.length ? crewTab : ''}${posBlock}` });
+    } else {
+      ctrl.push(N => `${head(date, ctrl.k, N)}<div class="pd-veh">VOZILA: <b>${vehLine}</b></div>${tab(0, P1)}`);
+      ctrl.push(N => `${head(date, ctrl.k, N)}${tab(P1, P2)}`);
+      for (let a = P2; a < total; a += CONT){ const b = Math.min(total, a + CONT); ctrl.push(N => `${head(date, ctrl.k, N)}<p class="pd-fine" style="margin:0 0 6px">nadaljevanje: prevozi ${a + 1}–${b}</p>${tab(a, b)}`); }
+      ctrl.push(N => `${head(date, ctrl.k, N)}
+        ${crewTab}
+        ${posBlock}
+        <p class="pd-fine">Prevozov: ${stats.n}${stats.canc ? ` · odpovedanih: ${stats.canc}` : ''} · opravljenih: ${stats.done}. ${d.pending ? 'Del prevozov še ni opravljen: ure »Pobere« so tam ocena razporeda.' : 'Ure »Pobere« so dejanske, kjer jih je posadka zabeležila; sicer ocena razporeda.'}</p>
+        <div class="pd-sign"><span>Dispečer: ______________________</span></div>`);
+      const N = ctrl.length;
+      ctrl.forEach((f, i) => { pages.push({ kind:i === N - 1 ? 'posadke' : 'prevozi', date, inner:() => { ctrl.k = i + 1; return f(N); } }); });
+    }
+    return { pages, stats, rides:d.rides, crewList, empty };
+  }
+
+  /* ---------- Posebne strani ---------- */
+  const noteBlank = (date, o) => ({ kind:'opombe', date, inner:() => `${head(date, 0, 0, 'OPOMBE')}<p class="pd-fine" style="margin:0 0 8px">Prostor za ročne dopolnitve (${DOW_LONG[dow(date)]}, ${fmtDMY(date)}).</p>${lines(880)}` });
+  function monthTotals(y, m, o){
+    const n = daysInMonth(y, m), days = [], veh = {};
+    let tot = 0, canc = 0, done = 0, km = 0, kmEx = true, kmN = 0;
+    for (let k = 1; k <= n; k++){
+      const date = `${y}-${pad(m + 1)}-${pad(k)}`, dp = dayPages(date, o);
+      dp.rides.forEach(x => {
+        if (x.r.odpovedano) return;
+        const key = x.veh || '(brez vozila)', v = veh[key] || (veh[key] = { n:0, km:0 });
+        v.n++; const kk = kmNum(x.r); if (kk != null){ v.km += kk; km += kk; kmN++; try { const i = KM.info(x.r); if (!(i.exact && i.backExact)) kmEx = false; } catch (e) { kmEx = false; } }
+      });
+      tot += dp.stats.n; canc += dp.stats.canc; done += dp.stats.done;
+      days.push({ date, dp });
+    }
+    return { days, veh, tot, canc, done, km, kmEx, kmN };
+  }
+
+  /* ---------- Cela knjiga ---------- */
+  function build(y, m, o0){
+    const o = opts(o0), T = monthTotals(y, m, o), pages = [];
+    const title = `${MONTHS[m]} ${y}`;
+    const shown = T.days.filter(d => !(o.skipEmpty && d.dp.empty));
+    const front = o.front ? 2 : 0;                                    // naslovnica + kazalo
+    const isOdd = i => i % 2 === 0;                                   // indeks 0 = stran 1
+    const dayStart = [];
+    let count = front;
+    const seq = [];
+    shown.forEach(({ date, dp }) => {
+      const ps = dp.pages.slice();
+      if (o.duplex && (ps.length % 2)) ps.push(noteBlank(date, o));
+      dayStart.push({ date, page:count + 1, dp });
+      seq.push(...ps); count += ps.length;
+    });
+    if (o.summary){ seq.push({ kind:'povzetek' }); count++; }
+    const N = count;
+    const foot = pn => `<footer class="pb-foot"><span>Knjiga reševalnih prevozov · ${esc(title)}</span><span>str. ${pn} / ${N}</span></footer>`;
+    const sec = (pn, inner) => `<section class="pb-page ${(!o.duplex || pn % 2 === 1) ? 'pb-odd' : 'pb-even'}" data-pn="${pn}">${inner}${foot(pn)}</section>`;
+    const out = [];
+    if (o.front){
+      const nonEmpty = T.days.filter(d => !d.dp.empty).length;
+      out.push(sec(1, `<div class="pb-cover"><div class="pd-logos" style="justify-content:center">${logoInner()}</div><h1>KNJIGA REŠEVALNIH PREVOZOV</h1><h2>${esc(title)}</h2>
+        <p>Reševalna postaja Brežice · Zdravstveni dom Brežice</p><p class="pb-big">${T.tot}</p><p>prevozov v mesecu${T.canc ? ` (odpovedanih: ${T.canc})` : ''}</p>
+        <p class="pd-fine">Izpisano ${new Date().toLocaleString('sl-SI')} · dni z vpisi: ${nonEmpty} od ${T.days.length}</p></div>`));
+      const kz = dayStart.map(s => `<tr><td>${fmtDMY(s.date)}</td><td>${DOW_LONG[dow(s.date)]}${holiday(s.date) ? ' · ' + esc(holiday(s.date)) : ''}</td><td class="num">${s.dp.stats.n || ''}</td><td class="num">${s.dp.stats.canc || ''}</td><td class="num">${s.page}</td></tr>`).join('');
+      out.push(sec(2, `${head(`${y}-${pad(m + 1)}-01`, 1, 1, 'KAZALO · ' + title.toUpperCase(), true)}
+        <table class="pd-tab pb-index"><colgroup><col style="width:30mm"><col><col style="width:26mm"><col style="width:30mm"><col style="width:18mm"></colgroup><thead><tr><th>Datum</th><th>Dan</th><th class="num">Prevozov</th><th class="num">Odpovedanih</th><th class="num">Stran</th></tr></thead><tbody>${kz || '<tr><td colspan="5">Ni dni.</td></tr>'}</tbody></table>`));
+    }
+    seq.forEach((p, i) => {
+      const pn = front + i + 1;
+      if (p.kind === 'povzetek'){
+        const vr = Object.keys(T.veh).sort().map(k => `<tr><td><b>${esc(k)}</b></td><td class="num">${T.veh[k].n}</td><td class="num">${T.veh[k].km ? KM.fmtKm(T.veh[k].km) : ''}</td></tr>`).join('');
+        out.push(sec(pn, `${head(`${y}-${pad(m + 1)}-01`, 1, 1, 'MESEČNI POVZETEK · ' + title.toUpperCase(), true)}
+          <table class="pd-tab pb-sum"><tbody><tr><td>Prevozov (brez odpovedanih)</td><td class="num"><b>${T.tot}</b></td></tr><tr><td>Opravljenih (označenih)</td><td class="num"><b>${T.done}</b></td></tr><tr><td>Odpovedanih</td><td class="num"><b>${T.canc}</b></td></tr>
+          <tr><td>Kilometrina prevozov (OD→DO${T.kmEx ? '' : ', del je ocena ~'})</td><td class="num"><b>${T.kmN ? (T.kmEx ? '' : '~') + KM.fmtKm(T.km) + ' km' : 'ni izračunana'}</b></td></tr></tbody></table>
+          <h3 style="margin:14px 0 4px">Po vozilih</h3><table class="pd-tab pb-sum"><thead><tr><th>Vozilo</th><th class="num">Prevozov</th><th class="num">Km</th></tr></thead><tbody>${vr || '<tr><td colspan="3">Ni podatkov.</td></tr>'}</tbody></table>
+          <p class="pd-fine">Vozilo je določeno iz razporeda ali objavljenega razporeda oziroma po imenu v »Kdo je naredil odvoz«; prevozi brez znanega vozila so v vrstici »(brez vozila)«. Kilometrina je razdalja OD→DO po cestah (osebni avto), ne vožnja reševalca do pacienta in nazaj.</p>
+          <h3 style="margin:14px 0 4px">Opombe meseca</h3>${lines(200)}
+          <div class="pd-sign"><span>Pregledal: ______________________</span><span>Datum: ______________</span></div>`));
+      } else out.push(sec(pn, p.inner()));
+    });
+    return { html:out.join(''), pages:N, sheets:Math.ceil(N / (o.duplex ? 2 : 1)), days:shown.length, rides:T.tot, canc:T.canc, opts:o, dayStart:dayStart.map(s => ({ date:s.date, page:s.page })), totals:T };
+  }
+
+  /* ---------- Možnosti se zapomnijo samo v tej napravi ---------- */
+  const KEY = 'kp.book.opts';
+  const load = () => { try { return opts(JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { return opts({}); } };
+  const store = o => { try { localStorage.setItem(KEY, JSON.stringify(opts(o))); } catch (e) { /* brez shranjevanja */ } };
+
+  function print(y, m, o, built){
+    let el = document.getElementById('printArea');
+    if (!el){ el = document.createElement('div'); el.id = 'printArea'; document.body.appendChild(el); }
+    const b = built || build(y, m, o);
+    el.className = 'pbook'; el.style.setProperty('--gut', b.opts.gut + 'mm'); el.innerHTML = b.html;
+    audit('knjiga.tisk.mesec', { mesec:`${y}-${pad(m + 1)}`, strani:b.pages });
+    window.print();
+    return b;
+  }
+  /* so podatki za mesec že naloženi iz skupne baze? (v lokalnem načinu vedno) */
+  function monthReady(y, m){
+    const a = `${y}-${pad(m + 1)}-01`, b = `${y}-${pad(m + 1)}-${pad(daysInMonth(y, m))}`;
+    if (typeof SY === 'undefined' || !SY.range) return true;
+    return a >= SY.range.from && b <= SY.range.to && !!SY.dayReady;
+  }
+  return { DEF, opts, build, print, load, store, dayData, dayPages, monthReady, P1, P2, CONT };
+})();
+
+/* =====================================================================
+   SKENIRANJE STRANI PAPIRNE KNJIGE (fotografija strani → prevozi v dnevu)
+   Pot: fotografija → poravnava (zasuk) in izboljšava kontrasta → razpoznava besed (OCR, izolirani okvir ocr/ocr.html; vrne besede z okvirji in zanesljivostjo)
+        → vrstice (po številkah polj 1–24) in stolpci (po glavi tabele ali po poravnavi besed) → polja (ime, od, do, ura, način, opomba)
+        → primerjava z znanim (baza pacientov, ustanove, klinike, naselja, ulice) → ocena zanesljivosti vsakega polja.
+   Aplikacija NE ugiba tiho: vsako polje dobi stopnjo
+        ok   = prebrano in potrjeno z znanimi podatki (npr. ime je v bazi, cilj je znana ustanova, ura je smiselna),
+        chk  = prebrano, vendar ni potrjeno (novo ime, neznan kraj, slaba razpoznava): PREVERI,
+        bad  = neberljivo, manjka ali nesmiselno: POPRAVI.
+   Pri vsaki vrstici je v pregledu izrez fotografije, da se prebrano primerja z originalom. Nepotrjena polja ostanejo označena tudi v knjigi (r.chk), dokler jih dispečer ne potrdi.
+   Rokopis: razpoznava besedila v brskalniku (Tesseract) je dobra pri tiskanem besedilu in razločni tiskani pisavi, pri tekočem rokopisu pogosto zgreši; zato je označevanje bistveno.
+   Razčlenjevalec (parse) je čista funkcija nad besedami; slika in besedilo se NE shranita.
+   ===================================================================== */
+const BSCAN = (() => {
+  const T_ = v => String(v ?? '');
+  const N = s => norm(s);
+  const med = a => { if (!a.length) return 0; const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+
+  /* ---------- Razdalja med nizi, odporna na tipične napake OCR (0/o, 1/l, 5/s, rn/m …) ---------- */
+  const CONF = new Set(['0o', '1l', '1i', 'il', 'li', '5s', '8b', '2z', '6g', '9g', '1t', 'tl', 'ce', 'ec', 'uv', 'vu', 'nh', 'hn', 'ao', 'oa', 'eo', 'oe']);
+  const confusable = (a, b) => CONF.has(a + b) || CONF.has(b + a);
+  const ocrNorm = s => N(s).replace(/rn/g, 'm').replace(/vv/g, 'w').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  function ed(a, b){
+    const n = a.length, m = b.length; if (!n) return m; if (!m) return n;
+    let prev = Array.from({ length:m + 1 }, (_, j) => j);
+    for (let i = 1; i <= n; i++){
+      const cur = [i];
+      for (let j = 1; j <= m; j++){
+        const c = a[i - 1] === b[j - 1] ? 0 : confusable(a[i - 1], b[j - 1]) ? 0.35 : 1;
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + c);
+      }
+      prev = cur;
+    }
+    return prev[m];
+  }
+  const sim = (a, b) => { const x = ocrNorm(a), y = ocrNorm(b), L = Math.max(x.length, y.length); return L ? 1 - ed(x, y) / L : 0; };
+  const simNS = (a, b) => { const x = ocrNorm(a).replace(/ /g, ''), y = ocrNorm(b).replace(/ /g, ''), L = Math.max(x.length, y.length); return L ? 1 - ed(x, y) / L : 0; };
+  /* imena: vrstni red besed ni pomemben (»Priimek Ime« = »Ime Priimek«) */
+  const simName = (a, b) => {
+    const x = ocrNorm(a).split(' ').filter(Boolean).sort().join(' '), y = ocrNorm(b).split(' ').filter(Boolean).sort().join(' '), L = Math.max(x.length, y.length);
+    return L ? 1 - ed(x, y) / L : 0;
+  };
+
+  /* ---------- Besede ---------- */
+  const trimTok = t => T_(t).replace(/^[^\p{L}\p{N}]+/u, '').replace(/[^\p{L}\p{N}.:)]+$/u, '');
+  function cleanWords(words){
+    return (words || []).map(w => {
+      const bb = w.bbox || {}, x0 = +(w.x0 ?? bb.x0), y0 = +(w.y0 ?? bb.y0), x1 = +(w.x1 ?? bb.x1), y1 = +(w.y1 ?? bb.y1);
+      const c = +(w.conf ?? w.confidence ?? w.c);
+      return { t:trimTok(w.text ?? w.t), c:isFinite(c) ? Math.max(0, Math.min(100, c)) : 0, x0, y0, x1, y1 };
+    }).filter(w => w.t && /[\p{L}\p{N}]/u.test(w.t) && isFinite(w.x0 + w.y0 + w.x1 + w.y1) && w.x1 > w.x0 && w.y1 > w.y0);
+  }
+  const cx = w => (w.x0 + w.x1) / 2, cy = w => (w.y0 + w.y1) / 2;
+  /* besede enega polja → besedilo in zanesljivost (uteženo z dolžino besede) */
+  function cellOf(ws){
+    const s = ws.slice().sort((a, b) => (Math.abs(cy(a) - cy(b)) > Math.min(a.y1 - a.y0, b.y1 - b.y0) * 0.6) ? cy(a) - cy(b) : a.x0 - b.x0);
+    const text = s.map(w => w.t).join(' ').replace(/\s+/g, ' ').trim();
+    let sw = 0, sc = 0, mn = 100; s.forEach(w => { const l = Math.max(1, w.t.length); sw += l; sc += w.c * l; mn = Math.min(mn, w.c); });
+    return { text, conf:sw ? Math.round(sc / sw) : 0, min:s.length ? Math.round(mn) : 0, n:s.length, ws:s };
+  }
+
+  /* ---------- Poravnava številk (OCR) ---------- */
+  const DIGFIX = { O:'0', o:'0', Q:'0', D:'0', l:'1', I:'1', '|':'1', i:'1', S:'5', s:'5', B:'8', Z:'2', z:'2', g:'9' };
+  const fixNum = t => String(t).replace(/[OoQDlI|iSsBZzg]/g, c => DIGFIX[c] || c);
+  const isNumTok = t => /^[0-9OoQDlI|iSsBZz]{1,2}[.)]?$/.test(t) && /\d|[lI|O]/.test(t);
+  const numVal = t => { const v = parseInt(fixNum(String(t).replace(/[.)]$/, '')), 10); return isFinite(v) ? v : null; };
+
+  /* ---------- Glava tabele ---------- */
+  const HEAD_KEYS = [['nr', ['st', 'stev', 'zst']], ['name', ['ime', 'priimek', 'pacient', 'ime in priimek']], ['from', ['od', 'iz']], ['to', ['do', 'cilj', 'kam']], ['time', ['ura', 'cas', 'prev', 'uraprev', 'ura prevoza']], ['pick', ['pobere', 'pobira', 'pobiranje']], ['veh', ['vozilo', 'avto']], ['note', ['opomba', 'opombe', 'posebnosti']]];
+  function headKey(t){
+    const n = ocrNorm(t).replace(/ /g, ''); if (!n) return null;
+    for (const [k, list] of HEAD_KEYS) for (const h of list){ if (n === h) return k; if (h.length >= 5 && n.length >= 4 && sim(n, h) >= 0.78) return k; }
+    return null;
+  }
+  function findHeader(ws, mh){
+    const hits = ws.map(w => ({ w, k:headKey(w.t) })).filter(x => x.k);
+    if (hits.length < 3) return null;
+    const groups = [];
+    hits.sort((a, b) => cy(a.w) - cy(b.w)).forEach(h => { const g = groups.find(g => Math.abs(g.y - cy(h.w)) <= mh * 1.1); if (g){ g.items.push(h); g.y = (g.y * (g.items.length - 1) + cy(h.w)) / g.items.length; } else groups.push({ y:cy(h.w), items:[h] }); });
+    const ok = groups.filter(g => new Set(g.items.map(i => i.k).filter(k => k !== 'nr')).size >= 3).sort((a, b) => a.y - b.y)[0];
+    if (!ok) return null;
+    const cols = {};
+    ok.items.forEach(({ w, k }) => { if (!cols[k] || w.x0 < cols[k].x0) cols[k] = { key:k, x0:w.x0, x1:w.x1 }; });
+    return { y:ok.y, y1:Math.max(...ok.items.map(i => i.w.y1)), cols:Object.values(cols).sort((a, b) => a.x0 - b.x0) };
+  }
+
+  /* ---------- Vrstice po številkah polj ---------- */
+  function findRows(ws, mh, head, box){
+    const top = head ? head.y1 : box.y0 - 1, leftLimit = head ? (head.cols.find(c => c.key === 'name') || head.cols[0]).x0 - mh * 0.3 : box.x0 + (box.x1 - box.x0) * 0.14;
+    let cand = ws.filter(w => w.y0 >= top - 1 && cx(w) < leftLimit && isNumTok(w.t) && numVal(w.t) >= 1 && numVal(w.t) <= 60).sort((a, b) => cy(a) - cy(b));
+    /* najdaljše zaporedje naraščajočih številk (OCR napačno prebrane številke izpustimo) */
+    const best = [];
+    const L = cand.map(() => 1), P = cand.map(() => -1);
+    for (let i = 0; i < cand.length; i++) for (let j = 0; j < i; j++) if (numVal(cand[j].t) < numVal(cand[i].t) && L[j] + 1 > L[i]){ L[i] = L[j] + 1; P[i] = j; }
+    let bi = 0; L.forEach((v, i) => { if (v > L[bi]) bi = i; });
+    for (let i = bi; i >= 0 && cand.length; i = P[i]) best.unshift(cand[i]);
+    cand = best;
+    return cand.map(w => ({ nr:numVal(w.t), y:cy(w), conf:w.c, w, derived:false }));
+  }
+  /* manjkajoče številke izpelji iz razmika vrstic */
+  function fillRows(rows){
+    if (rows.length < 3) return rows;
+    const pitch = med(rows.slice(1).map((r, i) => (r.y - rows[i].y) / Math.max(1, r.nr - rows[i].nr)));
+    if (!(pitch > 0)) return rows;
+    const out = [rows[0]];
+    for (let i = 1; i < rows.length; i++){
+      const a = rows[i - 1], b = rows[i], k = b.nr - a.nr;
+      for (let j = 1; j < k; j++) out.push({ nr:a.nr + j, y:a.y + (b.y - a.y) * j / k, conf:0, w:null, derived:true });
+      out.push(b);
+    }
+    return out;
+  }
+  /* brez številk: vrstice = vrstice besedila */
+  function lineRows(ws, mh, top){
+    const s = ws.filter(w => w.y0 >= top - 1).sort((a, b) => cy(a) - cy(b)), rows = [];
+    s.forEach(w => { const r = rows[rows.length - 1]; if (r && Math.abs(cy(w) - r.y) <= mh * 0.65){ r.n++; r.y = (r.y * (r.n - 1) + cy(w)) / r.n; } else rows.push({ nr:null, y:cy(w), conf:0, w:null, derived:true, n:1 }); });
+    return rows;
+  }
+
+  /* ---------- Stolpci ---------- */
+  function startClusters(rowWords, mh, nRows){
+    const xs = [];
+    rowWords.forEach(ws => { const s = ws.slice().sort((a, b) => a.x0 - b.x0); s.forEach((w, i) => { if (i === 0 || w.x0 - s[i - 1].x1 > mh * 1.4) xs.push(w.x0); }); });
+    xs.sort((a, b) => a - b);
+    const cl = []; xs.forEach(x => { const c = cl[cl.length - 1]; if (c && x - c.last <= mh * 1.2){ c.v.push(x); c.last = x; } else cl.push({ v:[x], last:x }); });
+    return cl.filter(c => c.v.length >= Math.max(3, nRows * 0.25)).map(c => med(c.v)).sort((a, b) => a - b);
+  }
+
+  /* glava: kratke besede (»Do«) OCR pogosto zgreši → manjkajoči stolpec dopolnimo iz poravnave besed v vrsticah */
+  const COL_ORDER = ['nr', 'name', 'from', 'to', 'time', 'pick', 'veh', 'note'];
+  function repairCols(cols, edges, mh){
+    const free = edges.filter(e => !cols.some(k => Math.abs(k.x0 - e) < mh * 1.8));
+    COL_ORDER.forEach((key, oi) => {
+      if (cols.some(c => c.key === key)) return;
+      const prev = cols.filter(c => COL_ORDER.indexOf(c.key) < oi).sort((a, b) => b.x0 - a.x0)[0], next = cols.filter(c => COL_ORDER.indexOf(c.key) > oi).sort((a, b) => a.x0 - b.x0)[0];
+      if (!prev || !next) return;
+      const cand = free.find(e => e > prev.x0 + mh * 2 && e < next.x0 - mh * 2);
+      if (cand != null){ cols.push({ key, x0:cand, inferred:true }); free.splice(free.indexOf(cand), 1); }
+    });
+    return cols.sort((a, b) => a.x0 - b.x0);
+  }
+
+  /* ---------- Polja ---------- */
+  const RE_TIME = /^(\d{1,2})\s*[:.,;h]\s*(\d{2})$/;
+  const timeLike = t => { const s = fixNum(T_(t).trim()); return RE_TIME.test(s) || /^\d{3,4}$/.test(s) || /^(dop|pop)\.?$/i.test(T_(t).trim()); };
+  function parseTime(text){
+    const raw = T_(text).trim(); if (!raw) return { v:'', dia:'' };
+    if (/^(dop|dopoldne|dopoldanska)\.?$/i.test(raw)) return { v:'', dia:'dop' };
+    if (/^(pop|popoldne|popoldanska)\.?$/i.test(raw)) return { v:'', dia:'pop' };
+    const s = fixNum(raw.replace(/\s+/g, '').replace(/^ob/i, ''));
+    let h, m, mm;
+    if ((mm = RE_TIME.exec(s))){ h = +mm[1]; m = +mm[2]; }
+    else if ((mm = /^(\d{1,2})[hH]?$/.exec(s))){ h = +mm[1]; m = 0; }
+    else if ((mm = /^(\d{1,2})(\d{2})$/.exec(s))){ h = +mm[1]; m = +mm[2]; }
+    else return { v:null, dia:'' };
+    if (h > 23 || m > 59) return { v:null, dia:'' };
+    return { v:pad(h) + ':' + pad(m), dia:'' };
+  }
+  const MODE_WORDS = [['leze', 'leze'], ['lezece', 'leze'], ['utila', 'utila'], ['utilo', 'utila'], ['vzorci', 'vzorci'], ['vzorec', 'vzorci'], ['vzorce', 'vzorci']];
+  function modeIn(text){
+    let mode = '', rest = [];
+    T_(text).split(/\s+/).filter(Boolean).forEach(tk => {
+      const n = ocrNorm(tk); const hit = MODE_WORDS.find(([w]) => n === w || (w.length >= 5 && sim(n, w) >= 0.8));
+      if (hit && !mode) mode = hit[1]; else rest.push(tk);
+    });
+    return { mode, rest:rest.join(' ') };
+  }
+  const nameCase = s => { const t = T_(s).trim(); return (t === t.toUpperCase() || t === t.toLowerCase()) ? t.toLowerCase().replace(/(^|[\s\-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase()) : t; };
+
+  /* znano besedišče za primerjavo (pacienti, ustanove, klinike, naselja, mesta, ulice) */
+  let _voc = null, _vocKey = '';
+  function vocab(){
+    const key = (S.places || []).length + '|' + (S.addrBook || []).length + '|' + (S.patients || []).length;
+    if (_voc && _vocKey === key) return _voc;
+    const v = [], add = (s, label, kind) => { const x = ocrNorm(s); if (x && x.length >= 2) v.push({ s:x, label, kind }); };
+    POIS.forEach(p => { add(p.n, p.n, 'ustanova'); (p.al || []).forEach(a => add(a, p.n, 'ustanova')); });
+    (S.places || []).forEach(p => { const lb = p.parent ? p.parent + ' – ' + p.n : p.n; add(p.parent + ' ' + p.n, lb, 'klinika'); (p.al || []).forEach(a => add(p.parent + ' ' + a, lb, 'klinika')); });
+    SETTLEMENTS.forEach(s => add(s.n, s.n, 'kraj')); TOWNS.forEach(s => add(s.n, s.n, 'kraj')); BREZICE_STREETS.forEach(s => add(s, s, 'ulica'));
+    _voc = v; _vocKey = key; return v;
+  }
+  /* najboljši predlogi za besedilo kraja/ustanove; naslov brez hišne številke in z njo */
+  function placeSuggest(text, max = 3){
+    const m = /^(.*?)(?:\s+(\d+\s*[a-zA-Z]?))?$/.exec(T_(text).trim()), base = (m && m[1]) || T_(text), num = (m && m[2]) || '';
+    const voc = vocab(), out = [];
+    const full = ocrNorm(text);
+    voc.forEach(e => { const sc = Math.max(sim(base, e.s), sim(text, e.s), simNS(base, e.s), simNS(text, e.s)); if (sc >= 0.74 && !(Math.abs(e.s.length - full.length) > 6 && e.s.length > 6 && full.length < 5)) out.push({ label:(e.kind === 'ulica' || e.kind === 'kraj') && num ? e.label + ' ' + num.replace(/\s+/g, '') : e.label, score:sc, kind:e.kind }); });
+    const seen = new Set();
+    return out.sort((a, b) => b.score - a.score).filter(o => !seen.has(o.label) && seen.add(o.label)).slice(0, max);
+  }
+  function patientSuggest(name, max = 3){
+    const out = [];
+    (S.patients || []).forEach(p => { const sc = simName(name, p.name); if (sc >= 0.68) out.push({ p, score:sc }); });
+    return out.sort((a, b) => b.score - a.score).slice(0, max);
+  }
+
+  const LV = { ok:0, chk:1, bad:2 };
+  const worst = (a, b) => (LV[b] > LV[a] ? b : a);
+
+  /* ---------- Ocena polj ---------- */
+  function judgeName(cell, row, o){
+    const text = cell.text, f = { v:text, lvl:'ok', why:[], sug:[], pid:'' };
+    if (!text){ f.lvl = row.mode === 'vzorci' ? 'ok' : 'bad'; if (f.lvl === 'bad') f.why.push('ime manjka ali ni berljivo'); return f; }
+    f.v = nameCase(text.replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2'));
+    const sg = patientSuggest(f.v);
+    const top = sg[0], second = sg[1];
+    if (top && top.score >= 0.88 && (!second || top.score - second.score >= 0.06)){ f.v = top.p.name; f.pid = top.p.id; f.why.push(`v bazi pacientov (${Math.round(top.score * 100)} %)`); if (cell.conf < 40) { f.lvl = 'chk'; f.why.push('slaba razpoznava, preveri ime'); } return f; }
+    if (sg.length){ f.lvl = 'chk'; f.sug = sg.map(x => ({ label:x.p.name, pid:x.p.id, score:x.score })); f.why.push('podobno imenu v bazi: izberi ali popravi'); return f; }
+    const toks = f.v.split(/\s+/).filter(t => /\p{L}{2,}/u.test(t));
+    if (cell.conf >= 65 && toks.length >= 2){ f.lvl = 'chk'; f.why.push('pacienta ni v bazi (nov pacient?): preveri črkovanje'); }
+    else { f.lvl = 'bad'; f.why.push(cell.conf < 65 ? `slabo berljivo (${cell.conf} %)` : 'ime ni popolno'); }
+    return f;
+  }
+  function judgePlace(cell, side, row){
+    const text = cell.text, f = { v:text, lvl:'ok', why:[], sug:[] };
+    if (!text){ f.lvl = row.mode === 'vzorci' && side === 'from' ? 'ok' : 'bad'; if (f.lvl === 'bad') f.why.push(side === 'from' ? 'naslov OD manjka' : 'cilj DO manjka'); return f; }
+    if (/^doma\.?$/i.test(text)) { f.v = 'Doma'; return f; }
+    const fx = NSCAN.fixDigits(text);
+    let g = null; try { g = geo(fx); } catch (e) { g = null; }
+    if (g && g.kind !== 'neznano'){
+      f.v = fx;
+      f.why.push(g.kind === 'poi' ? 'znana ustanova' : g.kind === 'addr' ? 'znan naslov' : 'znan kraj');
+      if (cell.conf < 45){ f.lvl = 'chk'; f.why.push(`slaba razpoznava (${cell.conf} %)`); }
+      else if (g.kind !== 'poi' && g.kind !== 'addr' && cell.conf < 60){ f.lvl = 'chk'; f.why.push(`razpoznava ${cell.conf} %`); }
+      return f;
+    }
+    f.v = fx;
+    const ps = placeSuggest(fx);
+    f.sug = ps.map(x => ({ label:x.label, score:x.score }));
+    if (ps[0] && ps[0].score >= 0.94 && (ps[0].kind === 'ustanova' || ps[0].kind === 'klinika') && (!ps[1] || ps[0].score - ps[1].score >= 0.08) && cell.conf >= 50){
+      f.v = ps[0].label; f.why.push('prepoznano kot ' + ps[0].label); f.sug = []; return f;
+    }
+    if (f.sug.length){ f.lvl = 'chk'; f.why.push('ni znano; morda je mišljeno ponujeno'); }
+    else if (cell.conf >= 70){ f.lvl = 'chk'; f.why.push('kraja ali ustanove ne prepoznam (zunaj Občine Brežice?)'); }
+    else { f.lvl = 'bad'; f.why.push(`neberljivo (${cell.conf} %)`); }
+    return f;
+  }
+  function judgeTime(cell, row){
+    const text = cell.text, f = { v:'', lvl:'ok', why:[], sug:[], dia:'' };
+    const t = parseTime(text);
+    if (t.dia){ f.dia = t.dia; f.why.push('dializa ' + (t.dia === 'pop' ? 'popoldne' : 'dopoldne')); return f; }
+    if (!text){ f.lvl = row.dia || row.mode === 'vzorci' ? 'ok' : 'chk'; if (f.lvl === 'chk') f.why.push('ure ni'); return f; }
+    if (t.v == null){ f.v = text; f.lvl = 'bad'; f.why.push('ure ne razberem'); return f; }
+    f.v = t.v; const h = +t.v.slice(0, 2), m = +t.v.slice(3);
+    if (h < 5 || h > 21){ f.lvl = 'chk'; f.why.push('nenavadna ura'); }
+    else if (cell.conf < 55){ f.lvl = 'chk'; f.why.push(`slaba razpoznava (${cell.conf} %)`); }
+    else if (m % 5 !== 0){ f.lvl = 'chk'; f.why.push('nenavadne minute'); }
+    return f;
+  }
+
+  /* ---------- Glavni razčlenjevalec ---------- */
+  function parse(words, W, H, opt = {}){
+    const ws = cleanWords(words);
+    const out = { rows:[], date:null, header:false, cols:[], stats:{ ok:0, chk:0, bad:0, empty:0 }, notes:[], words:ws.length };
+    if (ws.length < 4){ out.notes.push('Na sliki skoraj ni prebranega besedila.'); return out; }
+    const mh = Math.max(6, med(ws.map(w => w.y1 - w.y0)));
+    const box = { x0:Math.min(...ws.map(w => w.x0)), y0:Math.min(...ws.map(w => w.y0)), x1:Math.max(...ws.map(w => w.x1)), y1:Math.max(...ws.map(w => w.y1)) };
+    const head = findHeader(ws, mh); out.header = !!head;
+    let rows = findRows(ws, mh, head, box), numbered = rows.length >= 2;
+    if (numbered) rows = fillRows(rows);
+    else { rows = lineRows(ws, mh, head ? head.y1 : box.y0); out.notes.push('Številk polj (1–24) ni prepoznati: vrstice so ugotovljene po vrstah besedila, preveri številke.'); }
+    if (!rows.length){ out.notes.push('Vrstic prevozov ni mogoče ugotoviti.'); return out; }
+    /* meje vrstic */
+    const pitch = rows.length > 1 ? med(rows.slice(1).map((r, i) => r.y - rows[i].y)) : mh * 2.5;
+    /* meja vrstice: pri oštevilčenih poljih tik nad številko naslednjega polja (številka je v zgornjem delu polja, daljše besedilo se lahko prelomi v več vrstic);
+       brez številk: sredina med vrsticami besedila */
+    const topOf = r => r.w ? r.w.y0 - mh * 0.9 : r.y - mh * 1.4;
+    rows.forEach((r, i) => {
+      if (numbered){ r.y0 = topOf(r); r.y1 = i < rows.length - 1 ? topOf(rows[i + 1]) : r.y + pitch * 2.2; }
+      else { r.y0 = i ? (rows[i - 1].y + r.y) / 2 : r.y - pitch * 0.55; r.y1 = i < rows.length - 1 ? (r.y + rows[i + 1].y) / 2 : r.y + pitch * 0.55; }
+    });
+    const top = head ? head.y1 : rows[0].y0;
+    const body = ws.filter(w => w.y0 >= top - 1);
+    rows.forEach(r => { r.ws = body.filter(w => cy(w) >= r.y0 && cy(w) < r.y1); });
+    /* datum strani: besede nad prvo vrstico */
+    try {
+      const upper = ws.filter(w => cy(w) < (head ? head.y : rows[0].y0)).sort((a, b) => cy(a) - cy(b) || a.x0 - b.x0);
+      const txt = upper.map(w => w.t).join(' '), d = NSCAN.dates(NSCAN.fixDigits(txt)).find(x => x.y >= 2000 && x.y <= 2100);
+      if (d) out.date = { iso:d.iso, conf:Math.round(med(upper.map(w => w.c))) };
+    } catch (e) { /* brez datuma */ }
+    /* stolpci */
+    const keyOrder = ['name', 'from', 'to', 'time', 'note'];
+    let cols = null;
+    const numX = med(rows.filter(r => r.w).map(r => r.w.x0));
+    if (head){
+      cols = head.cols.map(c => ({ key:c.key, x0:c.x0 }));
+      if (!cols.some(c => c.key === 'nr')) cols.unshift({ key:'nr', x0:Math.min(numX || box.x0, box.x0) });
+      const edges = startClusters(rows.map(r => r.ws), mh, rows.length);
+      cols = repairCols(cols, edges, mh);
+      /* glavo OCR pogosto razbere slabše kot vrstice: levi rob stolpca se prilagodi najbližjemu robu, kjer res začenjajo besede */
+      cols.forEach(c => {
+        if (c.key === 'nr') return;
+        /* OCR glave pogosto izgubi prvo besedo večbesedne oznake (»IME IN PRIIMEK«): rob je zato običajno levo od zaznanega sidra */
+        const near = edges.filter(e => e >= c.x0 - mh * 4.5 && e <= c.x0 + mh * 2 && cols.every(k => k === c || Math.abs(k.x0 - e) > mh * 1.8)).sort((a, b) => Math.abs(a - c.x0) - Math.abs(b - c.x0))[0];
+        if (near != null) c.x0 = near;
+      });
+      cols.sort((a, b) => a.x0 - b.x0);
+    } else {
+      const edges = startClusters(rows.map(r => r.ws), mh, rows.length);
+      if (edges.length >= 3 && edges.length <= 10){
+        cols = edges.map((x0, i) => ({ key:'c' + i, x0 }));
+        /* prvi stolpec so številke polj, če so prisotne */
+        if (numbered && Math.abs(cols[0].x0 - numX) < mh * 2) cols[0].key = 'nr'; else if (numbered) cols.unshift({ key:'nr', x0:numX });
+        else cols.unshift({ key:'nr', x0:Math.min(...cols.map(c => c.x0)) - mh * 3 });
+        const rest = cols.filter(c => c.key !== 'nr');
+        /* stolpec ure = stolpec z največ časovnimi zapisi */
+        const share = c => { const i = cols.indexOf(c), nx = cols[i + 1] ? cols[i + 1].x0 : Infinity; let t = 0, n = 0; rows.forEach(r => { const cw = r.ws.filter(w => w.x0 >= c.x0 - mh * 0.6 && w.x0 < nx - mh * 0.6); if (cw.length){ n++; if (timeLike(cellOf(cw).text)) t++; } }); return n ? t / n : 0; };
+        const tc = rest.map(c => ({ c, s:share(c) })).sort((a, b) => b.s - a.s)[0];
+        const timeCol = tc && tc.s >= 0.4 ? tc.c : null;
+        const before = timeCol ? rest.slice(0, rest.indexOf(timeCol)) : rest.slice(0, 3), after = timeCol ? rest.slice(rest.indexOf(timeCol) + 1) : rest.slice(3);
+        before.forEach((c, i) => { c.key = before.length >= 3 ? ['name', 'from', 'to'][Math.min(i, 2)] : before.length === 2 ? ['name', 'to'][i] : 'name'; if (before.length >= 3 && i > 2) c.key = 'note'; });
+        if (timeCol) timeCol.key = 'time';
+        after.forEach(c => { c.key = 'note'; });
+        if (before.length === 2){ /* OD ali DO? po vsebini */
+          const c = before[1], i = cols.indexOf(c), nx = cols[i + 1] ? cols[i + 1].x0 : Infinity; let poi = 0, n = 0;
+          rows.forEach(r => { const cw = r.ws.filter(w => w.x0 >= c.x0 - mh * 0.6 && w.x0 < nx - mh * 0.6); if (cw.length){ n++; try { if (geo(cellOf(cw).text).kind === 'poi') poi++; } catch (e) { /* */ } } });
+          c.key = n && poi / n >= 0.5 ? 'to' : 'from';
+        }
+      } else out.notes.push('Stolpcev tabele ni mogoče zanesljivo ugotoviti: besedilo vrstice je razdeljeno po presledkih, preveri vsako polje.');
+    }
+    out.cols = cols ? cols.map(c => ({ key:c.key, x0:Math.round(c.x0) })) : [];
+    const tol = mh * 1.1;
+    const colOf = w => { let k = 0; for (let i = 0; i < cols.length; i++) if (cols[i].x0 <= w.x0 + tol) k = i; return k; };
+    rows.forEach(r => {
+      const cells = {}; let rest = [];
+      if (cols){ r.ws.forEach(w => { const c = cols[colOf(w)]; (cells[c.key] = cells[c.key] || []).push(w); }); }
+      else rest = r.ws;
+      const row = { nr:r.nr, derived:r.derived, y0:r.y0, y1:r.y1, text:cellOf(r.ws).text, raw:{}, f:{ name:'', from:'', to:'', time:'', mode:'', dia:'', note:'', pid:'' }, fl:{}, lvl:'ok', empty:false };
+      /* številka polja */
+      const nrCells = cells.nr ? cellOf(cells.nr) : { text:'', conf:0 };
+      if (r.nr == null){ const v = numVal(nrCells.text); row.nr = v && v < 61 ? v : null; }
+      const content = Object.keys(cells).filter(k => k !== 'nr' && cells[k].length);
+      if (!content.length && cols){ row.empty = true; out.stats.empty++; out.rows.push(row); return; }
+      const c = {}; ['name', 'from', 'to', 'time', 'note', 'pick', 'veh'].forEach(k => { c[k] = cells[k] ? cellOf(cells[k]) : { text:'', conf:0, min:0, n:0, ws:[] }; });
+      Object.keys(cells).forEach(k => { if (/^c\d+$/.test(k)) c.note = cellOf([...(cells.note || []), ...cells[k]]); });
+      if (!cols){ c.name = cellOf(rest); }
+      /* v stolpcu ure je lahko še kaj (npr. »10.30 leže« pri redkem stolpcu opomb): ura ostane, ostalo gre v opombo */
+      if (c.time.n > 1){
+        const ti = c.time.ws.findIndex(w => timeLike(w.t));
+        if (ti >= 0){ const rest2 = c.time.ws.filter((_, i) => i !== ti); c.time = cellOf([c.time.ws[ti]]); c.note = cellOf([...(c.note.ws || []), ...rest2]); }
+      }
+      /* način prevoza (leže, utila, vzorci) kjerkoli v vrstici */
+      let mode = '';
+      ['name', 'from', 'to', 'note'].forEach(k => { const m = modeIn(c[k].text); if (m.mode && !mode){ mode = m.mode; if (k === 'note' || k === 'to') c[k] = Object.assign({}, c[k], { text:m.rest }); } });
+      row.mode = mode; row.dia = '';
+      if (/dializ/i.test(c.to.text + ' ' + c.note.text)) row.dia = row.dia || 'pop';   // dializa: ure ni nujno, izbira dop/pop ostane dispečerju
+      const tj = judgeTime(c.time, row); row.dia = tj.dia || '';
+      if (/dializ/i.test(c.to.text + ' ' + c.note.text) && !tj.v && !tj.dia) { tj.lvl = 'ok'; tj.why = ['dializa: ura po urniku skupine']; }
+      const nj = judgeName(c.name, row), fj = judgePlace(c.from, 'from', row), dj = judgePlace(c.to, 'to', row);
+      const noteTxt = c.note.text;
+      const notej = { v:noteTxt, lvl:'ok', why:[], sug:[] };
+      if (noteTxt && c.note.conf < 45){ notej.lvl = 'chk'; notej.why.push(`opomba slabo berljiva (${c.note.conf} %)`); }
+      row.f = { name:nj.v, from:fj.v, to:dj.v, time:tj.v, mode, dia:tj.dia, note:noteTxt, pid:nj.pid };
+      row.fl = { name:nj, from:fj, to:dj, time:tj, note:notej };
+      row.raw = { name:c.name.text, from:c.from.text, to:c.to.text, time:c.time.text, note:c.note.text };
+      row.conf = { name:c.name.conf, from:c.from.conf, to:c.to.conf, time:c.time.conf, note:c.note.conf };
+      /* številka polja */
+      row.nrLvl = r.derived ? 'chk' : (nrCells.conf && nrCells.conf < 50 ? 'chk' : 'ok');
+      if (row.nr == null) row.nrLvl = 'bad';
+      let lvl = 'ok'; ['name', 'from', 'to', 'time', 'note'].forEach(k => { lvl = worst(lvl, row.fl[k].lvl); }); lvl = worst(lvl, row.nrLvl === 'bad' ? 'chk' : 'ok');
+      row.lvl = lvl;
+      /* razlog vrstice za pregled */
+      row.todo = ['name', 'from', 'to', 'time', 'note'].filter(k => row.fl[k].lvl !== 'ok');
+      out.stats[lvl]++; out.rows.push(row);
+    });
+    /* podvojene številke */
+    const cnt = {}; out.rows.forEach(r => { if (r.nr != null && !r.empty) cnt[r.nr] = (cnt[r.nr] || 0) + 1; });
+    out.rows.forEach(r => { if (r.nr != null && cnt[r.nr] > 1){ r.dupNr = true; if (r.lvl === 'ok'){ r.lvl = 'chk'; out.stats.ok--; out.stats.chk++; } } });
+    out.tbl = { x0:box.x0, x1:box.x1, y0:top, y1:box.y1 };
+    return out;
+  }
+
+  /* ---------- TSV (Tesseract) → besede ---------- */
+  function tsvWords(tsv){
+    const out = [];
+    String(tsv || '').split(/\r?\n/).forEach(l => { const c = l.split('\t'); if (c.length < 12 || c[0] !== '5') return; const x = +c[6], y = +c[7], w = +c[8], h = +c[9]; out.push({ text:c.slice(11).join('\t'), confidence:+c[10], bbox:{ x0:x, y0:y, x1:x + w, y1:y + h } }); });
+    return out;
+  }
+  const fromOcr = r => (r && r.words && r.words.length) ? r.words : tsvWords(r && r.tsv);
+
+  /* ---------- Priprava fotografije (samo v brskalniku): zasuk, kontrast, izrezi ---------- */
+  const MAX_SIDE = 2800, MAX_PAGES = 6;
+  const cv2 = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; };
+  /* naklon vrstic v stopinjah (+ = vrstice se spuščajo proti desni): največja ostrina projekcije temnih točk na navpično os */
+  function skewAngle(cv){
+    const k = Math.min(1, 700 / Math.max(cv.width, cv.height)), c = cv2(cv.width * k, cv.height * k), w = c.width, h = c.height;
+    const x = c.getContext('2d', { willReadFrequently:true }); x.drawImage(cv, 0, 0, w, h);
+    const d = x.getImageData(0, 0, w, h).data, g = new Uint8Array(w * h); let sum = 0;
+    for (let i = 0; i < w * h; i++){ g[i] = (d[i * 4] * 30 + d[i * 4 + 1] * 59 + d[i * 4 + 2] * 11) / 100 | 0; sum += g[i]; }
+    const thr = sum / (w * h) * 0.82, pts = [];
+    for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) if (g[yy * w + xx] < thr) pts.push(xx, yy);
+    if (pts.length < 300) return 0;
+    const score = a => {
+      const r = a * Math.PI / 180, s = Math.sin(r), co = Math.cos(r), off = Math.ceil(Math.abs(s) * w) + 2, bins = new Float32Array(h + off * 2 + 4);
+      for (let i = 0; i < pts.length; i += 2) bins[Math.round(pts[i + 1] * co - pts[i] * s + off)]++;
+      let sc = 0; for (let j = 1; j < bins.length; j++){ const df = bins[j] - bins[j - 1]; sc += df * df; } return sc;
+    };
+    let best = 0, bs = -1;
+    for (let a = -6; a <= 6.001; a += 0.5){ const sc = score(a); if (sc > bs){ bs = sc; best = a; } }
+    const c0 = best; for (let a = c0 - 0.5; a <= c0 + 0.501; a += 0.1){ const sc = score(a); if (sc > bs){ bs = sc; best = a; } }
+    return Math.round(best * 10) / 10;
+  }
+  function rotated(cv, deg){
+    if (Math.abs(deg) < 0.3) return cv;
+    const r = -deg * Math.PI / 180, s = Math.abs(Math.sin(r)), co = Math.abs(Math.cos(r)), w = cv.width * co + cv.height * s, h = cv.width * s + cv.height * co, c = cv2(w, h), x = c.getContext('2d');
+    x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.translate(c.width / 2, c.height / 2); x.rotate(r); x.drawImage(cv, -cv.width / 2, -cv.height / 2);
+    return c;
+  }
+  /* krajevni prag (svetloba po strani ni enakomerna: senca ob hrbtu knjige) → črno-bela slika za OCR */
+  function binarize(cv){
+    const w = cv.width, h = cv.height, x = cv.getContext('2d', { willReadFrequently:true }), im = x.getImageData(0, 0, w, h), d = im.data, n = w * h, g = new Uint8Array(n);
+    for (let i = 0; i < n; i++) g[i] = (d[i * 4] * 30 + d[i * 4 + 1] * 59 + d[i * 4 + 2] * 11) / 100 | 0;
+    const W1 = w + 1, I = new Uint32Array(W1 * (h + 1));
+    for (let yy = 0; yy < h; yy++){ let row = 0; for (let xx = 0; xx < w; xx++){ row += g[yy * w + xx]; I[(yy + 1) * W1 + xx + 1] = I[yy * W1 + xx + 1] + row; } }
+    const r = Math.max(8, Math.round(Math.min(w, h) / 45));
+    for (let yy = 0; yy < h; yy++){
+      const y0 = Math.max(0, yy - r), y1 = Math.min(h, yy + r + 1);
+      for (let xx = 0; xx < w; xx++){
+        const x0 = Math.max(0, xx - r), x1 = Math.min(w, xx + r + 1), cnt = (x1 - x0) * (y1 - y0);
+        const m = (I[y1 * W1 + x1] - I[y0 * W1 + x1] - I[y1 * W1 + x0] + I[y0 * W1 + x0]) / cnt, v = g[yy * w + xx] < m * 0.9 && g[yy * w + xx] < 215 ? 0 : 255;
+        const o = (yy * w + xx) * 4; d[o] = d[o + 1] = d[o + 2] = v;
+      }
+    }
+    /* črte tabele (dolge vodoravne in navpične črne proge) zbrišemo: motijo členitev strani pri razpoznavi */
+    const bl = new Uint8Array(n); for (let i = 0; i < n; i++) bl[i] = d[i * 4] === 0 ? 1 : 0;
+    const Lh = Math.max(40, Math.round(w * 0.035)), Lv = Math.max(40, Math.round(h * 0.02)), kill = new Uint8Array(n);
+    for (let yy = 0; yy < h; yy++){ let st = -1; for (let xx = 0; xx <= w; xx++){ const on = xx < w && bl[yy * w + xx]; if (on && st < 0) st = xx; else if (!on && st >= 0){ if (xx - st >= Lh) for (let k = st; k < xx; k++) kill[yy * w + k] = 1; st = -1; } } }
+    for (let xx = 0; xx < w; xx++){ let st = -1; for (let yy = 0; yy <= h; yy++){ const on = yy < h && bl[yy * w + xx]; if (on && st < 0) st = yy; else if (!on && st >= 0){ if (yy - st >= Lv) for (let k = st; k < yy; k++) kill[k * w + xx] = 1; st = -1; } } }
+    for (let i = 0; i < n; i++) if (kill[i]){ const o = i * 4; d[o] = d[o + 1] = d[o + 2] = 255; }
+    const c = cv2(w, h); c.getContext('2d').putImageData(im, 0, 0); return c;
+  }
+  /* datoteka → platna strani (PDF: vse strani s sliko, največ 6) */
+  async function loadPages(file){
+    const isPdf = /pdf$/i.test(file.type) || /\.pdf$/i.test(file.name || '');
+    if (!isPdf) return [await NSCAN.toCanvas({ kind:'blob', blob:file }, MAX_SIDE)];
+    const imgs = await NSCAN.pdfImages(await file.arrayBuffer());
+    if (!imgs.length) throw new Error('V tem PDF ni slike strani. Naredi fotografijo strani knjige ali izvozi stran kot sliko.');
+    const out = []; for (const im of imgs.slice(0, MAX_PAGES)) out.push(await NSCAN.toCanvas(im, MAX_SIDE)); return out;
+  }
+  async function preparePage(cv){
+    const angle = skewAngle(cv), color = rotated(cv, angle);
+    return { color, angle, png:await NSCAN.toBlob(binarize(color)) };
+  }
+  /* izrez vrstice iz fotografije (za primerjavo prebranega z originalom) */
+  function cropRow(color, row, tbl, pitch){
+    const padY = Math.max(4, pitch * 0.12), x0 = Math.max(0, tbl.x0 - 12), x1 = Math.min(color.width, tbl.x1 + 12), y0 = Math.max(0, row.y0 - padY), y1 = Math.min(color.height, row.y1 + padY);
+    const w = x1 - x0, h = y1 - y0; if (w < 10 || h < 6) return '';
+    const k = Math.min(1, 1000 / w), c = cv2(w * k, h * k); c.getContext('2d').drawImage(color, x0, y0, w, h, 0, 0, c.width, c.height);
+    try { return c.toDataURL('image/jpeg', 0.72); } catch (e) { return ''; }
+  }
+  /* cel postopek za eno ali več slik/PDF: vrne vrstice vseh strani (slika se ne shrani nikamor) */
+  async function run(files, onProgress){
+    const cfg = NSCAN.ocrCfg(), pages = []; let n = 0;
+    for (const f of files){ for (const cv of await loadPages(f)){ if (n++ >= MAX_PAGES) break; pages.push(cv); } }
+    const res = { pages:[], rows:[], date:null, notes:[], words:0 };
+    for (let i = 0; i < pages.length; i++){
+      const tag = pages.length > 1 ? `Stran ${i + 1}/${pages.length}: ` : '';
+      if (onProgress) onProgress({ stage:'prep', page:i + 1, pages:pages.length, pct:0, label:tag + 'priprava slike' });
+      const prep = await preparePage(pages[i]);
+      const r = await NSCAN.ocr(prep.png, p => { if (onProgress) onProgress({ stage:p.stage, page:i + 1, pages:pages.length, pct:p.pct || 0, label:tag + (p.stage || '') }); }, cfg, { words:true, psm:cfg.bookPsm || '4' });
+      const words = fromOcr(r), ps = parse(words, prep.color.width, prep.color.height);
+      const pitch = ps.rows.length > 1 ? med(ps.rows.slice(1).map((x, j) => (x.y0 + x.y1) / 2 - (ps.rows[j].y0 + ps.rows[j].y1) / 2)) : 60;
+      ps.rows.forEach(row => { row.page = i + 1; if (!row.empty) row.crop = cropRow(prep.color, row, ps.tbl, Math.abs(pitch)); });
+      res.pages.push({ w:prep.color.width, h:prep.color.height, angle:prep.angle, header:ps.header, notes:ps.notes, words:ps.words });
+      ps.notes.forEach(t => res.notes.push(tag + t)); res.words += ps.words;
+      if (!res.date && ps.date) res.date = ps.date;
+      ps.rows.forEach(row => res.rows.push(row));
+    }
+    res.rows.forEach((r, i) => { r.key = 'b' + i; });
+    res.rows.sort((a, b) => (a.nr ?? 999) - (b.nr ?? 999) || a.page - b.page || a.y0 - b.y0);
+    const seen = {}; res.rows.forEach(r => { if (!r.empty && r.nr != null){ (seen[r.nr] = seen[r.nr] || []).push(r); } });
+    Object.values(seen).forEach(a => { if (a.length > 1) a.forEach(r => { r.dupNr = true; if (r.lvl === 'ok') r.lvl = 'chk'; }); });
+    res.stats = { ok:0, chk:0, bad:0, empty:0 }; res.rows.forEach(r => { res.stats[r.empty ? 'empty' : r.lvl]++; });
+    return res;
+  }
+
+  /* ---------- Iz vrstice v prevoz ---------- */
+  const FIELD_LABEL = { name:'ime', from:'od', to:'do', time:'ura', note:'opomba' };
+  const chkText = row => (row.todo || []).map(k => FIELD_LABEL[k]).join(', ');
+
+  return { parse, cleanWords, cellOf, ed, sim, simNS, simName, ocrNorm, parseTime, placeSuggest, patientSuggest, vocab, chkText, FIELD_LABEL, LV, headKey, tsvWords, fromOcr, skewAngle, rotated, binarize, loadPages, preparePage, cropRow, run };
+})();
+
+/* =====================================================================
    ZASLONI
    ===================================================================== */
 const UI = { copy:null, view:'knjiga', month:null, date:null, dDate:null, lDate:null, cDate:null, filter:'vsi', q:'', setTab:'vozila', bookRev:'', pid:'', nid:'', pf:'vsi', pq:'', modal:null, stale:false, selfTest:null, maps:{}, routeBusy:'', sect:{}, openRide:'', kmRep:false, gTest:null, kmTried:{} };
@@ -3282,7 +3958,8 @@ function renderMonth(){
       <span class="sumline"><span><b class="mono">${tr}</b> prevozov</span><span><b class="mono">${td}</b> opravljenih</span>${tcn ? `<span><b class="mono">${tcn}</b> odpovedanih</span>` : ''}</span>
       <span class="sp" style="margin-left:auto"></span>
       <button type="button" class="btn ${UI.kmRep ? 'primary' : ''}" data-act="kmReport" aria-pressed="${UI.kmRep}">Kilometrina</button>
-      <button type="button" class="btn" data-act="printMonth">Natisni</button>
+      <button type="button" class="btn" data-act="bkOpen">Natisni knjigo</button>
+      <button type="button" class="btn" data-act="bsOpen">Skeniraj stran knjige</button>
     </div>
     ${UI.kmRep ? kmReportHTML(y, m) : ''}
     <div class="days">${cards.join('')}</div>`;
@@ -3316,7 +3993,7 @@ function sumRowHTML(r, nr, a, open){
     <span class="rcheck" aria-hidden="true">${r.done ? IC.check : ''}</span></button>`;
 }
 function rowTags(r, dir){
-  return `${r.mode !== 'sede' ? `<span class="rtag m-${r.mode}">${MODES[r.mode]}</span>` : ''}${dir === 'from' ? '<span class="rtag">odvoz</span>' : ''}${+r.stay > 0 && dir === 'to' ? `<span class="rtag">čaka ${+r.stay} min</span>` : ''}${r.dia ? `<span class="rtag">dializa</span>` : ''}`;
+  return `${r.chk ? `<span class="chip warn rchk" title="Prebrano s fotografije, ni potrjeno: ${esc(r.chk)}">⚠ preveri</span>` : ''}${r.mode !== 'sede' ? `<span class="rtag m-${r.mode}">${MODES[r.mode]}</span>` : ''}${dir === 'from' ? '<span class="rtag">odvoz</span>' : ''}${+r.stay > 0 && dir === 'to' ? `<span class="rtag">čaka ${+r.stay} min</span>` : ''}${r.dia ? `<span class="rtag">dializa</span>` : ''}`;
 }
 /* Čakanje na pregled: prikaže se samo pri prevozu TJA na ustanovo/kliniko. */
 function stayInfo(r, a){
@@ -3337,6 +4014,7 @@ function boxHTML(date, r, nr, plan){
   const ptc = r.patientId ? patientById(r.patientId) : null, nlc = ptc ? ((ptc.naloge || []).find(n => n.id === r.nalogId) || activeNalog(ptc, date)) : null;
   const nt = ptc ? 'nt-' + (nlc ? nlc.vrsta : 'none') : '';
   const editor = !open ? '' : `<div class="editor">
+    ${r.chk ? `<div class="banner chkrow" role="status"><span>${IC.alert}</span><div><b>Prebrano s fotografije: preveri ${esc(r.chk)}.</b> Popravi polje in pritisni »Preverjeno«. Oznaka ⚠ se natisne tudi v knjigi, dokler ni potrjena.</div><button type="button" class="btn sm primary" data-act="chkOk">Preverjeno</button></div>` : ''}
     <div class="bgrid">
       <div class="field"><label for="n-${r.id}">Ime in priimek</label><input id="n-${r.id}" type="text" data-f="name" data-suggest="patient" value="${esc(r.name)}" autocomplete="off" placeholder="išči v bazi pacientov"></div>
       <div class="field"><label for="t-${r.id}" title="Ura preiskave. Pri odvozu iz ustanove: ura, ko je pacient pripravljen.">Ura</label><input id="t-${r.id}" type="time" data-f="time" value="${esc(r.time)}"></div>
@@ -4328,6 +5006,8 @@ function renderModal(){
   if (m.type === 'pick'){ renderPick(host, m); return; }
   if (m.type === 'nscan'){ renderScan(host, m); return; }
   if (m.type === 'nprint'){ renderNPrint(host, m); return; }
+  if (m.type === 'bprint'){ renderBPrint(host, m); return; }
+  if (m.type === 'bscan'){ renderBScan(host, m); return; }
   delete host.dataset.pk;
   const v = m.variants[m.idx], lines = v.text.split('\n');
   host.hidden = false;
@@ -5315,6 +5995,341 @@ const MAP = (() => {
 })();
 
 /* =====================================================================
+   VMESNIK: tisk knjige za mesec (pogovorno okno) in skeniranje strani papirne knjige (pregled z označbami nejasnega)
+   ===================================================================== */
+
+/* ---------- Tisk knjige za mesec ---------- */
+function bkOpen(){
+  const { y, m } = UI.month;
+  UI.modal = { type:'bprint', y, m, o:BOOK.load(), b:null, wait:false, tries:0, err:'', t:0 };
+  bkEnsure(UI.modal); renderModal(); bkBuildSoon(UI.modal, 30);
+}
+function bkEnsure(m){
+  const a = `${m.y}-${pad(m.m + 1)}-01`, b = `${m.y}-${pad(m.m + 1)}-${pad(daysInMonth(m.y, m.m))}`;
+  try { ensureRange(a, b); } catch (e) { /* lokalni način */ }
+}
+function bkBuildSoon(m, delay){
+  clearTimeout(m.t); m.b = null;
+  m.t = setTimeout(() => {
+    if (UI.modal !== m) return;
+    if (!BOOK.monthReady(m.y, m.m)){
+      m.tries++; m.wait = m.tries < 20; if (!m.wait) m.err = 'Podatkov za ta mesec ni mogoče naložiti (preveri povezavo).';
+      renderModal(); if (m.wait) m.t = setTimeout(() => bkBuildSoon(m, 0), 1200); return;
+    }
+    m.wait = false; m.err = '';
+    try { m.b = BOOK.build(m.y, m.m, m.o); } catch (e) { m.err = 'Knjige ni mogoče sestaviti: ' + String(e && e.message || e); }
+    if (UI.modal === m) renderModal();
+  }, delay);
+}
+function renderBPrint(host, m){
+  host.hidden = false; delete host.dataset.pk;
+  const o = m.o, b = m.b;
+  const chk = (k, label, hint) => `<label class="row bk-opt" style="gap:8px;flex-wrap:nowrap;align-items:flex-start"><input type="checkbox" data-bk="${k}" ${o[k] ? 'checked' : ''}><span><b>${label}</b>${hint ? `<span class="hint" style="display:block">${hint}</span>` : ''}</span></label>`;
+  const info = m.err ? `<div class="banner bad"><span>${IC.alert}</span><div>${esc(m.err)}</div></div>`
+    : m.wait ? '<div class="row" style="gap:8px"><span class="spin" aria-hidden="true"></span><span role="status">Podatki za ta mesec se nalagajo …</span></div>'
+    : !b ? '<div class="row" style="gap:8px"><span class="spin" aria-hidden="true"></span><span role="status">Sestavljam knjigo …</span></div>'
+    : `<div class="banner"><span>${IC.info}</span><div role="status"><b>${b.pages}</b> strani${o.duplex ? ` (<b>${b.sheets}</b> listov, obojestransko)` : ''} · ${b.days} dni · <b>${b.rides}</b> prevozov${b.canc ? `, ${b.canc} odpovedanih` : ''}.</div></div>`;
+  host.innerHTML = `<div class="modal-back" data-act="closeModal"></div><div class="modal modal-wide bprint" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="modal-head"><h3 id="mTitle">Natisni knjigo meseca</h3><button type="button" class="icon-btn" data-act="closeModal" aria-label="Zapri">${IC.x}</button></div>
+    <div class="stack" style="gap:12px">
+      <div class="field"><label for="bk-ym">Mesec</label><input id="bk-ym" type="month" data-bk="ym" value="${m.y}-${pad(m.m + 1)}" style="max-width:220px"></div>
+      <div class="stack" style="gap:8px">
+        ${chk('front', 'Naslovnica in kazalo', 'prva stran: naslovnica, druga: kazalo z datumi in številkami strani')}
+        ${chk('duplex', 'Obojestransko, vsak dan na nov list', 'dan se začne na desni strani; zadnja stran dneva je črtana stran za opombe; rob za vezavo se menja po straneh')}
+        ${chk('summary', 'Mesečni povzetek na koncu', 'število prevozov, kilometrina in prevozi po vozilih, podpis')}
+        ${chk('skipEmpty', 'Izpusti dneve brez vpisov', 'privzeto so v knjigi vsi dnevi meseca, tudi prazni')}
+        ${chk('km', 'Stolpec »Km« pri prevozih', 'ga v papirni knjigi ni; kilometrina OD→DO po cestah')}
+        <div class="field" style="max-width:220px"><label for="bk-gut">Rob za vezavo (mm)</label><input id="bk-gut" type="number" min="0" max="30" step="1" data-bk="gut" value="${o.gut}" inputmode="numeric"></div>
+      </div>
+      ${info}
+      <p class="hint" style="margin:0">Tiskalnik: papir <b>A4 pokončno</b>, merilo <b>100 %</b> (ne »prilagodi strani«), brez glave in noge. Obojestransko: obrni ob <b>dolgem robu</b>. V pogovornem oknu tiskanja lahko izbereš tudi »Shrani kot PDF«. Strani so oštevilčene in v kazalu.</p>
+      <p class="hint" style="margin:0">Opravljeni prevozi imajo dejansko uro pobiranja, vozilo in ime tistega, ki je prevoz opravil (✓), če je to vpisano. Prevozi z oznako ⚠ so bili prebrani s fotografije in še niso potrjeni.</p>
+      <div class="row" style="justify-content:space-between;flex-wrap:wrap"><button type="button" class="btn" data-act="bkList" title="Starejši, krajši izpis: ena tabela po dnevih, A4 ležeče">Samo seznam (ležeče)</button>
+        <span class="row"><button type="button" class="btn" data-act="closeModal">Zapri</button><button type="button" class="btn primary" data-act="bkPrint" ${(b && !m.wait) ? '' : 'disabled'}>Natisni knjigo</button></span></div>
+    </div></div>`;
+}
+function bkPrint(){
+  const m = UI.modal; if (!m || m.type !== 'bprint') return;
+  if (!BOOK.monthReady(m.y, m.m)){ m.err = 'Podatki za ta mesec se še nalagajo. Počakaj trenutek.'; renderModal(); return; }
+  BOOK.store(m.o);
+  let b; try { b = BOOK.build(m.y, m.m, m.o); } catch (e) { m.err = 'Knjige ni mogoče sestaviti: ' + String(e && e.message || e); renderModal(); return; }
+  BOOK.print(m.y, m.m, m.o, b);
+}
+if (typeof document !== 'undefined' && document.addEventListener){
+  document.addEventListener('change', e => {
+    const t = e.target, m = UI.modal; if (!t || !m || m.type !== 'bprint' || !t.dataset || t.dataset.bk === undefined) return;
+    const k = t.dataset.bk;
+    if (k === 'ym'){
+      const mm = /^(\d{4})-(\d{2})$/.exec(t.value); if (!mm) return;
+      m.y = +mm[1]; m.m = +mm[2] - 1; m.tries = 0; bkEnsure(m);
+    } else if (k === 'gut') m.o.gut = t.value;
+    else m.o[k] = t.checked;
+    m.o = BOOK.opts(m.o); BOOK.store(m.o);
+    renderModal(); bkBuildSoon(m, 30);
+  });
+}
+
+/* ---------- Skeniranje strani papirne knjige ----------
+   Fotografija → branje v napravi (BSCAN) → pregled vsake vrstice s sliko izreza in označbami:
+   ✔ zeleno = prebrano zanesljivo, ⚠ rumeno = preveri, ✖ rdeče = popravi. Karkoli ostane nepotrjeno, se vpiše z oznako ⚠ (ride.chk),
+   ki ostane vidna v dnevu, v opozorilih in v natisnjeni knjigi, dokler dispečer ne pritisne »Preverjeno«. Slika in besedilo se ne shranita. */
+const BS_LABEL = { ok:'prebrano', chk:'preveri', bad:'popravi' };
+const BS_SYM = { ok:'✔', chk:'⚠', bad:'✖' };
+const BS_FIELDS = [['name', 'Ime in priimek', 'text', 'bs-c4'], ['from', 'Od', 'text', 'bs-c4'], ['to', 'Do', 'text', 'bs-c4'], ['time', 'Ura', 'text', 'bs-c2']];
+const bsWorst = (a, b) => (BSCAN.LV[b] > BSCAN.LV[a] ? b : a);
+const bsNr = row => { const n = parseInt(String(row.nrEdit == null ? '' : row.nrEdit).trim(), 10); return n >= 1 && n <= 60 ? n : null; };
+const bsDateOk = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && !isNaN(new Date(d + 'T12:00:00'));
+function bsOpen(){
+  UI.modal = { type:'bscan', step:'in', busy:'', err:'', date:(UI.view === 'dan' && UI.date) || '', dateSrc:(UI.view === 'dan' && UI.date) ? 'user' : '', dateTouched:false, rows:[], notes:[], only:false, done:null, doneTouched:false, pages:0, words:0, empties:0, jumpKey:'' };
+  renderModal();
+}
+/* raven polja po popravkih dispečerja: urejeno polje velja za pregledano, če ni prazno (ura: veljavna) */
+function bsLvl(row, k){
+  const fl = row.fl[k]; if (!fl) return 'ok';
+  if (!row.touched[k]) return fl.lvl;
+  const v = String(row.f[k] || '').trim();
+  if (k === 'time') return v ? (BSCAN.parseTime(v).v ? 'ok' : 'bad') : ((row.f.dia || row.f.mode === 'vzorci') ? 'ok' : 'chk');
+  if (k === 'note') return 'ok';
+  if (k === 'from' && row.f.mode === 'vzorci') return 'ok';
+  return v ? 'ok' : 'bad';
+}
+function bsNrLvl(m, row){
+  const n = bsNr(row); if (n == null) return 'bad';
+  const dup = m.rows.some(x => x !== row && x.on && bsNr(x) === n);
+  if (row.touched.nr) return dup ? 'chk' : 'ok';
+  return dup || row.nrLvl === 'chk' ? 'chk' : 'ok';
+}
+function bsRowLvl(m, row){
+  let l = 'ok'; ['name', 'from', 'to', 'time', 'note'].forEach(k => { l = bsWorst(l, bsLvl(row, k)); });
+  const nl = bsNrLvl(m, row); if (nl !== 'ok') l = bsWorst(l, 'chk');
+  return l;
+}
+function bsTodo(m, row){
+  const t = ['name', 'from', 'to', 'time', 'note'].filter(k => bsLvl(row, k) !== 'ok').map(k => BSCAN.FIELD_LABEL[k]);
+  if (bsNrLvl(m, row) !== 'ok') t.push('št. polja');
+  return t.join(', ');
+}
+function bsReason(row, k){
+  const fl = row.fl[k], l = bsLvl(row, k);
+  if (l === 'ok') return row.touched[k] && fl && fl.lvl !== 'ok' ? '✔ popravljeno' : ((fl && fl.why && fl.why[0] && /prepoznano kot/.test(fl.why[0])) ? fl.why[0] : '');
+  if (row.touched[k]) return k === 'time' ? 'ure ne razberem: vpiši npr. 8:30' : 'polje je prazno';
+  const why = (fl && fl.why || []).join('; ');
+  return (BS_SYM[l] + ' ') + (why || (l === 'bad' ? 'ni prebrano' : 'preveri s sliko'));
+}
+function bsStats(m){
+  const s = { ok:0, chk:0, bad:0, on:0, flagged:0 };
+  m.rows.forEach(r => { const l = bsRowLvl(m, r); s[l]++; if (r.on){ s.on++; if (l !== 'ok') s.flagged++; } });
+  return s;
+}
+function bsFieldHTML(m, row, k, label, cls){
+  const id = `bs-${row.key}-${k}`, l = bsLvl(row, k), why = bsReason(row, k), sug = (row.fl[k].sug || []).slice(0, 3);
+  const chips = (l !== 'ok' && !row.touched[k]) ? sug.map((s, i) => `<button type="button" class="chip toggle bs-sug" data-act="bsSug" data-k="${row.key}|${k}|${i}">${esc(s.label)}</button>`).join('') : '';
+  return `<div class="field bs-f ${cls || ''}" data-lv="${l}" data-bsf="${k}"><label for="${id}">${esc(label)}</label>
+    <input id="${id}" type="text" data-bs="f" data-key="${row.key}" data-k="${k}" value="${esc(row.f[k] || '')}" autocomplete="off" ${k === 'time' ? 'inputmode="numeric" maxlength="8" placeholder="08:00"' : ''} ${l === 'bad' ? 'aria-invalid="true"' : ''} aria-describedby="${id}-w">
+    <div class="bs-reason" id="${id}-w" role="note">${esc(why)}</div><div class="bs-sugs">${chips}</div></div>`;
+}
+function bsRowHTML(m, row){
+  const l = bsRowLvl(m, row), todo = bsTodo(m, row);
+  const modeSel = `<div class="field bs-f bs-c2" data-lv="ok"><label for="bs-${row.key}-mode">Način</label><select id="bs-${row.key}-mode" data-bs="f" data-key="${row.key}" data-k="mode">${Object.entries(MODES).map(([v, t]) => `<option value="${v}" ${(row.f.mode || 'sede') === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
+  const diaSel = `<div class="field bs-f bs-c2" data-lv="ok"><label for="bs-${row.key}-dia">Dializa</label><select id="bs-${row.key}-dia" data-bs="f" data-key="${row.key}" data-k="dia"><option value="" ${!row.f.dia ? 'selected' : ''}>ne</option><option value="dop" ${row.f.dia === 'dop' ? 'selected' : ''}>dopoldne</option><option value="pop" ${row.f.dia === 'pop' ? 'selected' : ''}>popoldne</option></select></div>`;
+  return `<article class="bs-row" data-bsrow="${row.key}" data-lv="${l}" ${m.only && l === 'ok' ? 'hidden' : ''}>
+    <div class="bs-head"><label class="check bs-on"><input type="checkbox" data-bs="on" data-key="${row.key}" ${row.on ? 'checked' : ''}> Vpiši</label>
+      <label class="bs-nr" for="bs-${row.key}-nr">Polje <input id="bs-${row.key}-nr" type="number" min="1" max="60" inputmode="numeric" data-bs="nr" data-key="${row.key}" value="${esc(row.nrEdit)}" data-lv="${bsNrLvl(m, row)}"></label>
+      <span class="bs-lv" data-role="bslv"><span aria-hidden="true">${BS_SYM[l]}</span> ${BS_LABEL[l]}</span><span class="bs-todo" data-role="bstodo">${todo ? '· ' + esc(todo) : ''}</span><span class="sp"></span>
+      <button type="button" class="btn sm" data-act="bsConfirm" data-key="${row.key}" data-role="bsconf" ${l === 'ok' ? 'hidden' : ''} title="Primerjal sem s sliko: vse je prav">Vse je prav</button></div>
+    ${row.crop ? `<div class="bs-cropwrap"><img class="bs-crop" src="${row.crop}" alt="Izrez vrstice ${esc(row.nrEdit || '')} s fotografije"></div>` : ''}
+    <div class="bs-grid">${BS_FIELDS.map(([k, lb, , c]) => bsFieldHTML(m, row, k, lb, c)).join('')}${modeSel}${diaSel}
+      <div class="field bs-f bs-c6" data-lv="${bsLvl(row, 'note')}" data-bsf="note"><label for="bs-${row.key}-note">Opomba</label><input id="bs-${row.key}-note" type="text" data-bs="f" data-key="${row.key}" data-k="note" value="${esc(row.f.note || '')}" autocomplete="off"><div class="bs-reason">${esc(bsReason(row, 'note'))}</div></div></div></article>`;
+}
+function bsSumHTML(m){
+  const s = bsStats(m), bad = s.chk + s.bad;
+  const head = !m.rows.length ? '' : bad ? `<span class="bs-cnt" data-lv="ok">✔ ${s.ok} prebrano</span><span class="bs-cnt" data-lv="chk">⚠ ${s.chk} preveri</span><span class="bs-cnt" data-lv="bad">✖ ${s.bad} popravi</span>`
+    : `<span class="bs-cnt" data-lv="ok">✔ Vseh ${s.ok} vrstic je prebranih zanesljivo.</span>`;
+  return `${head}<span class="sp"></span>${bad ? `<button type="button" class="btn sm primary" data-act="bsJump">Skoči na naslednje nejasno</button>` : ''}
+    <label class="check"><input type="checkbox" data-bs="only" ${m.only ? 'checked' : ''}> Samo nejasno</label>`;
+}
+function bsApplyLabel(m){
+  const s = bsStats(m);
+  return `Vpiši ${s.on} ${s.on === 1 ? 'prevoz' : 'prevozov'}${bsDateOk(m.date) ? ' v ' + fmtLong(m.date) : ''}${s.flagged ? ` (${s.flagged} z oznako ⚠)` : ''}`;
+}
+function bsDateHTML(m){
+  const ok = bsDateOk(m.date), l = !ok ? 'bad' : (m.dateSrc === 'ocr' && !m.dateTouched ? 'chk' : 'ok');
+  const why = !ok ? '✖ datuma na strani ni mogoče prebrati: vpiši ga' : l === 'chk' ? '⚠ datum je prebran s fotografije: preveri, preden vpišeš' : '';
+  const have = ok ? (S.rides[m.date] || []).filter(isFilled).length : 0;
+  return `<div class="field bs-f" data-lv="${l}" data-role="bsdate" style="max-width:260px"><label for="bs-date">Datum strani</label><input id="bs-date" type="date" data-bs="date" value="${esc(m.date)}" ${l === 'bad' ? 'aria-invalid="true"' : ''}><div class="bs-reason">${esc(why)}</div></div>
+    ${have ? `<div class="banner"><span>${IC.info}</span><div>Ta dan ima že <b>${have}</b> vpisov. Vrstice se vpišejo v svoje polje; če je zasedeno, v prvo prosto. Enaki prevozi se preskočijo.</div></div>` : ''}`;
+}
+function renderBScan(host, m){
+  host.hidden = false; delete host.dataset.pk;
+  const ocrOn = NSCAN.ocrEnabled();
+  let body;
+  if (m.step === 'review'){
+    const list = m.rows.map(r => bsRowHTML(m, r)).join('');
+    body = `<div class="bs-sum" data-role="bssum" role="status">${bsSumHTML(m)}</div>
+      ${m.notes.length ? `<div class="banner" style="background:var(--warn-soft);color:var(--warn)"><span>${IC.alert}</span><div>${m.notes.map(n => esc(n)).join('<br>')}</div></div>` : ''}
+      <div class="row" style="gap:16px;align-items:flex-start;flex-wrap:wrap">${bsDateHTML(m)}
+        <label class="check" style="margin-top:22px" title="Prevozi s te strani so že narejeni (knjiga za nazaj): označijo se kot opravljeni"><input type="checkbox" data-bs="done" ${m.done ? 'checked' : ''}> Prevozi so že opravljeni</label></div>
+      <p class="hint" style="margin:0">Primerjaj vsako vrstico s sliko izreza. Rumena in rdeča polja so tista, ki jih nisem razumel: izberi predlog, popravi ali pritisni »Vse je prav«. Rdeče vrstice niso izbrane za vpis. Karkoli ostane nepotrjeno, se vpiše z oznako <b>⚠ preveri</b>, ki ostane vidna v dnevu in v natisnjeni knjigi, dokler je ne potrdiš.${m.empties ? ` · Prazne vrstice: ${m.empties}.` : ''}</p>
+      <div class="bs-list" data-role="bslist">${list || '<div class="empty-state">Na strani ni vpisanih vrstic.</div>'}</div>
+      ${m.err ? `<div class="banner bad"><span>${IC.alert}</span><div>${esc(m.err)}</div></div>` : ''}
+      <div class="row bs-foot" style="justify-content:space-between;flex-wrap:wrap"><button type="button" class="btn" data-act="bsBack">Nazaj (nova fotografija)</button>
+        <span class="row"><button type="button" class="btn" data-act="closeModal">Prekliči</button><button type="button" class="btn primary" data-act="bsApply" data-role="bsapply">${esc(bsApplyLabel(m))}</button></span></div>`;
+  } else {
+    body = `<div class="banner"><span>${IC.info}</span><div>Fotografiraj stran papirne knjige (ali izberi PDF-sken). Aplikacija prebere številke polj, imena, naslove in ure ter jih postavi v dan. <b>Fotografija se ne pošlje nikamor in se ne shrani</b>; branje poteka v tej napravi (prvič se prenese program za razpoznavo besedila).</div></div>
+      <div class="stack" style="gap:8px"><div class="row" style="gap:8px;flex-wrap:wrap"><label class="btn primary" for="bsFile" style="cursor:pointer">${ocrOn ? 'Izberi fotografije ali PDF' : 'Razpoznava izklopljena'}</label>
+        <label class="btn" for="bsCam" style="cursor:pointer">Fotografiraj</label></div>
+        <input id="bsFile" type="file" accept="image/*,application/pdf,.pdf" multiple style="position:absolute;opacity:0;width:1px;height:1px" ${m.busy ? 'disabled' : ''}>
+        <input id="bsCam" type="file" accept="image/*" capture="environment" style="position:absolute;opacity:0;width:1px;height:1px" ${m.busy ? 'disabled' : ''}>
+        ${m.busy ? `<div class="row" style="gap:8px"><span class="spin" aria-hidden="true"></span><span data-role="bsbusy" role="status">${esc(m.busy)}</span></div>` : ''}</div>
+      <ul class="hint bs-tips" style="margin:0;padding-left:18px">
+        <li>Knjigo položi ravno, v celoti v kader, brez sence in bliska; telefon drži vzporedno z listom.</li>
+        <li>Ena fotografija = ena stran. Za dan z več stranmi izberi več fotografij naenkrat (isti dan).</li>
+        <li><b>Tiskano ali lepo berljivo pisavo</b> aplikacija prebere dobro. <b>Hitro ročno pisavo pogosto napačno</b>: takšna polja dobijo oznako ⚠ ali ✖ in jih preveriš s sliko vrstice. Nič se ne vpiše neopazno.</li>
+      </ul>
+      ${m.err ? `<div class="banner bad"><span>${IC.alert}</span><div>${esc(m.err)}</div></div>` : ''}
+      <div class="row" style="justify-content:flex-end"><button type="button" class="btn" data-act="closeModal">Zapri</button></div>`;
+  }
+  host.innerHTML = `<div class="modal-back" data-act="closeModal"></div><div class="modal modal-wide bscan" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="modal-head"><h3 id="mTitle">Skeniraj stran knjige</h3><button type="button" class="icon-btn" data-act="closeModal" aria-label="Zapri">${IC.x}</button></div><div class="stack" style="gap:12px">${body}</div></div>`;
+}
+async function bsFiles(list){
+  const m = UI.modal; if (!m || m.type !== 'bscan') return;
+  const files = Array.from(list || []).filter(Boolean); if (!files.length) return;
+  if (!NSCAN.ocrEnabled()){ m.err = 'Razpoznava besedila iz slike ni vklopljena (config.js → ocr).'; renderModal(); return; }
+  m.err = ''; m.busy = 'Pripravljam sliko …'; renderModal();
+  try {
+    const res = await BSCAN.run(files, p => {
+      const el = document.querySelector('[data-role=bsbusy]'); if (!el) return;
+      const pc = p.pct != null && isFinite(p.pct) && p.pct > 0 ? ' ' + Math.round(p.pct * 100) + ' %' : '';
+      el.textContent = (p.page && p.pages > 1 ? `Stran ${p.page}/${p.pages}: ` : '') + (p.stage === 'lib' ? 'nalagam razpoznavo besedila (prvič lahko traja minuto ali dve) …' : p.stage === 'prep' ? 'pripravljam sliko …' : 'berem besedilo …' + pc);
+    });
+    if (UI.modal !== m) return;
+    bsLoad(m, res);
+  } catch (e) { m.err = String(e && e.message || e); }
+  m.busy = '';
+  if (UI.modal === m) renderModal();
+}
+function bsLoad(m, res){
+  const rows = res.rows.filter(r => !r.empty);
+  m.rows = rows.map(r => Object.assign({}, r, { f:Object.assign({}, r.f), touched:{}, on:r.lvl !== 'bad', nrEdit:r.nr == null ? '' : String(r.nr) }));
+  m.empties = res.rows.length - rows.length; m.notes = res.notes || []; m.pages = res.pages.length; m.words = res.words;
+  if (res.date && res.date.iso){ m.date = res.date.iso; m.dateSrc = 'ocr'; m.dateTouched = false; }
+  if (!rows.length){ m.step = 'in'; m.err = 'Na sliki nisem našel nobene vpisane vrstice. Poskusi znova: stran naj bo ravna, v celoti v kadru in dobro osvetljena.'; return; }
+  if (!m.doneTouched) m.done = bsDateOk(m.date) && m.date < todayStr();
+  m.step = 'review'; m.err = ''; m.jumpKey = '';
+}
+/* osvežitev prikaza brez ponovnega izrisa (ohrani fokus in drsenje) */
+function bsPaintRow(m, row){
+  const card = document.querySelector(`[data-bsrow="${row.key}"]`); if (!card) return;
+  const l = bsRowLvl(m, row); card.dataset.lv = l;
+  const lv = card.querySelector('[data-role=bslv]'); if (lv) lv.innerHTML = `<span aria-hidden="true">${BS_SYM[l]}</span> ${BS_LABEL[l]}`;
+  const td = card.querySelector('[data-role=bstodo]'); if (td){ const t = bsTodo(m, row); td.textContent = t ? '· ' + t : ''; }
+  const cf = card.querySelector('[data-role=bsconf]'); if (cf) cf.hidden = l === 'ok';
+  const nr = card.querySelector('[data-bs=nr]'); if (nr) nr.dataset.lv = bsNrLvl(m, row);
+  card.querySelectorAll('.bs-f[data-bsf]').forEach(w => {
+    const k = w.dataset.bsf, lk = bsLvl(row, k); w.dataset.lv = lk;
+    const r = w.querySelector('.bs-reason'); if (r) r.textContent = bsReason(row, k);
+    const inp = w.querySelector('input'); if (inp){ if (lk === 'bad') inp.setAttribute('aria-invalid', 'true'); else inp.removeAttribute('aria-invalid'); }
+    const sg = w.querySelector('.bs-sugs'); if (sg && (lk === 'ok' || row.touched[k])) sg.innerHTML = '';
+  });
+}
+function bsPaintAll(m){
+  m.rows.forEach(r => bsPaintRow(m, r));
+  const sm = document.querySelector('[data-role=bssum]'); if (sm) sm.innerHTML = bsSumHTML(m);
+  const ap = document.querySelector('[data-role=bsapply]'); if (ap) ap.textContent = bsApplyLabel(m);
+}
+function bsPaintDate(m){
+  const w = document.querySelector('[data-role=bsdate]'); if (!w) return;
+  const wrap = document.createElement('div'); wrap.innerHTML = bsDateHTML(m);
+  const nw = wrap.querySelector('[data-role=bsdate]'); w.dataset.lv = nw.dataset.lv; w.querySelector('.bs-reason').textContent = nw.querySelector('.bs-reason').textContent;
+  const ap = document.querySelector('[data-role=bsapply]'); if (ap) ap.textContent = bsApplyLabel(m);
+  const ban = w.nextElementSibling && w.nextElementSibling.classList.contains('banner') ? w.nextElementSibling : null, nb = wrap.querySelector('.banner');
+  if (ban && !nb) ban.remove(); else if (ban && nb) ban.innerHTML = nb.innerHTML; else if (!ban && nb) w.insertAdjacentElement('afterend', nb);
+}
+function bsRow(m, key){ return m.rows.find(r => r.key === key); }
+function bsConfirm(key){
+  const m = UI.modal; if (!m || m.type !== 'bscan') return; const row = bsRow(m, key); if (!row) return;
+  ['name', 'from', 'to', 'time', 'note', 'nr'].forEach(k => { row.touched[k] = true; });
+  row.on = true; const cb = document.querySelector(`[data-bsrow="${key}"] [data-bs=on]`); if (cb) cb.checked = true;
+  bsPaintAll(m);
+}
+function bsSug(el){
+  const m = UI.modal; if (!m || m.type !== 'bscan') return; const [key, k, i] = String(el.dataset.k).split('|'), row = bsRow(m, key); if (!row) return;
+  const s = (row.fl[k].sug || [])[+i]; if (!s) return;
+  row.f[k] = s.label; row.touched[k] = true; if (k === 'name') row.f.pid = s.pid || '';
+  const inp = document.getElementById(`bs-${key}-${k}`); if (inp) inp.value = s.label;
+  bsPaintAll(m);
+}
+function bsJump(){
+  const m = UI.modal; if (!m || m.type !== 'bscan') return;
+  const all = [...document.querySelectorAll('.bs-row')];
+  const from = m.jumpKey ? all.findIndex(c => c.dataset.bsrow === m.jumpKey) + 1 : 0;
+  const next = all.slice(from).find(c => c.dataset.lv !== 'ok' && !c.hidden) || all.find(c => c.dataset.lv !== 'ok' && !c.hidden);
+  if (!next){ toast('Nič več ni označeno'); return; }
+  m.jumpKey = next.dataset.bsrow;
+  try { next.scrollIntoView({ block:'center', behavior:'smooth' }); } catch (e) { next.scrollIntoView(); }
+  next.classList.remove('bs-flash'); void next.offsetWidth; next.classList.add('bs-flash');
+  const inp = next.querySelector('.bs-f[data-lv=bad] input, .bs-f[data-lv=chk] input') || next.querySelector('input[data-bs=f]');
+  if (inp) { try { inp.focus({ preventScroll:true }); } catch (e) { inp.focus(); } }
+}
+function bsBack(){ const m = UI.modal; if (!m || m.type !== 'bscan') return; m.step = 'in'; m.rows = []; m.err = ''; m.notes = []; renderModal(); }
+function bsApply(){
+  const m = UI.modal; if (!m || m.type !== 'bscan' || m.step !== 'review') return;
+  if (!bsDateOk(m.date)){ m.err = 'Vpiši datum strani.'; renderModal(); return; }
+  const date = m.date, mm = { y:+date.slice(0, 4), m:+date.slice(5, 7) - 1 };
+  bkEnsure(mm);
+  if (!BOOK.monthReady(mm.y, mm.m)){ m.err = 'Podatki za ta mesec se še nalagajo. Počakaj trenutek in poskusi znova.'; renderModal(); return; }
+  const sel = m.rows.filter(r => r.on).sort((a, b) => (bsNr(a) == null ? 999 : bsNr(a)) - (bsNr(b) == null ? 999 : bsNr(b)));
+  if (!sel.length){ m.err = 'Ni izbranih vrstic za vpis.'; renderModal(); return; }
+  const a = ensureDay(date); let n = 0, dup = 0, moved = 0, flagged = 0; const put = [];
+  for (const row of sel){
+    const f = row.f, nr = bsNr(row), nm = String(f.name || '').trim(), fr = String(f.from || '').trim(), to = String(f.to || '').trim();
+    if (!nm && !fr && !to) continue;
+    if (a.some(x => isFilled(x) && !x.odpovedano && norm(x.name) === norm(nm) && norm(x.from) === norm(fr) && norm(x.to) === norm(to) && (x.time || '') === (f.time || ''))){ dup++; continue; }
+    let i = -1;
+    if (nr){ while (a.length < nr) a.push(blankRide()); if (!isFilled(a[nr - 1])) i = nr - 1; }
+    if (i < 0){ i = a.findIndex(x => !isFilled(x)); if (i < 0){ a.push(blankRide()); i = a.length - 1; } if (nr) moved++; }
+    const t = a[i], tm = f.time ? (BSCAN.parseTime(f.time).v || '') : '';
+    Object.assign(t, blankRide(), { id:t.id, name:nm, from:fr, to, time:tm, mode:f.mode || 'sede', dia:f.dia || '', note:f.note || '' });
+    if (t.mode === 'vzorci' && !t.name) t.name = 'Vzorci';
+    if (f.pid){ applyPatientToRide(date, t.id, f.pid, { keepMode:!!f.mode }); t.from = fr || t.from; t.to = to || t.to; t.note = f.note || ''; }
+    if (m.done){ t.done = true; t.doneAt = ''; }
+    t.chk = bsTodo(m, row); if (t.chk) flagged++;
+    put.push({ t, ok:!t.chk }); n++;
+  }
+  save();
+  put.forEach(({ t, ok }) => { try { afterAddressChange(date, t, 'to'); } catch (e) { /* kilometrina se izračuna pozneje */ } if (ok && t.from && typeof learnAddress === 'function') learnAddress(t.from); });
+  audit('knjiga.skenirano', { dan:date, n, chk:flagged, strani:m.pages });
+  UI.modal = null; renderModal(); UI.date = date;
+  toast(`Vpisanih ${n} prevozov${flagged ? ` · ${flagged} z oznako ⚠ preveri` : ''}${dup ? ` · ${dup} že vpisanih preskočenih` : ''}${moved ? ` · ${moved} v drugo polje (zasedeno)` : ''}`);
+  go('dan');
+}
+if (typeof document !== 'undefined' && document.addEventListener){
+  document.addEventListener('input', e => {
+    const t = e.target, m = UI.modal; if (!t || !m || m.type !== 'bscan' || !t.dataset) return;
+    if (t.dataset.bs === 'f'){ const row = bsRow(m, t.dataset.key); if (row){ row.f[t.dataset.k] = t.value; if (t.dataset.k === 'name') row.f.pid = ''; } }
+    else if (t.dataset.bs === 'nr'){ const row = bsRow(m, t.dataset.key); if (row) row.nrEdit = t.value; }
+  });
+  document.addEventListener('change', e => {
+    const t = e.target, m = UI.modal; if (!t || !m || m.type !== 'bscan') return;
+    if (t.id === 'bsFile' || t.id === 'bsCam'){ const fl = t.files ? Array.from(t.files) : []; t.value = ''; bsFiles(fl); return; }
+    const b = t.dataset && t.dataset.bs; if (b === undefined) return;
+    if (b === 'f'){
+      const row = bsRow(m, t.dataset.key), k = t.dataset.k; if (!row) return;
+      row.f[k] = t.value; if (k === 'name') row.f.pid = '';
+      if (k === 'time'){ const p = BSCAN.parseTime(t.value); if (p.v){ row.f.time = p.v; t.value = p.v; } else if (p.dia){ row.f.dia = p.dia; row.f.time = ''; t.value = ''; } }
+      if (['name', 'from', 'to', 'time'].includes(k)) row.touched[k] = true;
+      if (k === 'mode' && t.value === 'vzorci') row.touched.from = true;
+      bsPaintAll(m);
+    } else if (b === 'nr'){ const row = bsRow(m, t.dataset.key); if (row){ row.nrEdit = t.value; row.touched.nr = true; bsPaintAll(m); } }
+    else if (b === 'on'){ const row = bsRow(m, t.dataset.key); if (row){ row.on = t.checked; bsPaintAll(m); } }
+    else if (b === 'only'){ m.only = t.checked; renderModal(); }
+    else if (b === 'done'){ m.done = t.checked; m.doneTouched = true; }
+    else if (b === 'date'){ m.date = t.value; m.dateTouched = true; m.dateSrc = 'user'; if (!m.doneTouched) { m.done = bsDateOk(m.date) && m.date < todayStr(); const cb = document.querySelector('[data-bs=done]'); if (cb) cb.checked = m.done; } bsPaintDate(m); }
+  });
+}
+
+/* =====================================================================
    DOGODKI, PRIJAVA, ZAČETNI PODATKI, ZAGON
    ===================================================================== */
 let CREWS_PIN = [];
@@ -5461,6 +6476,16 @@ document.addEventListener('click', async e => {
     case 'monthPrev': UI.month.m--; if (UI.month.m < 0){ UI.month.m = 11; UI.month.y--; } ensureRange(`${UI.month.y}-${pad(UI.month.m + 1)}-01`, `${UI.month.y}-${pad(UI.month.m + 1)}-31`); render(); break;
     case 'monthNext': UI.month.m++; if (UI.month.m > 11){ UI.month.m = 0; UI.month.y++; } ensureRange(`${UI.month.y}-${pad(UI.month.m + 1)}-01`, `${UI.month.y}-${pad(UI.month.m + 1)}-31`); render(); break;
     case 'printMonth': printMonth(); break;
+    case 'bkOpen': bkOpen(); break;
+    case 'bsOpen': bsOpen(); break;
+    case 'bsApply': bsApply(); break;
+    case 'bsJump': bsJump(); break;
+    case 'bsBack': bsBack(); break;
+    case 'bsConfirm': bsConfirm(el.dataset.key); break;
+    case 'bsSug': bsSug(el); break;
+    case 'chkOk': { const art = el.closest('[data-ride]'); const hit = art && rideById(art.dataset.date, art.dataset.ride); if (hit){ hit.r.chk = ''; save(); audit('knjiga.preverjeno', { dan:art.dataset.date, nr:hit.nr }); rerender(); toast(`Prevoz ${hit.nr} potrjen`); } break; }
+    case 'bkPrint': bkPrint(); break;
+    case 'bkList': printMonth(); break;
     case 'monthToday': { const d = new Date(); UI.month = { y:d.getFullYear(), m:d.getMonth() }; render(); break; }
     case 'dayPrev': UI.date = addDays(UI.date, -1); ensureRange(addDays(UI.date, -1), addDays(UI.date, 1)); render(); break;
     case 'dayNext': UI.date = addDays(UI.date, 1); ensureRange(addDays(UI.date, -1), addDays(UI.date, 1)); render(); break;

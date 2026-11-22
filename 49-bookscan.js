@@ -1,0 +1,481 @@
+/* =====================================================================
+   SKENIRANJE STRANI PAPIRNE KNJIGE (fotografija strani → prevozi v dnevu)
+   Pot: fotografija → poravnava (zasuk) in izboljšava kontrasta → razpoznava besed (OCR, izolirani okvir ocr/ocr.html; vrne besede z okvirji in zanesljivostjo)
+        → vrstice (po številkah polj 1–24) in stolpci (po glavi tabele ali po poravnavi besed) → polja (ime, od, do, ura, način, opomba)
+        → primerjava z znanim (baza pacientov, ustanove, klinike, naselja, ulice) → ocena zanesljivosti vsakega polja.
+   Aplikacija NE ugiba tiho: vsako polje dobi stopnjo
+        ok   = prebrano in potrjeno z znanimi podatki (npr. ime je v bazi, cilj je znana ustanova, ura je smiselna),
+        chk  = prebrano, vendar ni potrjeno (novo ime, neznan kraj, slaba razpoznava): PREVERI,
+        bad  = neberljivo, manjka ali nesmiselno: POPRAVI.
+   Pri vsaki vrstici je v pregledu izrez fotografije, da se prebrano primerja z originalom. Nepotrjena polja ostanejo označena tudi v knjigi (r.chk), dokler jih dispečer ne potrdi.
+   Rokopis: razpoznava besedila v brskalniku (Tesseract) je dobra pri tiskanem besedilu in razločni tiskani pisavi, pri tekočem rokopisu pogosto zgreši; zato je označevanje bistveno.
+   Razčlenjevalec (parse) je čista funkcija nad besedami; slika in besedilo se NE shranita.
+   ===================================================================== */
+const BSCAN = (() => {
+  const T_ = v => String(v ?? '');
+  const N = s => norm(s);
+  const med = a => { if (!a.length) return 0; const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+
+  /* ---------- Razdalja med nizi, odporna na tipične napake OCR (0/o, 1/l, 5/s, rn/m …) ---------- */
+  const CONF = new Set(['0o', '1l', '1i', 'il', 'li', '5s', '8b', '2z', '6g', '9g', '1t', 'tl', 'ce', 'ec', 'uv', 'vu', 'nh', 'hn', 'ao', 'oa', 'eo', 'oe']);
+  const confusable = (a, b) => CONF.has(a + b) || CONF.has(b + a);
+  const ocrNorm = s => N(s).replace(/rn/g, 'm').replace(/vv/g, 'w').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  function ed(a, b){
+    const n = a.length, m = b.length; if (!n) return m; if (!m) return n;
+    let prev = Array.from({ length:m + 1 }, (_, j) => j);
+    for (let i = 1; i <= n; i++){
+      const cur = [i];
+      for (let j = 1; j <= m; j++){
+        const c = a[i - 1] === b[j - 1] ? 0 : confusable(a[i - 1], b[j - 1]) ? 0.35 : 1;
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + c);
+      }
+      prev = cur;
+    }
+    return prev[m];
+  }
+  const sim = (a, b) => { const x = ocrNorm(a), y = ocrNorm(b), L = Math.max(x.length, y.length); return L ? 1 - ed(x, y) / L : 0; };
+  const simNS = (a, b) => { const x = ocrNorm(a).replace(/ /g, ''), y = ocrNorm(b).replace(/ /g, ''), L = Math.max(x.length, y.length); return L ? 1 - ed(x, y) / L : 0; };
+  /* imena: vrstni red besed ni pomemben (»Priimek Ime« = »Ime Priimek«) */
+  const simName = (a, b) => {
+    const x = ocrNorm(a).split(' ').filter(Boolean).sort().join(' '), y = ocrNorm(b).split(' ').filter(Boolean).sort().join(' '), L = Math.max(x.length, y.length);
+    return L ? 1 - ed(x, y) / L : 0;
+  };
+
+  /* ---------- Besede ---------- */
+  const trimTok = t => T_(t).replace(/^[^\p{L}\p{N}]+/u, '').replace(/[^\p{L}\p{N}.:)]+$/u, '');
+  function cleanWords(words){
+    return (words || []).map(w => {
+      const bb = w.bbox || {}, x0 = +(w.x0 ?? bb.x0), y0 = +(w.y0 ?? bb.y0), x1 = +(w.x1 ?? bb.x1), y1 = +(w.y1 ?? bb.y1);
+      const c = +(w.conf ?? w.confidence ?? w.c);
+      return { t:trimTok(w.text ?? w.t), c:isFinite(c) ? Math.max(0, Math.min(100, c)) : 0, x0, y0, x1, y1 };
+    }).filter(w => w.t && /[\p{L}\p{N}]/u.test(w.t) && isFinite(w.x0 + w.y0 + w.x1 + w.y1) && w.x1 > w.x0 && w.y1 > w.y0);
+  }
+  const cx = w => (w.x0 + w.x1) / 2, cy = w => (w.y0 + w.y1) / 2;
+  /* besede enega polja → besedilo in zanesljivost (uteženo z dolžino besede) */
+  function cellOf(ws){
+    const s = ws.slice().sort((a, b) => (Math.abs(cy(a) - cy(b)) > Math.min(a.y1 - a.y0, b.y1 - b.y0) * 0.6) ? cy(a) - cy(b) : a.x0 - b.x0);
+    const text = s.map(w => w.t).join(' ').replace(/\s+/g, ' ').trim();
+    let sw = 0, sc = 0, mn = 100; s.forEach(w => { const l = Math.max(1, w.t.length); sw += l; sc += w.c * l; mn = Math.min(mn, w.c); });
+    return { text, conf:sw ? Math.round(sc / sw) : 0, min:s.length ? Math.round(mn) : 0, n:s.length, ws:s };
+  }
+
+  /* ---------- Poravnava številk (OCR) ---------- */
+  const DIGFIX = { O:'0', o:'0', Q:'0', D:'0', l:'1', I:'1', '|':'1', i:'1', S:'5', s:'5', B:'8', Z:'2', z:'2', g:'9' };
+  const fixNum = t => String(t).replace(/[OoQDlI|iSsBZzg]/g, c => DIGFIX[c] || c);
+  const isNumTok = t => /^[0-9OoQDlI|iSsBZz]{1,2}[.)]?$/.test(t) && /\d|[lI|O]/.test(t);
+  const numVal = t => { const v = parseInt(fixNum(String(t).replace(/[.)]$/, '')), 10); return isFinite(v) ? v : null; };
+
+  /* ---------- Glava tabele ---------- */
+  const HEAD_KEYS = [['nr', ['st', 'stev', 'zst']], ['name', ['ime', 'priimek', 'pacient', 'ime in priimek']], ['from', ['od', 'iz']], ['to', ['do', 'cilj', 'kam']], ['time', ['ura', 'cas', 'prev', 'uraprev', 'ura prevoza']], ['pick', ['pobere', 'pobira', 'pobiranje']], ['veh', ['vozilo', 'avto']], ['note', ['opomba', 'opombe', 'posebnosti']]];
+  function headKey(t){
+    const n = ocrNorm(t).replace(/ /g, ''); if (!n) return null;
+    for (const [k, list] of HEAD_KEYS) for (const h of list){ if (n === h) return k; if (h.length >= 5 && n.length >= 4 && sim(n, h) >= 0.78) return k; }
+    return null;
+  }
+  function findHeader(ws, mh){
+    const hits = ws.map(w => ({ w, k:headKey(w.t) })).filter(x => x.k);
+    if (hits.length < 3) return null;
+    const groups = [];
+    hits.sort((a, b) => cy(a.w) - cy(b.w)).forEach(h => { const g = groups.find(g => Math.abs(g.y - cy(h.w)) <= mh * 1.1); if (g){ g.items.push(h); g.y = (g.y * (g.items.length - 1) + cy(h.w)) / g.items.length; } else groups.push({ y:cy(h.w), items:[h] }); });
+    const ok = groups.filter(g => new Set(g.items.map(i => i.k).filter(k => k !== 'nr')).size >= 3).sort((a, b) => a.y - b.y)[0];
+    if (!ok) return null;
+    const cols = {};
+    ok.items.forEach(({ w, k }) => { if (!cols[k] || w.x0 < cols[k].x0) cols[k] = { key:k, x0:w.x0, x1:w.x1 }; });
+    return { y:ok.y, y1:Math.max(...ok.items.map(i => i.w.y1)), cols:Object.values(cols).sort((a, b) => a.x0 - b.x0) };
+  }
+
+  /* ---------- Vrstice po številkah polj ---------- */
+  function findRows(ws, mh, head, box){
+    const top = head ? head.y1 : box.y0 - 1, leftLimit = head ? (head.cols.find(c => c.key === 'name') || head.cols[0]).x0 - mh * 0.3 : box.x0 + (box.x1 - box.x0) * 0.14;
+    let cand = ws.filter(w => w.y0 >= top - 1 && cx(w) < leftLimit && isNumTok(w.t) && numVal(w.t) >= 1 && numVal(w.t) <= 60).sort((a, b) => cy(a) - cy(b));
+    /* najdaljše zaporedje naraščajočih številk (OCR napačno prebrane številke izpustimo) */
+    const best = [];
+    const L = cand.map(() => 1), P = cand.map(() => -1);
+    for (let i = 0; i < cand.length; i++) for (let j = 0; j < i; j++) if (numVal(cand[j].t) < numVal(cand[i].t) && L[j] + 1 > L[i]){ L[i] = L[j] + 1; P[i] = j; }
+    let bi = 0; L.forEach((v, i) => { if (v > L[bi]) bi = i; });
+    for (let i = bi; i >= 0 && cand.length; i = P[i]) best.unshift(cand[i]);
+    cand = best;
+    return cand.map(w => ({ nr:numVal(w.t), y:cy(w), conf:w.c, w, derived:false }));
+  }
+  /* manjkajoče številke izpelji iz razmika vrstic */
+  function fillRows(rows){
+    if (rows.length < 3) return rows;
+    const pitch = med(rows.slice(1).map((r, i) => (r.y - rows[i].y) / Math.max(1, r.nr - rows[i].nr)));
+    if (!(pitch > 0)) return rows;
+    const out = [rows[0]];
+    for (let i = 1; i < rows.length; i++){
+      const a = rows[i - 1], b = rows[i], k = b.nr - a.nr;
+      for (let j = 1; j < k; j++) out.push({ nr:a.nr + j, y:a.y + (b.y - a.y) * j / k, conf:0, w:null, derived:true });
+      out.push(b);
+    }
+    return out;
+  }
+  /* brez številk: vrstice = vrstice besedila */
+  function lineRows(ws, mh, top){
+    const s = ws.filter(w => w.y0 >= top - 1).sort((a, b) => cy(a) - cy(b)), rows = [];
+    s.forEach(w => { const r = rows[rows.length - 1]; if (r && Math.abs(cy(w) - r.y) <= mh * 0.65){ r.n++; r.y = (r.y * (r.n - 1) + cy(w)) / r.n; } else rows.push({ nr:null, y:cy(w), conf:0, w:null, derived:true, n:1 }); });
+    return rows;
+  }
+
+  /* ---------- Stolpci ---------- */
+  function startClusters(rowWords, mh, nRows){
+    const xs = [];
+    rowWords.forEach(ws => { const s = ws.slice().sort((a, b) => a.x0 - b.x0); s.forEach((w, i) => { if (i === 0 || w.x0 - s[i - 1].x1 > mh * 1.4) xs.push(w.x0); }); });
+    xs.sort((a, b) => a - b);
+    const cl = []; xs.forEach(x => { const c = cl[cl.length - 1]; if (c && x - c.last <= mh * 1.2){ c.v.push(x); c.last = x; } else cl.push({ v:[x], last:x }); });
+    return cl.filter(c => c.v.length >= Math.max(3, nRows * 0.25)).map(c => med(c.v)).sort((a, b) => a - b);
+  }
+
+  /* glava: kratke besede (»Do«) OCR pogosto zgreši → manjkajoči stolpec dopolnimo iz poravnave besed v vrsticah */
+  const COL_ORDER = ['nr', 'name', 'from', 'to', 'time', 'pick', 'veh', 'note'];
+  function repairCols(cols, edges, mh){
+    const free = edges.filter(e => !cols.some(k => Math.abs(k.x0 - e) < mh * 1.8));
+    COL_ORDER.forEach((key, oi) => {
+      if (cols.some(c => c.key === key)) return;
+      const prev = cols.filter(c => COL_ORDER.indexOf(c.key) < oi).sort((a, b) => b.x0 - a.x0)[0], next = cols.filter(c => COL_ORDER.indexOf(c.key) > oi).sort((a, b) => a.x0 - b.x0)[0];
+      if (!prev || !next) return;
+      const cand = free.find(e => e > prev.x0 + mh * 2 && e < next.x0 - mh * 2);
+      if (cand != null){ cols.push({ key, x0:cand, inferred:true }); free.splice(free.indexOf(cand), 1); }
+    });
+    return cols.sort((a, b) => a.x0 - b.x0);
+  }
+
+  /* ---------- Polja ---------- */
+  const RE_TIME = /^(\d{1,2})\s*[:.,;h]\s*(\d{2})$/;
+  const timeLike = t => { const s = fixNum(T_(t).trim()); return RE_TIME.test(s) || /^\d{3,4}$/.test(s) || /^(dop|pop)\.?$/i.test(T_(t).trim()); };
+  function parseTime(text){
+    const raw = T_(text).trim(); if (!raw) return { v:'', dia:'' };
+    if (/^(dop|dopoldne|dopoldanska)\.?$/i.test(raw)) return { v:'', dia:'dop' };
+    if (/^(pop|popoldne|popoldanska)\.?$/i.test(raw)) return { v:'', dia:'pop' };
+    const s = fixNum(raw.replace(/\s+/g, '').replace(/^ob/i, ''));
+    let h, m, mm;
+    if ((mm = RE_TIME.exec(s))){ h = +mm[1]; m = +mm[2]; }
+    else if ((mm = /^(\d{1,2})[hH]?$/.exec(s))){ h = +mm[1]; m = 0; }
+    else if ((mm = /^(\d{1,2})(\d{2})$/.exec(s))){ h = +mm[1]; m = +mm[2]; }
+    else return { v:null, dia:'' };
+    if (h > 23 || m > 59) return { v:null, dia:'' };
+    return { v:pad(h) + ':' + pad(m), dia:'' };
+  }
+  const MODE_WORDS = [['leze', 'leze'], ['lezece', 'leze'], ['utila', 'utila'], ['utilo', 'utila'], ['vzorci', 'vzorci'], ['vzorec', 'vzorci'], ['vzorce', 'vzorci']];
+  function modeIn(text){
+    let mode = '', rest = [];
+    T_(text).split(/\s+/).filter(Boolean).forEach(tk => {
+      const n = ocrNorm(tk); const hit = MODE_WORDS.find(([w]) => n === w || (w.length >= 5 && sim(n, w) >= 0.8));
+      if (hit && !mode) mode = hit[1]; else rest.push(tk);
+    });
+    return { mode, rest:rest.join(' ') };
+  }
+  const nameCase = s => { const t = T_(s).trim(); return (t === t.toUpperCase() || t === t.toLowerCase()) ? t.toLowerCase().replace(/(^|[\s\-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase()) : t; };
+
+  /* znano besedišče za primerjavo (pacienti, ustanove, klinike, naselja, mesta, ulice) */
+  let _voc = null, _vocKey = '';
+  function vocab(){
+    const key = (S.places || []).length + '|' + (S.addrBook || []).length + '|' + (S.patients || []).length;
+    if (_voc && _vocKey === key) return _voc;
+    const v = [], add = (s, label, kind) => { const x = ocrNorm(s); if (x && x.length >= 2) v.push({ s:x, label, kind }); };
+    POIS.forEach(p => { add(p.n, p.n, 'ustanova'); (p.al || []).forEach(a => add(a, p.n, 'ustanova')); });
+    (S.places || []).forEach(p => { const lb = p.parent ? p.parent + ' – ' + p.n : p.n; add(p.parent + ' ' + p.n, lb, 'klinika'); (p.al || []).forEach(a => add(p.parent + ' ' + a, lb, 'klinika')); });
+    SETTLEMENTS.forEach(s => add(s.n, s.n, 'kraj')); TOWNS.forEach(s => add(s.n, s.n, 'kraj')); BREZICE_STREETS.forEach(s => add(s, s, 'ulica'));
+    _voc = v; _vocKey = key; return v;
+  }
+  /* najboljši predlogi za besedilo kraja/ustanove; naslov brez hišne številke in z njo */
+  function placeSuggest(text, max = 3){
+    const m = /^(.*?)(?:\s+(\d+\s*[a-zA-Z]?))?$/.exec(T_(text).trim()), base = (m && m[1]) || T_(text), num = (m && m[2]) || '';
+    const voc = vocab(), out = [];
+    const full = ocrNorm(text);
+    voc.forEach(e => { const sc = Math.max(sim(base, e.s), sim(text, e.s), simNS(base, e.s), simNS(text, e.s)); if (sc >= 0.74 && !(Math.abs(e.s.length - full.length) > 6 && e.s.length > 6 && full.length < 5)) out.push({ label:(e.kind === 'ulica' || e.kind === 'kraj') && num ? e.label + ' ' + num.replace(/\s+/g, '') : e.label, score:sc, kind:e.kind }); });
+    const seen = new Set();
+    return out.sort((a, b) => b.score - a.score).filter(o => !seen.has(o.label) && seen.add(o.label)).slice(0, max);
+  }
+  function patientSuggest(name, max = 3){
+    const out = [];
+    (S.patients || []).forEach(p => { const sc = simName(name, p.name); if (sc >= 0.68) out.push({ p, score:sc }); });
+    return out.sort((a, b) => b.score - a.score).slice(0, max);
+  }
+
+  const LV = { ok:0, chk:1, bad:2 };
+  const worst = (a, b) => (LV[b] > LV[a] ? b : a);
+
+  /* ---------- Ocena polj ---------- */
+  function judgeName(cell, row, o){
+    const text = cell.text, f = { v:text, lvl:'ok', why:[], sug:[], pid:'' };
+    if (!text){ f.lvl = row.mode === 'vzorci' ? 'ok' : 'bad'; if (f.lvl === 'bad') f.why.push('ime manjka ali ni berljivo'); return f; }
+    f.v = nameCase(text.replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2'));
+    const sg = patientSuggest(f.v);
+    const top = sg[0], second = sg[1];
+    if (top && top.score >= 0.88 && (!second || top.score - second.score >= 0.06)){ f.v = top.p.name; f.pid = top.p.id; f.why.push(`v bazi pacientov (${Math.round(top.score * 100)} %)`); if (cell.conf < 40) { f.lvl = 'chk'; f.why.push('slaba razpoznava, preveri ime'); } return f; }
+    if (sg.length){ f.lvl = 'chk'; f.sug = sg.map(x => ({ label:x.p.name, pid:x.p.id, score:x.score })); f.why.push('podobno imenu v bazi: izberi ali popravi'); return f; }
+    const toks = f.v.split(/\s+/).filter(t => /\p{L}{2,}/u.test(t));
+    if (cell.conf >= 65 && toks.length >= 2){ f.lvl = 'chk'; f.why.push('pacienta ni v bazi (nov pacient?): preveri črkovanje'); }
+    else { f.lvl = 'bad'; f.why.push(cell.conf < 65 ? `slabo berljivo (${cell.conf} %)` : 'ime ni popolno'); }
+    return f;
+  }
+  function judgePlace(cell, side, row){
+    const text = cell.text, f = { v:text, lvl:'ok', why:[], sug:[] };
+    if (!text){ f.lvl = row.mode === 'vzorci' && side === 'from' ? 'ok' : 'bad'; if (f.lvl === 'bad') f.why.push(side === 'from' ? 'naslov OD manjka' : 'cilj DO manjka'); return f; }
+    if (/^doma\.?$/i.test(text)) { f.v = 'Doma'; return f; }
+    const fx = NSCAN.fixDigits(text);
+    let g = null; try { g = geo(fx); } catch (e) { g = null; }
+    if (g && g.kind !== 'neznano'){
+      f.v = fx;
+      f.why.push(g.kind === 'poi' ? 'znana ustanova' : g.kind === 'addr' ? 'znan naslov' : 'znan kraj');
+      if (cell.conf < 45){ f.lvl = 'chk'; f.why.push(`slaba razpoznava (${cell.conf} %)`); }
+      else if (g.kind !== 'poi' && g.kind !== 'addr' && cell.conf < 60){ f.lvl = 'chk'; f.why.push(`razpoznava ${cell.conf} %`); }
+      return f;
+    }
+    f.v = fx;
+    const ps = placeSuggest(fx);
+    f.sug = ps.map(x => ({ label:x.label, score:x.score }));
+    if (ps[0] && ps[0].score >= 0.94 && (ps[0].kind === 'ustanova' || ps[0].kind === 'klinika') && (!ps[1] || ps[0].score - ps[1].score >= 0.08) && cell.conf >= 50){
+      f.v = ps[0].label; f.why.push('prepoznano kot ' + ps[0].label); f.sug = []; return f;
+    }
+    if (f.sug.length){ f.lvl = 'chk'; f.why.push('ni znano; morda je mišljeno ponujeno'); }
+    else if (cell.conf >= 70){ f.lvl = 'chk'; f.why.push('kraja ali ustanove ne prepoznam (zunaj Občine Brežice?)'); }
+    else { f.lvl = 'bad'; f.why.push(`neberljivo (${cell.conf} %)`); }
+    return f;
+  }
+  function judgeTime(cell, row){
+    const text = cell.text, f = { v:'', lvl:'ok', why:[], sug:[], dia:'' };
+    const t = parseTime(text);
+    if (t.dia){ f.dia = t.dia; f.why.push('dializa ' + (t.dia === 'pop' ? 'popoldne' : 'dopoldne')); return f; }
+    if (!text){ f.lvl = row.dia || row.mode === 'vzorci' ? 'ok' : 'chk'; if (f.lvl === 'chk') f.why.push('ure ni'); return f; }
+    if (t.v == null){ f.v = text; f.lvl = 'bad'; f.why.push('ure ne razberem'); return f; }
+    f.v = t.v; const h = +t.v.slice(0, 2), m = +t.v.slice(3);
+    if (h < 5 || h > 21){ f.lvl = 'chk'; f.why.push('nenavadna ura'); }
+    else if (cell.conf < 55){ f.lvl = 'chk'; f.why.push(`slaba razpoznava (${cell.conf} %)`); }
+    else if (m % 5 !== 0){ f.lvl = 'chk'; f.why.push('nenavadne minute'); }
+    return f;
+  }
+
+  /* ---------- Glavni razčlenjevalec ---------- */
+  function parse(words, W, H, opt = {}){
+    const ws = cleanWords(words);
+    const out = { rows:[], date:null, header:false, cols:[], stats:{ ok:0, chk:0, bad:0, empty:0 }, notes:[], words:ws.length };
+    if (ws.length < 4){ out.notes.push('Na sliki skoraj ni prebranega besedila.'); return out; }
+    const mh = Math.max(6, med(ws.map(w => w.y1 - w.y0)));
+    const box = { x0:Math.min(...ws.map(w => w.x0)), y0:Math.min(...ws.map(w => w.y0)), x1:Math.max(...ws.map(w => w.x1)), y1:Math.max(...ws.map(w => w.y1)) };
+    const head = findHeader(ws, mh); out.header = !!head;
+    let rows = findRows(ws, mh, head, box), numbered = rows.length >= 2;
+    if (numbered) rows = fillRows(rows);
+    else { rows = lineRows(ws, mh, head ? head.y1 : box.y0); out.notes.push('Številk polj (1–24) ni prepoznati: vrstice so ugotovljene po vrstah besedila, preveri številke.'); }
+    if (!rows.length){ out.notes.push('Vrstic prevozov ni mogoče ugotoviti.'); return out; }
+    /* meje vrstic */
+    const pitch = rows.length > 1 ? med(rows.slice(1).map((r, i) => r.y - rows[i].y)) : mh * 2.5;
+    /* meja vrstice: pri oštevilčenih poljih tik nad številko naslednjega polja (številka je v zgornjem delu polja, daljše besedilo se lahko prelomi v več vrstic);
+       brez številk: sredina med vrsticami besedila */
+    const topOf = r => r.w ? r.w.y0 - mh * 0.9 : r.y - mh * 1.4;
+    rows.forEach((r, i) => {
+      if (numbered){ r.y0 = topOf(r); r.y1 = i < rows.length - 1 ? topOf(rows[i + 1]) : r.y + pitch * 2.2; }
+      else { r.y0 = i ? (rows[i - 1].y + r.y) / 2 : r.y - pitch * 0.55; r.y1 = i < rows.length - 1 ? (r.y + rows[i + 1].y) / 2 : r.y + pitch * 0.55; }
+    });
+    const top = head ? head.y1 : rows[0].y0;
+    const body = ws.filter(w => w.y0 >= top - 1);
+    rows.forEach(r => { r.ws = body.filter(w => cy(w) >= r.y0 && cy(w) < r.y1); });
+    /* datum strani: besede nad prvo vrstico */
+    try {
+      const upper = ws.filter(w => cy(w) < (head ? head.y : rows[0].y0)).sort((a, b) => cy(a) - cy(b) || a.x0 - b.x0);
+      const txt = upper.map(w => w.t).join(' '), d = NSCAN.dates(NSCAN.fixDigits(txt)).find(x => x.y >= 2000 && x.y <= 2100);
+      if (d) out.date = { iso:d.iso, conf:Math.round(med(upper.map(w => w.c))) };
+    } catch (e) { /* brez datuma */ }
+    /* stolpci */
+    const keyOrder = ['name', 'from', 'to', 'time', 'note'];
+    let cols = null;
+    const numX = med(rows.filter(r => r.w).map(r => r.w.x0));
+    if (head){
+      cols = head.cols.map(c => ({ key:c.key, x0:c.x0 }));
+      if (!cols.some(c => c.key === 'nr')) cols.unshift({ key:'nr', x0:Math.min(numX || box.x0, box.x0) });
+      const edges = startClusters(rows.map(r => r.ws), mh, rows.length);
+      cols = repairCols(cols, edges, mh);
+      /* glavo OCR pogosto razbere slabše kot vrstice: levi rob stolpca se prilagodi najbližjemu robu, kjer res začenjajo besede */
+      cols.forEach(c => {
+        if (c.key === 'nr') return;
+        /* OCR glave pogosto izgubi prvo besedo večbesedne oznake (»IME IN PRIIMEK«): rob je zato običajno levo od zaznanega sidra */
+        const near = edges.filter(e => e >= c.x0 - mh * 4.5 && e <= c.x0 + mh * 2 && cols.every(k => k === c || Math.abs(k.x0 - e) > mh * 1.8)).sort((a, b) => Math.abs(a - c.x0) - Math.abs(b - c.x0))[0];
+        if (near != null) c.x0 = near;
+      });
+      cols.sort((a, b) => a.x0 - b.x0);
+    } else {
+      const edges = startClusters(rows.map(r => r.ws), mh, rows.length);
+      if (edges.length >= 3 && edges.length <= 10){
+        cols = edges.map((x0, i) => ({ key:'c' + i, x0 }));
+        /* prvi stolpec so številke polj, če so prisotne */
+        if (numbered && Math.abs(cols[0].x0 - numX) < mh * 2) cols[0].key = 'nr'; else if (numbered) cols.unshift({ key:'nr', x0:numX });
+        else cols.unshift({ key:'nr', x0:Math.min(...cols.map(c => c.x0)) - mh * 3 });
+        const rest = cols.filter(c => c.key !== 'nr');
+        /* stolpec ure = stolpec z največ časovnimi zapisi */
+        const share = c => { const i = cols.indexOf(c), nx = cols[i + 1] ? cols[i + 1].x0 : Infinity; let t = 0, n = 0; rows.forEach(r => { const cw = r.ws.filter(w => w.x0 >= c.x0 - mh * 0.6 && w.x0 < nx - mh * 0.6); if (cw.length){ n++; if (timeLike(cellOf(cw).text)) t++; } }); return n ? t / n : 0; };
+        const tc = rest.map(c => ({ c, s:share(c) })).sort((a, b) => b.s - a.s)[0];
+        const timeCol = tc && tc.s >= 0.4 ? tc.c : null;
+        const before = timeCol ? rest.slice(0, rest.indexOf(timeCol)) : rest.slice(0, 3), after = timeCol ? rest.slice(rest.indexOf(timeCol) + 1) : rest.slice(3);
+        before.forEach((c, i) => { c.key = before.length >= 3 ? ['name', 'from', 'to'][Math.min(i, 2)] : before.length === 2 ? ['name', 'to'][i] : 'name'; if (before.length >= 3 && i > 2) c.key = 'note'; });
+        if (timeCol) timeCol.key = 'time';
+        after.forEach(c => { c.key = 'note'; });
+        if (before.length === 2){ /* OD ali DO? po vsebini */
+          const c = before[1], i = cols.indexOf(c), nx = cols[i + 1] ? cols[i + 1].x0 : Infinity; let poi = 0, n = 0;
+          rows.forEach(r => { const cw = r.ws.filter(w => w.x0 >= c.x0 - mh * 0.6 && w.x0 < nx - mh * 0.6); if (cw.length){ n++; try { if (geo(cellOf(cw).text).kind === 'poi') poi++; } catch (e) { /* */ } } });
+          c.key = n && poi / n >= 0.5 ? 'to' : 'from';
+        }
+      } else out.notes.push('Stolpcev tabele ni mogoče zanesljivo ugotoviti: besedilo vrstice je razdeljeno po presledkih, preveri vsako polje.');
+    }
+    out.cols = cols ? cols.map(c => ({ key:c.key, x0:Math.round(c.x0) })) : [];
+    const tol = mh * 1.1;
+    const colOf = w => { let k = 0; for (let i = 0; i < cols.length; i++) if (cols[i].x0 <= w.x0 + tol) k = i; return k; };
+    rows.forEach(r => {
+      const cells = {}; let rest = [];
+      if (cols){ r.ws.forEach(w => { const c = cols[colOf(w)]; (cells[c.key] = cells[c.key] || []).push(w); }); }
+      else rest = r.ws;
+      const row = { nr:r.nr, derived:r.derived, y0:r.y0, y1:r.y1, text:cellOf(r.ws).text, raw:{}, f:{ name:'', from:'', to:'', time:'', mode:'', dia:'', note:'', pid:'' }, fl:{}, lvl:'ok', empty:false };
+      /* številka polja */
+      const nrCells = cells.nr ? cellOf(cells.nr) : { text:'', conf:0 };
+      if (r.nr == null){ const v = numVal(nrCells.text); row.nr = v && v < 61 ? v : null; }
+      const content = Object.keys(cells).filter(k => k !== 'nr' && cells[k].length);
+      if (!content.length && cols){ row.empty = true; out.stats.empty++; out.rows.push(row); return; }
+      const c = {}; ['name', 'from', 'to', 'time', 'note', 'pick', 'veh'].forEach(k => { c[k] = cells[k] ? cellOf(cells[k]) : { text:'', conf:0, min:0, n:0, ws:[] }; });
+      Object.keys(cells).forEach(k => { if (/^c\d+$/.test(k)) c.note = cellOf([...(cells.note || []), ...cells[k]]); });
+      if (!cols){ c.name = cellOf(rest); }
+      /* v stolpcu ure je lahko še kaj (npr. »10.30 leže« pri redkem stolpcu opomb): ura ostane, ostalo gre v opombo */
+      if (c.time.n > 1){
+        const ti = c.time.ws.findIndex(w => timeLike(w.t));
+        if (ti >= 0){ const rest2 = c.time.ws.filter((_, i) => i !== ti); c.time = cellOf([c.time.ws[ti]]); c.note = cellOf([...(c.note.ws || []), ...rest2]); }
+      }
+      /* način prevoza (leže, utila, vzorci) kjerkoli v vrstici */
+      let mode = '';
+      ['name', 'from', 'to', 'note'].forEach(k => { const m = modeIn(c[k].text); if (m.mode && !mode){ mode = m.mode; if (k === 'note' || k === 'to') c[k] = Object.assign({}, c[k], { text:m.rest }); } });
+      row.mode = mode; row.dia = '';
+      if (/dializ/i.test(c.to.text + ' ' + c.note.text)) row.dia = row.dia || 'pop';   // dializa: ure ni nujno, izbira dop/pop ostane dispečerju
+      const tj = judgeTime(c.time, row); row.dia = tj.dia || '';
+      if (/dializ/i.test(c.to.text + ' ' + c.note.text) && !tj.v && !tj.dia) { tj.lvl = 'ok'; tj.why = ['dializa: ura po urniku skupine']; }
+      const nj = judgeName(c.name, row), fj = judgePlace(c.from, 'from', row), dj = judgePlace(c.to, 'to', row);
+      const noteTxt = c.note.text;
+      const notej = { v:noteTxt, lvl:'ok', why:[], sug:[] };
+      if (noteTxt && c.note.conf < 45){ notej.lvl = 'chk'; notej.why.push(`opomba slabo berljiva (${c.note.conf} %)`); }
+      row.f = { name:nj.v, from:fj.v, to:dj.v, time:tj.v, mode, dia:tj.dia, note:noteTxt, pid:nj.pid };
+      row.fl = { name:nj, from:fj, to:dj, time:tj, note:notej };
+      row.raw = { name:c.name.text, from:c.from.text, to:c.to.text, time:c.time.text, note:c.note.text };
+      row.conf = { name:c.name.conf, from:c.from.conf, to:c.to.conf, time:c.time.conf, note:c.note.conf };
+      /* številka polja */
+      row.nrLvl = r.derived ? 'chk' : (nrCells.conf && nrCells.conf < 50 ? 'chk' : 'ok');
+      if (row.nr == null) row.nrLvl = 'bad';
+      let lvl = 'ok'; ['name', 'from', 'to', 'time', 'note'].forEach(k => { lvl = worst(lvl, row.fl[k].lvl); }); lvl = worst(lvl, row.nrLvl === 'bad' ? 'chk' : 'ok');
+      row.lvl = lvl;
+      /* razlog vrstice za pregled */
+      row.todo = ['name', 'from', 'to', 'time', 'note'].filter(k => row.fl[k].lvl !== 'ok');
+      out.stats[lvl]++; out.rows.push(row);
+    });
+    /* podvojene številke */
+    const cnt = {}; out.rows.forEach(r => { if (r.nr != null && !r.empty) cnt[r.nr] = (cnt[r.nr] || 0) + 1; });
+    out.rows.forEach(r => { if (r.nr != null && cnt[r.nr] > 1){ r.dupNr = true; if (r.lvl === 'ok'){ r.lvl = 'chk'; out.stats.ok--; out.stats.chk++; } } });
+    out.tbl = { x0:box.x0, x1:box.x1, y0:top, y1:box.y1 };
+    return out;
+  }
+
+  /* ---------- TSV (Tesseract) → besede ---------- */
+  function tsvWords(tsv){
+    const out = [];
+    String(tsv || '').split(/\r?\n/).forEach(l => { const c = l.split('\t'); if (c.length < 12 || c[0] !== '5') return; const x = +c[6], y = +c[7], w = +c[8], h = +c[9]; out.push({ text:c.slice(11).join('\t'), confidence:+c[10], bbox:{ x0:x, y0:y, x1:x + w, y1:y + h } }); });
+    return out;
+  }
+  const fromOcr = r => (r && r.words && r.words.length) ? r.words : tsvWords(r && r.tsv);
+
+  /* ---------- Priprava fotografije (samo v brskalniku): zasuk, kontrast, izrezi ---------- */
+  const MAX_SIDE = 2800, MAX_PAGES = 6;
+  const cv2 = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; };
+  /* naklon vrstic v stopinjah (+ = vrstice se spuščajo proti desni): največja ostrina projekcije temnih točk na navpično os */
+  function skewAngle(cv){
+    const k = Math.min(1, 700 / Math.max(cv.width, cv.height)), c = cv2(cv.width * k, cv.height * k), w = c.width, h = c.height;
+    const x = c.getContext('2d', { willReadFrequently:true }); x.drawImage(cv, 0, 0, w, h);
+    const d = x.getImageData(0, 0, w, h).data, g = new Uint8Array(w * h); let sum = 0;
+    for (let i = 0; i < w * h; i++){ g[i] = (d[i * 4] * 30 + d[i * 4 + 1] * 59 + d[i * 4 + 2] * 11) / 100 | 0; sum += g[i]; }
+    const thr = sum / (w * h) * 0.82, pts = [];
+    for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) if (g[yy * w + xx] < thr) pts.push(xx, yy);
+    if (pts.length < 300) return 0;
+    const score = a => {
+      const r = a * Math.PI / 180, s = Math.sin(r), co = Math.cos(r), off = Math.ceil(Math.abs(s) * w) + 2, bins = new Float32Array(h + off * 2 + 4);
+      for (let i = 0; i < pts.length; i += 2) bins[Math.round(pts[i + 1] * co - pts[i] * s + off)]++;
+      let sc = 0; for (let j = 1; j < bins.length; j++){ const df = bins[j] - bins[j - 1]; sc += df * df; } return sc;
+    };
+    let best = 0, bs = -1;
+    for (let a = -6; a <= 6.001; a += 0.5){ const sc = score(a); if (sc > bs){ bs = sc; best = a; } }
+    const c0 = best; for (let a = c0 - 0.5; a <= c0 + 0.501; a += 0.1){ const sc = score(a); if (sc > bs){ bs = sc; best = a; } }
+    return Math.round(best * 10) / 10;
+  }
+  function rotated(cv, deg){
+    if (Math.abs(deg) < 0.3) return cv;
+    const r = -deg * Math.PI / 180, s = Math.abs(Math.sin(r)), co = Math.abs(Math.cos(r)), w = cv.width * co + cv.height * s, h = cv.width * s + cv.height * co, c = cv2(w, h), x = c.getContext('2d');
+    x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.translate(c.width / 2, c.height / 2); x.rotate(r); x.drawImage(cv, -cv.width / 2, -cv.height / 2);
+    return c;
+  }
+  /* krajevni prag (svetloba po strani ni enakomerna: senca ob hrbtu knjige) → črno-bela slika za OCR */
+  function binarize(cv){
+    const w = cv.width, h = cv.height, x = cv.getContext('2d', { willReadFrequently:true }), im = x.getImageData(0, 0, w, h), d = im.data, n = w * h, g = new Uint8Array(n);
+    for (let i = 0; i < n; i++) g[i] = (d[i * 4] * 30 + d[i * 4 + 1] * 59 + d[i * 4 + 2] * 11) / 100 | 0;
+    const W1 = w + 1, I = new Uint32Array(W1 * (h + 1));
+    for (let yy = 0; yy < h; yy++){ let row = 0; for (let xx = 0; xx < w; xx++){ row += g[yy * w + xx]; I[(yy + 1) * W1 + xx + 1] = I[yy * W1 + xx + 1] + row; } }
+    const r = Math.max(8, Math.round(Math.min(w, h) / 45));
+    for (let yy = 0; yy < h; yy++){
+      const y0 = Math.max(0, yy - r), y1 = Math.min(h, yy + r + 1);
+      for (let xx = 0; xx < w; xx++){
+        const x0 = Math.max(0, xx - r), x1 = Math.min(w, xx + r + 1), cnt = (x1 - x0) * (y1 - y0);
+        const m = (I[y1 * W1 + x1] - I[y0 * W1 + x1] - I[y1 * W1 + x0] + I[y0 * W1 + x0]) / cnt, v = g[yy * w + xx] < m * 0.9 && g[yy * w + xx] < 215 ? 0 : 255;
+        const o = (yy * w + xx) * 4; d[o] = d[o + 1] = d[o + 2] = v;
+      }
+    }
+    /* črte tabele (dolge vodoravne in navpične črne proge) zbrišemo: motijo členitev strani pri razpoznavi */
+    const bl = new Uint8Array(n); for (let i = 0; i < n; i++) bl[i] = d[i * 4] === 0 ? 1 : 0;
+    const Lh = Math.max(40, Math.round(w * 0.035)), Lv = Math.max(40, Math.round(h * 0.02)), kill = new Uint8Array(n);
+    for (let yy = 0; yy < h; yy++){ let st = -1; for (let xx = 0; xx <= w; xx++){ const on = xx < w && bl[yy * w + xx]; if (on && st < 0) st = xx; else if (!on && st >= 0){ if (xx - st >= Lh) for (let k = st; k < xx; k++) kill[yy * w + k] = 1; st = -1; } } }
+    for (let xx = 0; xx < w; xx++){ let st = -1; for (let yy = 0; yy <= h; yy++){ const on = yy < h && bl[yy * w + xx]; if (on && st < 0) st = yy; else if (!on && st >= 0){ if (yy - st >= Lv) for (let k = st; k < yy; k++) kill[k * w + xx] = 1; st = -1; } } }
+    for (let i = 0; i < n; i++) if (kill[i]){ const o = i * 4; d[o] = d[o + 1] = d[o + 2] = 255; }
+    const c = cv2(w, h); c.getContext('2d').putImageData(im, 0, 0); return c;
+  }
+  /* datoteka → platna strani (PDF: vse strani s sliko, največ 6) */
+  async function loadPages(file){
+    const isPdf = /pdf$/i.test(file.type) || /\.pdf$/i.test(file.name || '');
+    if (!isPdf) return [await NSCAN.toCanvas({ kind:'blob', blob:file }, MAX_SIDE)];
+    const imgs = await NSCAN.pdfImages(await file.arrayBuffer());
+    if (!imgs.length) throw new Error('V tem PDF ni slike strani. Naredi fotografijo strani knjige ali izvozi stran kot sliko.');
+    const out = []; for (const im of imgs.slice(0, MAX_PAGES)) out.push(await NSCAN.toCanvas(im, MAX_SIDE)); return out;
+  }
+  async function preparePage(cv){
+    const angle = skewAngle(cv), color = rotated(cv, angle);
+    return { color, angle, png:await NSCAN.toBlob(binarize(color)) };
+  }
+  /* izrez vrstice iz fotografije (za primerjavo prebranega z originalom) */
+  function cropRow(color, row, tbl, pitch){
+    const padY = Math.max(4, pitch * 0.12), x0 = Math.max(0, tbl.x0 - 12), x1 = Math.min(color.width, tbl.x1 + 12), y0 = Math.max(0, row.y0 - padY), y1 = Math.min(color.height, row.y1 + padY);
+    const w = x1 - x0, h = y1 - y0; if (w < 10 || h < 6) return '';
+    const k = Math.min(1, 1000 / w), c = cv2(w * k, h * k); c.getContext('2d').drawImage(color, x0, y0, w, h, 0, 0, c.width, c.height);
+    try { return c.toDataURL('image/jpeg', 0.72); } catch (e) { return ''; }
+  }
+  /* cel postopek za eno ali več slik/PDF: vrne vrstice vseh strani (slika se ne shrani nikamor) */
+  async function run(files, onProgress){
+    const cfg = NSCAN.ocrCfg(), pages = []; let n = 0;
+    for (const f of files){ for (const cv of await loadPages(f)){ if (n++ >= MAX_PAGES) break; pages.push(cv); } }
+    const res = { pages:[], rows:[], date:null, notes:[], words:0 };
+    for (let i = 0; i < pages.length; i++){
+      const tag = pages.length > 1 ? `Stran ${i + 1}/${pages.length}: ` : '';
+      if (onProgress) onProgress({ stage:'prep', page:i + 1, pages:pages.length, pct:0, label:tag + 'priprava slike' });
+      const prep = await preparePage(pages[i]);
+      const r = await NSCAN.ocr(prep.png, p => { if (onProgress) onProgress({ stage:p.stage, page:i + 1, pages:pages.length, pct:p.pct || 0, label:tag + (p.stage || '') }); }, cfg, { words:true, psm:cfg.bookPsm || '4' });
+      const words = fromOcr(r), ps = parse(words, prep.color.width, prep.color.height);
+      const pitch = ps.rows.length > 1 ? med(ps.rows.slice(1).map((x, j) => (x.y0 + x.y1) / 2 - (ps.rows[j].y0 + ps.rows[j].y1) / 2)) : 60;
+      ps.rows.forEach(row => { row.page = i + 1; if (!row.empty) row.crop = cropRow(prep.color, row, ps.tbl, Math.abs(pitch)); });
+      res.pages.push({ w:prep.color.width, h:prep.color.height, angle:prep.angle, header:ps.header, notes:ps.notes, words:ps.words });
+      ps.notes.forEach(t => res.notes.push(tag + t)); res.words += ps.words;
+      if (!res.date && ps.date) res.date = ps.date;
+      ps.rows.forEach(row => res.rows.push(row));
+    }
+    res.rows.forEach((r, i) => { r.key = 'b' + i; });
+    res.rows.sort((a, b) => (a.nr ?? 999) - (b.nr ?? 999) || a.page - b.page || a.y0 - b.y0);
+    const seen = {}; res.rows.forEach(r => { if (!r.empty && r.nr != null){ (seen[r.nr] = seen[r.nr] || []).push(r); } });
+    Object.values(seen).forEach(a => { if (a.length > 1) a.forEach(r => { r.dupNr = true; if (r.lvl === 'ok') r.lvl = 'chk'; }); });
+    res.stats = { ok:0, chk:0, bad:0, empty:0 }; res.rows.forEach(r => { res.stats[r.empty ? 'empty' : r.lvl]++; });
+    return res;
+  }
+
+  /* ---------- Iz vrstice v prevoz ---------- */
+  const FIELD_LABEL = { name:'ime', from:'od', to:'do', time:'ura', note:'opomba' };
+  const chkText = row => (row.todo || []).map(k => FIELD_LABEL[k]).join(', ');
+
+  return { parse, cleanWords, cellOf, ed, sim, simNS, simName, ocrNorm, parseTime, placeSuggest, patientSuggest, vocab, chkText, FIELD_LABEL, LV, headKey, tsvWords, fromOcr, skewAngle, rotated, binarize, loadPages, preparePage, cropRow, run };
+})();

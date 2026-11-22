@@ -525,6 +525,93 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   await page.click('.nprint [data-act="closeModal"] >> nth=-1');
   ok('tisk: dnevnik sprememb ne vsebuje podatkov pacienta', await page.evaluate(() => !/Novakova|012345678|Primerna|Dobova/.test(JSON.stringify(AUDIT))));
 
+  // ---------- tisk knjige za mesec (pogovorno okno, strani, PDF) ----------
+  await page.evaluate(() => { window.__prints = []; window.print = function(){ const a = document.getElementById('printArea'); window.__prints.push({ html:a ? a.innerHTML : '', cls:a ? a.className : '' }); }; });
+  await page.evaluate(d => { const [y, m] = d.split('-'); UI.month = { y: +y, m: +m - 1 }; UI.view = 'knjiga'; rerender(); }, date);
+  await page.waitForSelector('[data-act="bkOpen"]');
+  await page.click('[data-act="bkOpen"]'); await page.waitForFunction(() => UI.modal && UI.modal.b && !UI.modal.wait, null, { timeout: 15000 });
+  const bk1 = await page.evaluate(() => ({ pages:UI.modal.b.pages, sheets:UI.modal.b.sheets, rides:UI.modal.b.rides, dis:document.querySelector('[data-act=bkPrint]').disabled, txt:document.querySelector('.bprint .banner').textContent }));
+  ok('tisk knjige meseca: okno sestavi knjigo (strani, listi, prevozi) in je pripravljeno za tisk', bk1.pages > 30 && bk1.sheets === Math.ceil(bk1.pages / 2) && bk1.rides >= 5 && !bk1.dis && /strani/.test(bk1.txt), JSON.stringify(bk1));
+  await page.click('[data-act="bkPrint"]');
+  const bp = await page.evaluate(() => window.__prints[window.__prints.length - 1]);
+  const bpPages = (bp.html.match(/class="pb-page /g) || []).length;
+  ok('tisk knjige meseca: v tiskalnik gre knjiga z natanko toliko stranmi kot v oknu, z nogo »str. N / M« in vpisanimi prevozi', /pbook/.test(bp.cls) && bpPages === bk1.pages && new RegExp('str\\. 1 / ' + bk1.pages).test(bp.html) && /Ivan Novak/.test(bp.html) && /OBR REŠ 08/.test(bp.html) && /KAZALO/i.test(bp.html), JSON.stringify({ cls:bp.cls, bpPages, want:bk1.pages }));
+  await page.emulateMedia({ media:'print' }); const bpdf = OUT + '/tisk-knjiga-meseca.pdf'; await page.pdf({ path:bpdf, format:'A4', preferCSSPageSize:true, printBackground:true }); await page.emulateMedia({ media:'screen' });
+  let binfo = ''; try { binfo = require('child_process').execFileSync('pdfinfo', [bpdf]).toString(); } catch (e) { binfo = ''; }
+  const bnPg = binfo ? +((/Pages:\s+(\d+)/.exec(binfo) || [])[1]) : bk1.pages, bsz = (/Page size:\s+([\d.]+) x ([\d.]+)/.exec(binfo) || []);
+  ok('tisk knjige meseca: PDF ima natanko toliko strani A4 pokonci, kot jih napove okno (brez prazne zadnje strani)', bnPg === bk1.pages && (!binfo || (Math.abs(+bsz[1] - 595.3) < 1.5 && Math.abs(+bsz[2] - 841.9) < 1.5)), bnPg + ' / ' + bk1.pages + (bsz[1] ? ', ' + bsz[1] + ' x ' + bsz[2] : ''));
+  await page.uncheck('[data-bk=duplex]'); await page.waitForFunction(() => UI.modal && UI.modal.b && UI.modal.o.duplex === false);
+  const bk2 = await page.evaluate(() => ({ pages:UI.modal.b.pages, saved:JSON.parse(localStorage.getItem('kp.book.opts') || '{}').duplex }));
+  ok('tisk knjige meseca: izklop obojestranskega tiska skrajša knjigo, izbira se zapomni v tej napravi', bk2.pages < bk1.pages && bk2.saved === false, JSON.stringify(bk2));
+  await page.click('.bprint [data-act="closeModal"] >> nth=-1'); await page.evaluate(() => { const el = document.getElementById('printArea'); if (el){ el.innerHTML = ''; el.className = ''; } });
+
+  // ---------- skeniranje strani knjige: pravi tok (datoteka → izolirani okvir OCR → besede → pregled z označbami → vpis); OCR je posnetek, ki vrne besede ----------
+  const { gen: bgen } = require(SRC + '/tests/bookscan-gen.js');
+  const bsDay = await page.evaluate(() => { let d = addDays(todayStr(), -9); while (isStandby(d)) d = addDays(d, -1); S.patients.push(blankPatient({ name:'Novak Janez' }), blankPatient({ name:'Horvat Marija' }), blankPatient({ name:'Kovač Franc' })); return d; });
+  const dmy = bsDay.split('-').reverse().join('.');
+  const BSR = [
+    { nr:1, cells:['Novak Janez', 'Dobova 25', 'OI LJ', '8:00'] }, { nr:2, cells:['Horvat Marlja', 'Križe 3', 'SB Brežice', '8.30'] },
+    { nr:3, cells:['Petek Anton', 'Artiče 21', 'ZD Krško', '09:15'] }, { nr:4, cells:['Xzq', 'Dobova 2', 'OI LJ', '10:00'], conf:[30, 88, 88, 88] },
+    { nr:5, cells:['Kovač Franc', 'Cesta svobode 14', 'SB Novo mesto', '10.30', 'leže'] }, { nr:6, cells:['Novak Janez', 'Doma', 'SB Brežice', '25:70'] },
+    { nr:7, cells:['Horvat Marija', 'Dobiva 3', 'SB Brežice', '11:00'] }, { nr:8, cells:['Kovač Franc', 'Zxqkw Vrtmn', 'SB Brežice', '11:30'], conf:[88, 25, 88, 88] },
+    { nr:9, cells:['Novak Janez', 'Doma', 'Dializa KK', 'Dop'] }, { nr:10, cells:[] } ];
+  const BSTUB = `self.Tesseract={createWorker:async function(lang,n,o){ if(o&&o.logger)o.logger({status:'recognizing text',progress:.5});
+    return{setParameters:async function(){},recognize:async function(b){return{data:{text:'',words:${JSON.stringify(bgen(BSR, { date:dmy }))}}}},terminate:async function(){}}}};`;
+  const bookSeen = [];
+  await ctx.route(/\/ocr\/vendor\/tess-book\.js$/, route => { bookSeen.push(route.request().url()); route.fulfill({ status:200, contentType:'text/javascript', body:BSTUB }); });
+  const ocrBefore = await page.evaluate(() => (window.KP_CONFIG && window.KP_CONFIG.ocr) || null);
+  await page.evaluate(() => { window.KP_CONFIG = window.KP_CONFIG || {}; window.KP_CONFIG.ocr = { on:true, lib:'ocr/vendor/tess-book.js', lang:'slv' }; });
+  const bpng = Buffer.from(await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1500; c.height = 1400; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 1500, 1400); g.fillStyle = '#222'; for (let i = 0; i < 12; i++) g.fillRect(60, 290 + i * 70, 1300, 3); return c.toDataURL('image/png').split(',')[1]; }), 'base64');
+  await page.evaluate(() => { UI.view = 'knjiga'; rerender(); }); await page.waitForSelector('[data-act="bsOpen"]');
+  await page.click('[data-act="bsOpen"]'); await page.waitForSelector('#bsFile');
+  ok('skeniranje knjige: okno ponuja izbiro fotografij, kamero in jasna navodila (ročna pisava = pogosto ⚠)', !!(await page.$('#bsCam')) && /ročno pisavo pogosto napačno/.test(await page.textContent('.bscan')));
+  await page.setInputFiles('#bsFile', { name:'stran.png', mimeType:'image/png', buffer:bpng });
+  await page.waitForSelector('.bs-row', { timeout: 40000 });
+  const bs1 = await page.evaluate(() => { const q = l => document.querySelectorAll(`.bs-row[data-lv=${l}]`).length; return { rows:document.querySelectorAll('.bs-row').length, ok:q('ok'), chk:q('chk'), bad:q('bad'), crops:[...document.querySelectorAll('.bs-crop')].filter(i => /^data:image\/jpeg/.test(i.src)).length, date:document.getElementById('bs-date').value, dateLv:document.querySelector('[data-role=bsdate]').dataset.lv, sum:document.querySelector('[data-role=bssum]').textContent.replace(/\s+/g, ' '), on:[...document.querySelectorAll('[data-bs=on]')].map(c => c.checked ? 1 : 0).join(''), done:document.querySelector('[data-bs=done]').checked }; });
+  ok('skeniranje knjige: branje prek izoliranega okvirja da 9 vrstic: 4 zeleno, 2 rumeno, 3 rdeče, vsaka s sliko izreza', bs1.rows === 9 && bs1.ok === 4 && bs1.chk === 2 && bs1.bad === 3 && bs1.crops === 9 && bookSeen.length === 1, JSON.stringify(bs1));
+  ok('skeniranje knjige: datum je prebran s slike in označen »preveri«, povzetek šteje ✔ ⚠ ✖, rdeče vrstice niso izbrane, prevozi za nazaj so »opravljeni«', bs1.date === bsDay && bs1.dateLv === 'chk' && /✔ 4 prebrano/.test(bs1.sum) && /⚠ 2 preveri/.test(bs1.sum) && /✖ 3 popravi/.test(bs1.sum) && bs1.on === '111010101' && bs1.done === true, JSON.stringify({ date:bs1.date, dateLv:bs1.dateLv, on:bs1.on, done:bs1.done, sum:bs1.sum }));
+  await page.screenshot({ path: OUT + '/9-scan-review.png' });
+  await page.click('[data-act="bsJump"]');
+  ok('skeniranje knjige: »Skoči na naslednje nejasno« premakne fokus v označeno polje', await page.evaluate(() => { const a = document.activeElement, row = a && a.closest && a.closest('.bs-row'); return !!row && row.dataset.lv !== 'ok' && !!a.closest('.bs-f') && a.closest('.bs-f').dataset.lv !== 'ok'; }));
+  // popravek rdečega polja (vrstica 4), predlog za rumeno (vrstica 7), vrstica 3 ostane nepotrjena
+  const key = n => page.evaluate(n2 => UI.modal.rows.find(r => r.nr === n2).key, n);
+  const k4 = await key(4), k7 = await key(7), k3 = await key(3);
+  await page.locator(`[data-bsrow="${k4}"]`).screenshot({ path: OUT + '/9b-scan-bad.png' }); await page.locator(`[data-bsrow="${k7}"]`).screenshot({ path: OUT + '/9c-scan-chk.png' });
+  await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(150);
+  await page.locator(`[data-bsrow="${k7}"]`).scrollIntoViewIfNeeded(); await page.screenshot({ path: OUT + '/9d-scan-phone.png' });
+  const ov = await page.evaluate(() => { const m = document.querySelector('.bscan'), R = m.getBoundingClientRect().right; return { sw:m.scrollWidth, cw:m.clientWidth, off:[...m.querySelectorAll('*')].filter(e => e.getBoundingClientRect().right > R + 1 && !e.closest('.bs-cropwrap')).slice(0, 4).map(e => e.tagName + '.' + e.className + ' ' + Math.round(e.getBoundingClientRect().right - R)) }; });
+  ok('skeniranje knjige: na telefonu (390 px) okno ni širše od zaslona', ov.sw <= ov.cw + 1, JSON.stringify(ov));
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await page.fill(`#bs-${k4}-name`, 'Zupan Ana'); await page.press(`#bs-${k4}-name`, 'Tab');
+  const row4 = await page.evaluate(k => ({ f:document.querySelector(`[data-bsrow="${k}"] [data-bsf=name]`).dataset.lv, row:document.querySelector(`[data-bsrow="${k}"]`).dataset.lv }), k4);
+  ok('skeniranje knjige: popravek rdečega polja ga pobarva zeleno in vrstica postane prebrana', row4.f === 'ok' && row4.row === 'ok', JSON.stringify(row4));
+  await page.check(`[data-bsrow="${k4}"] [data-bs=on]`);
+  const sug7 = await page.$$eval(`[data-bsrow="${k7}"] .bs-sug`, els => els.map(e => e.textContent));
+  ok('skeniranje knjige: za rumeno polje (neznan kraj »Dobiva 3«) so ponujeni predlogi', sug7.length >= 1, JSON.stringify(sug7));
+  await page.click(`[data-bsrow="${k7}"] .bs-sug >> nth=0`);
+  const row7 = await page.evaluate(k => ({ v:document.querySelector(`[data-bsrow="${k}"] [data-k=from]`).value, row:document.querySelector(`[data-bsrow="${k}"]`).dataset.lv }), k7);
+  ok('skeniranje knjige: klik na predlog izpolni polje in ga potrdi', row7.v === sug7[0] && row7.row === 'ok', JSON.stringify(row7));
+  const sum2 = await page.textContent('[data-role=bssum]'), ap = await page.textContent('[data-role=bsapply]');
+  ok('skeniranje knjige: povzetek in gumb za vpis se sproti osvežujeta (število, datum, število z ⚠)', /⚠ 1 preveri/.test(sum2) && /✖ 2 popravi/.test(sum2) && /Vpiši 7 prevozov/.test(ap) && /1 z oznako ⚠/.test(ap), sum2.replace(/\s+/g, ' ') + ' | ' + ap);
+  await page.fill('#bs-date', bsDay); await page.press('#bs-date', 'Tab');
+  ok('skeniranje knjige: ročno potrjen datum ni več označen', (await page.evaluate(() => document.querySelector('[data-role=bsdate]').dataset.lv)) === 'ok');
+  await page.click('[data-act="bsApply"]'); await page.waitForSelector('#modal .modal', { state:'detached', timeout: 10000 }).catch(() => {}); await page.waitForTimeout(300);
+  const ap1 = await page.evaluate(d => { const a = S.rides[d] || []; const f = i => a[i] || {}; return { view:UI.view, date:UI.date, n:a.filter(isFilled).length, slots:[0, 1, 2, 3, 4, 6, 8].map(i => isFilled(f(i)) ? 1 : 0).join(''), r4:f(3).name, chk:a.map((r, i) => r.chk ? (i + 1) + ':' + r.chk : '').filter(Boolean), done:a.filter(isFilled).every(r => r.done), leze:f(4).mode, dia:f(8).dia, to9:f(8).to, t1:f(0).time, t2:f(1).time, pid1:!!f(0).patientId, name2:f(1).name, modal:!!UI.modal, img:JSON.stringify(S.rides).includes('data:image') }; }, bsDay);
+  ok('skeniranje knjige: vpisanih 7 prevozov v prava polja (št. polja = mesto v knjigi), popravljeno ime, ura, leže, dializa, pacient iz baze, vse opravljeno', ap1.n === 7 && ap1.slots === '1111111' && ap1.r4 === 'Zupan Ana' && ap1.t1 === '08:00' && ap1.t2 === '08:30' && ap1.name2 === 'Horvat Marija' && ap1.leze === 'leze' && ap1.dia === 'dop' && ap1.pid1 && ap1.done, JSON.stringify(ap1));
+  ok('skeniranje knjige: samo nepotrjena vrstica dobi oznako ⚠ (polje 3: ime), pogled preskoči na dan, okno se zapre, slika se ne shrani', ap1.chk.length === 1 && /^3:ime/.test(ap1.chk[0]) && ap1.view === 'dan' && ap1.date === bsDay && !ap1.modal && !ap1.img, JSON.stringify({ chk:ap1.chk, view:ap1.view, modal:ap1.modal, img:ap1.img }));
+  await page.waitForSelector('.rchk');
+  ok('skeniranje knjige: v dnevu je pri prevozu viden rumeni znak »⚠ preveri«', (await page.$$('.rchk')).length === 1 && /preveri/.test(await page.textContent('.rchk')));
+  ok('skeniranje knjige: opozorila dneva omenjajo nepotrjen prevoz', await page.evaluate(d => dayWarnings(d).some(w => w.nr === 3 && /prebrano s fotografije/.test(w.text)), bsDay));
+  const bkMark = await page.evaluate(d => { const [y, m] = d.split('-'); return BOOK.build(+y, +m - 1, BOOK.opts({})).html.includes('⚠ preveri (ime'); }, bsDay);
+  ok('skeniranje knjige: v natisnjeni knjigi meseca je nepotrjen prevoz označen z »⚠ preveri (ime)«', bkMark === true);
+  await page.click('.box[data-nr="3"] [data-act="openRide"]'); await page.waitForSelector('.chkrow');
+  ok('skeniranje knjige: odprt prevoz kaže pas z razlago in gumbom »Preverjeno«', /Preverjeno/.test(await page.textContent('.chkrow')));
+  await page.click('[data-act="chkOk"]'); await page.waitForTimeout(250);
+  const afterOk = await page.evaluate(d => { const [y, m] = d.split('-'); return { chips:document.querySelectorAll('.rchk').length, flag:(S.rides[d][2] || {}).chk, warn:dayWarnings(d).some(w => /prebrano s fotografije/.test(w.text)), book:BOOK.build(+y, +m - 1, BOOK.opts({})).html.includes('⚠ preveri') }; }, bsDay);
+  ok('skeniranje knjige: »Preverjeno« odstrani oznako povsod (prevoz, opozorila, natisnjena knjiga)', afterOk.chips === 0 && afterOk.flag === '' && !afterOk.warn && !afterOk.book, JSON.stringify(afterOk));
+  ok('skeniranje knjige: dnevnik sprememb ne vsebuje imen, naslovov ali ur pacientov', await page.evaluate(() => { const s = JSON.stringify(AUDIT); return /knjiga\.skenirano/.test(s) && /knjiga\.preverjeno/.test(s) && !/Novak Janez|Petek|Zupan|Dobova|Artiče/.test(s); }));
+  await page.evaluate(o => { if (o) window.KP_CONFIG.ocr = o; else delete window.KP_CONFIG.ocr; }, ocrBefore);
+
   // objava razporeda: lokalni način nima Firebase, zato samo preveri, da gumb ne sproži napake
   ok('brez zunanjih klicev razen OSRM', external.length === 0, external.slice(0, 3).join(', '));
   ok('brez CSP kršitev', csp.length === 0, csp.slice(0, 2).join(' | '));

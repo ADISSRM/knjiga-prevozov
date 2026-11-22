@@ -4,7 +4,7 @@
 const vm = require('vm'), assert = require('assert'), path = require('path');
 const { load } = require('./load.js'), { createMock } = require('./mock-osrm.js'), { createGoogleMock } = require('./mock-google.js'), { createNominatimMock } = require('./mock-nominatim.js');
 const SRC = path.join(__dirname, '..', 'src') + path.sep;
-const FILES = ['20-data.js', '30-core.js', '35-db.js', '37-geocode.js', '38-routing.js', '39-google.js', '40-planner.js', '45-pacienti.js', '46-nalogscan.js', '47-nalogprint.js', '54-quick.js'].map(f => SRC + f);
+const FILES = ['20-data.js', '30-core.js', '35-db.js', '37-geocode.js', '38-routing.js', '39-google.js', '40-planner.js', '45-pacienti.js', '46-nalogscan.js', '47-nalogprint.js', '48-bookprint.js', '49-bookscan.js', '54-quick.js'].map(f => SRC + f);
 const URLS = { url:'https://osrm.test', fallback:['https://osrm2.test'] };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const DATE = '2026-11-10';   // torek
@@ -956,6 +956,85 @@ test('Tisk naloga: položaj celic (mm), pomanjšanje dolgih imen, premik/raztegn
   assert.ok(t.ev(`NP.pageHTML('f', [], { guide:true })`).includes('ng-h') && !t.ev(`NP.pageHTML('f', [], {})`).includes('ng-h'), 'črte samo za preizkus');
   assert.strictEqual((t.ev('NP.calibHTML("f")').match(/class="nc"/g) || []).length > 10, true);
   assert.strictEqual(t.js('S.settings.tisk').od, 'v_vozilu'); assert.strictEqual(t.js('S.vehicles').every(v => !v.reg), true);
+});
+
+
+/* ------------------------------------------------------------------ skeniranje strani knjige */
+const { gen: bgen } = require('./bookscan-gen.js');
+function bsBoot(){
+  const t = boot();
+  t.ev(`S.patients.push(blankPatient({ name:'Novak Janez' }), blankPatient({ name:'Horvat Marija' }), blankPatient({ name:'Kovač Franc' }))`);
+  t.parse = (words, o) => t.js(`BSCAN.parse(${JSON.stringify(words)}, 1500, 1400, ${JSON.stringify(o || {})})`);
+  return t;
+}
+const BS_ROWS = [
+  { nr:1, cells:['Novak Janez', 'Dobova 25', 'OI LJ', '8:00'] },
+  { nr:2, cells:['Horvat Marlja', 'Križe 3', 'SB Brežice', '8.30'] },
+  { nr:3, cells:['Petek Anton', 'Artiče 21', 'ZD Krško', '09:15'] },
+  { nr:4, cells:['Xzq', 'Dobova 2', 'OI LJ', '10:00'], conf:[30, 88, 88, 88] },
+  { nr:5, cells:['Kovač Franc', 'Cesta svobode 14', 'SB Novo mesto', '10.30', 'leže'] },
+  { nr:6, cells:['Novak Janez', 'Doma', 'SB Brežice', '25:70'] },
+  { nr:7, cells:['Horvat Marija', 'Dobiva 3', 'SB Brežice', '11:00'] },
+  { nr:8, cells:['Kovač Franc', 'Zxqkw Vrtmn', 'SB Brežice', '11:30'], conf:[88, 25, 88, 88] },
+  { nr:9, cells:['Novak Janez', 'Doma', 'Dializa KK', 'Dop'] },
+  { nr:10, cells:[] }
+];
+test('skeniranje knjige: glava, številke polj, stopnje zanesljivosti (ok / preveri / popravi)', () => {
+  const t = bsBoot(), r = t.parse(bgen(BS_ROWS, { date:'05.11.2026' }));
+  assert.strictEqual(r.header, true); assert.strictEqual(r.date.iso, '2026-11-05');
+  assert.strictEqual(r.rows.length, 10); assert.deepStrictEqual(r.rows.map(x => x.nr), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  const by = n => r.rows.find(x => x.nr === n);
+  assert.strictEqual(by(1).lvl, 'ok'); assert.strictEqual(by(1).f.name, 'Novak Janez'); assert.strictEqual(by(1).f.time, '08:00'); assert.strictEqual(by(1).f.to, 'OI LJ');
+  assert.ok(by(1).f.pid, 'pacient iz baze dobi id');
+  assert.strictEqual(by(2).f.name, 'Horvat Marija', 'napaka OCR l/i se popravi po bazi'); assert.strictEqual(by(2).fl.name.lvl, 'ok'); assert.strictEqual(by(2).f.time, '08:30');
+  assert.strictEqual(by(3).fl.name.lvl, 'chk', 'neznan pacient = preveri'); assert.ok(/ni v bazi/.test(by(3).fl.name.why.join(' ')));
+  assert.strictEqual(by(4).fl.name.lvl, 'bad', 'slabo berljivo ime = popravi'); assert.strictEqual(by(4).lvl, 'bad');
+  assert.strictEqual(by(5).f.mode, 'leze'); assert.strictEqual(by(5).f.note, ''); assert.strictEqual(by(5).f.time, '10:30');
+  assert.strictEqual(by(6).fl.time.lvl, 'bad'); assert.strictEqual(by(6).f.from, 'Doma');
+  assert.strictEqual(by(7).fl.from.lvl, 'chk'); assert.ok(by(7).fl.from.sug.some(s => /Dobova 3/.test(s.label)), 'predlog kraja: ' + JSON.stringify(by(7).fl.from.sug));
+  assert.strictEqual(by(8).fl.from.lvl, 'bad');
+  assert.strictEqual(by(9).f.dia, 'dop'); assert.strictEqual(by(9).f.time, ''); assert.strictEqual(by(9).fl.time.lvl, 'ok');
+  assert.strictEqual(by(10).empty, true);
+  assert.strictEqual(r.rows.map(x => x.nr + ':' + (x.empty ? 'prazno' : x.lvl)).join(' '), '1:ok 2:ok 3:chk 4:bad 5:ok 6:bad 7:chk 8:bad 9:ok 10:prazno'); assert.deepStrictEqual(r.stats, { ok:4, chk:2, bad:3, empty:1 });
+});
+test('skeniranje knjige: brez glave tabele se stolpci ugotovijo po poravnavi besed', () => {
+  const t = bsBoot(), r = t.parse(bgen(BS_ROWS, { header:false }));
+  assert.strictEqual(r.header, false); assert.ok(r.cols.length >= 5, 'stolpcev: ' + JSON.stringify(r.cols));
+  const by = n => r.rows.find(x => x.nr === n);
+  assert.strictEqual(by(1).f.name, 'Novak Janez'); assert.strictEqual(by(1).f.from, 'Dobova 25'); assert.strictEqual(by(1).f.to, 'OI LJ'); assert.strictEqual(by(1).f.time, '08:00');
+  assert.strictEqual(by(5).f.mode, 'leze'); assert.strictEqual(by(9).f.dia, 'dop');
+});
+test('skeniranje knjige: manjkajoča številka se izpelje, brez številk so vrstice po vrstah besedila', () => {
+  const t = bsBoot();
+  const rows = BS_ROWS.map(x => Object.assign({}, x)); rows[3].noNr = true;
+  const r = t.parse(bgen(rows)), r4 = r.rows.find(x => x.nr === 4);
+  assert.ok(r4 && r4.derived && r4.nrLvl === 'chk', 'številka 4 izpeljana in označena');
+  const r2 = t.parse(bgen(BS_ROWS.map(x => Object.assign({}, x, { noNr:true })), { header:false }));
+  assert.ok(r2.rows.filter(x => !x.empty).length >= 9); assert.ok(r2.rows.every(x => x.nr == null)); assert.ok(r2.notes.some(n => /številk polj/i.test(n)));
+});
+test('skeniranje knjige: pokvarjena glava (manjka »Ime in«, »Do«) ne premakne stolpcev', () => {
+  const t = bsBoot();
+  const ws = bgen(BS_ROWS, { date:'05.11.2026' }).filter(w => !(w.bbox.y0 === 220 && /^(Ime|in|Do)$/.test(w.text)));
+  assert.ok(ws.some(w => w.text === 'priimek') && !ws.some(w => w.text === 'Ime'), 'glava res pokvarjena');
+  const r = t.parse(ws), by = n => r.rows.find(x => x.nr === n);
+  assert.strictEqual(r.header, true); assert.strictEqual(by(1).f.name, 'Novak Janez'); assert.strictEqual(by(1).f.from, 'Dobova 25'); assert.strictEqual(by(1).f.to, 'OI LJ'); assert.strictEqual(by(1).f.time, '08:00');
+  assert.strictEqual(by(2).f.name, 'Horvat Marija'); assert.strictEqual(by(5).f.to, 'SB Novo mesto');
+  assert.deepStrictEqual(r.stats, { ok:4, chk:2, bad:3, empty:1 });
+  const j = t.js(`BSCAN.parse(${JSON.stringify(bgen([{ nr:1, cells:['ZupanAna', 'Doma', 'Dializa KK', ''] }]))}, 1400, 700).rows[0].f.name`);
+  assert.strictEqual(j, 'Zupan Ana', 'zlepljeno ime (ZupanAna) se loči');
+});
+test('skeniranje knjige: ura (zapisi, popravki OCR), prazna slika, nesmiselni podatki', () => {
+  const t = bsBoot(); const pt = x => t.js(`BSCAN.parseTime(${JSON.stringify(x)})`);
+  assert.strictEqual(pt('8:00').v, '08:00'); assert.strictEqual(pt('8.30').v, '08:30'); assert.strictEqual(pt('1030').v, '10:30'); assert.strictEqual(pt('830').v, '08:30'); assert.strictEqual(pt('9').v, '09:00');
+  assert.strictEqual(pt('1O:3O').v, '10:30', 'O → 0'); assert.strictEqual(pt('pop').dia, 'pop'); assert.strictEqual(pt('24:10').v, null); assert.strictEqual(pt('ab').v, null);
+  const e = t.parse([]); assert.strictEqual(e.rows.length, 0); assert.ok(e.notes.length);
+  const r = t.parse(bgen([{ nr:1, cells:['Novak Janez', 'Dobova 25', 'OI LJ', '03:10'] }, { nr:2, cells:['Novak Janez', 'Dobova 25', 'OI LJ', '8:07'] }]));
+  assert.strictEqual(r.rows[0].fl.time.lvl, 'chk', 'nenavadna ura'); assert.strictEqual(r.rows[1].fl.time.lvl, 'chk', 'nenavadne minute');
+});
+test('skeniranje knjige: podobnost besed (zamenjave 0/o, 1/l, rn/m) in vrstni red imena', () => {
+  const t = bsBoot(); const sm = (a, b) => t.js(`BSCAN.sim(${JSON.stringify(a)}, ${JSON.stringify(b)})`), sn = (a, b) => t.js(`BSCAN.simName(${JSON.stringify(a)}, ${JSON.stringify(b)})`);
+  assert.ok(sm('Dobova', 'D0bova') > 0.9); assert.ok(sm('Brezice', 'Brezlce') > 0.9); assert.ok(sm('Dornava', 'Domava') > 0.95); assert.ok(sm('Dobova', 'Krsko') < 0.4);
+  assert.ok(sn('Janez Novak', 'Novak Janez') > 0.99);
 });
 
 /* ------------------------------------------------------------------ zagon */

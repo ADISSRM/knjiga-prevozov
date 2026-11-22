@@ -142,7 +142,8 @@ function renderMonth(){
       <span class="sumline"><span><b class="mono">${tr}</b> prevozov</span><span><b class="mono">${td}</b> opravljenih</span>${tcn ? `<span><b class="mono">${tcn}</b> odpovedanih</span>` : ''}</span>
       <span class="sp" style="margin-left:auto"></span>
       <button type="button" class="btn ${UI.kmRep ? 'primary' : ''}" data-act="kmReport" aria-pressed="${UI.kmRep}">Kilometrina</button>
-      <button type="button" class="btn" data-act="printMonth">Natisni</button>
+      <button type="button" class="btn" data-act="bkOpen">Natisni knjigo</button>
+      <button type="button" class="btn" data-act="bsOpen">Skeniraj stran knjige</button>
     </div>
     ${UI.kmRep ? kmReportHTML(y, m) : ''}
     <div class="days">${cards.join('')}</div>`;
@@ -176,7 +177,7 @@ function sumRowHTML(r, nr, a, open){
     <span class="rcheck" aria-hidden="true">${r.done ? IC.check : ''}</span></button>`;
 }
 function rowTags(r, dir){
-  return `${r.mode !== 'sede' ? `<span class="rtag m-${r.mode}">${MODES[r.mode]}</span>` : ''}${dir === 'from' ? '<span class="rtag">odvoz</span>' : ''}${+r.stay > 0 && dir === 'to' ? `<span class="rtag">čaka ${+r.stay} min</span>` : ''}${r.dia ? `<span class="rtag">dializa</span>` : ''}`;
+  return `${r.chk ? `<span class="chip warn rchk" title="Prebrano s fotografije, ni potrjeno: ${esc(r.chk)}">⚠ preveri</span>` : ''}${r.mode !== 'sede' ? `<span class="rtag m-${r.mode}">${MODES[r.mode]}</span>` : ''}${dir === 'from' ? '<span class="rtag">odvoz</span>' : ''}${+r.stay > 0 && dir === 'to' ? `<span class="rtag">čaka ${+r.stay} min</span>` : ''}${r.dia ? `<span class="rtag">dializa</span>` : ''}`;
 }
 /* Čakanje na pregled: prikaže se samo pri prevozu TJA na ustanovo/kliniko. */
 function stayInfo(r, a){
@@ -197,6 +198,7 @@ function boxHTML(date, r, nr, plan){
   const ptc = r.patientId ? patientById(r.patientId) : null, nlc = ptc ? ((ptc.naloge || []).find(n => n.id === r.nalogId) || activeNalog(ptc, date)) : null;
   const nt = ptc ? 'nt-' + (nlc ? nlc.vrsta : 'none') : '';
   const editor = !open ? '' : `<div class="editor">
+    ${r.chk ? `<div class="banner chkrow" role="status"><span>${IC.alert}</span><div><b>Prebrano s fotografije: preveri ${esc(r.chk)}.</b> Popravi polje in pritisni »Preverjeno«. Oznaka ⚠ se natisne tudi v knjigi, dokler ni potrjena.</div><button type="button" class="btn sm primary" data-act="chkOk">Preverjeno</button></div>` : ''}
     <div class="bgrid">
       <div class="field"><label for="n-${r.id}">Ime in priimek</label><input id="n-${r.id}" type="text" data-f="name" data-suggest="patient" value="${esc(r.name)}" autocomplete="off" placeholder="išči v bazi pacientov"></div>
       <div class="field"><label for="t-${r.id}" title="Ura preiskave. Pri odvozu iz ustanove: ura, ko je pacient pripravljen.">Ura</label><input id="t-${r.id}" type="time" data-f="time" value="${esc(r.time)}"></div>

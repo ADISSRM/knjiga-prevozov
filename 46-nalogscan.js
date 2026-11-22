@@ -298,7 +298,7 @@ const NSCAN = (() => {
 
   /* ---------- Priprava slike in OCR (samo v brskalniku) ---------- */
   const MAXSIDE = 2600;
-  async function toCanvas(src){
+  async function toCanvas(src, max = MAXSIDE){
     let cv, w, h;
     if (src.kind === 'raw'){
       w = src.w; h = src.h; cv = document.createElement('canvas'); cv.width = w; cv.height = h;
@@ -310,7 +310,7 @@ const NSCAN = (() => {
       const bmp = await createImageBitmap(src.kind === 'jpeg' ? new Blob([src.bytes], { type:'image/jpeg' }) : src.blob);
       w = bmp.width; h = bmp.height; cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(bmp, 0, 0); if (bmp.close) bmp.close();
     }
-    const k = Math.min(1, MAXSIDE / Math.max(w, h));
+    const k = Math.min(1, max / Math.max(w, h));
     if (k < 1){ const c2 = document.createElement('canvas'); c2.width = Math.round(w * k); c2.height = Math.round(h * k); const x = c2.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(cv, 0, 0, c2.width, c2.height); cv = c2; }
     return cv;
   }
@@ -342,7 +342,7 @@ const NSCAN = (() => {
   /* privzete vrednosti: tudi config.js iz starejše izdaje (brez bloka »ocr«) ohrani skeniranje slik; lib: '' ali on: false ga izklopi */
   const OCR_DEFAULT = { on:true, lib:'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js', lang:'slv' };
   const ocrCfg = () => Object.assign({}, OCR_DEFAULT, (typeof window !== 'undefined' && window.KP_CONFIG && window.KP_CONFIG.ocr) || {});
-  function ocr(png, onProgress, cfg = ocrCfg()){
+  function ocr(png, onProgress, cfg = ocrCfg(), extra){
     return new Promise((resolve, reject) => {
       const fr = document.createElement('iframe'); let done = false, timer = 0;
       fr.setAttribute('sandbox', 'allow-scripts'); fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1; fr.style.cssText = 'position:fixed;width:1px;height:1px;left:-9px;top:-9px;border:0;opacity:0';
@@ -350,9 +350,9 @@ const NSCAN = (() => {
       const onMsg = async e => {
         if (e.source !== fr.contentWindow) return;
         const m = e.data || {};
-        if (m.type === 'ready'){ fr.contentWindow.postMessage({ type:'run', cfg:{ lib:abs(cfg.lib), lang:cfg.lang || 'slv+eng', langPath:abs(cfg.langPath), workerPath:abs(cfg.workerPath), corePath:abs(cfg.corePath) }, image:await png.arrayBuffer() }, '*'); }
+        if (m.type === 'ready'){ fr.contentWindow.postMessage({ type:'run', cfg:{ lib:abs(cfg.lib), lang:cfg.lang || 'slv+eng', langPath:abs(cfg.langPath), workerPath:abs(cfg.workerPath), corePath:abs(cfg.corePath) }, image:await png.arrayBuffer(), words:!!(extra && extra.words), psm:extra && extra.psm ? String(extra.psm) : undefined }, '*'); }
         else if (m.type === 'progress'){ if (onProgress) onProgress(m); }
-        else if (m.type === 'done') end(resolve, S_(m.text));
+        else if (m.type === 'done') end(resolve, extra && extra.words ? { text:S_(m.text), words:Array.isArray(m.words) ? m.words : [], tsv:S_(m.tsv) } : S_(m.text));
         else if (m.type === 'error') end(reject, new Error(S_(m.msg) || 'Razpoznava besedila ni uspela.'));
       };
       window.addEventListener('message', onMsg);
@@ -364,5 +364,5 @@ const NSCAN = (() => {
   }
   const ocrEnabled = (cfg = ocrCfg()) => cfg.on !== false && !!cfg.lib;
 
-  return { parse, matchPatient, apply, pdfImages, prepare, ocr, ocrEnabled, lines, zzzsIn, dates, title, fixDigits };
+  return { parse, matchPatient, apply, pdfImages, prepare, ocr, ocrEnabled, ocrCfg, lines, zzzsIn, dates, title, fixDigits, toCanvas, enhance, toBlob };
 })();
