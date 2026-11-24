@@ -165,7 +165,7 @@ const BOOK = (() => {
           <div class="pd-sign"><span>Pregledal: ______________________</span><span>Datum: ______________</span></div>`));
       } else out.push(sec(pn, p.inner()));
     });
-    return { html:out.join(''), pages:N, sheets:Math.ceil(N / (o.duplex ? 2 : 1)), days:shown.length, rides:T.tot, canc:T.canc, opts:o, dayStart:dayStart.map(s => ({ date:s.date, page:s.page })), totals:T };
+    return { y, m, title, html:out.join(''), pagesHtml:out, pages:N, sheets:Math.ceil(N / (o.duplex ? 2 : 1)), days:shown.length, rides:T.tot, canc:T.canc, opts:o, dayStart:dayStart.map(s => ({ date:s.date, page:s.page })), totals:T };
   }
 
   /* ---------- Možnosti se zapomnijo samo v tej napravi ---------- */
@@ -173,20 +173,103 @@ const BOOK = (() => {
   const load = () => { try { return opts(JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { return opts({}); } };
   const store = o => { try { localStorage.setItem(KEY, JSON.stringify(opts(o))); } catch (e) { /* brez shranjevanja */ } };
 
-  function print(y, m, o, built){
-    let el = document.getElementById('printArea');
-    if (!el){ el = document.createElement('div'); el.id = 'printArea'; document.body.appendChild(el); }
-    const b = built || build(y, m, o);
-    el.className = 'pbook'; el.style.setProperty('--gut', b.opts.gut + 'mm'); el.innerHTML = b.html;
-    audit('knjiga.tisk.mesec', { mesec:`${y}-${pad(m + 1)}`, strani:b.pages });
-    window.print();
-    return b;
+  /* ---------- Predogled, tisk in PDF ----------
+     Knjiga se NE tiska več iz glavnega okna aplikacije: vsaka pot (predogled strani, tisk, odpiranje v novem zavihku) dobi samostojen dokument z isto
+     stilsko tabelo (css()), zato je predogled enak natisnjenemu. Dokument nima skript (CSP), samo oznake in stil. */
+  const CSS = [
+    '@page{size:A4 portrait;margin:0}',
+    '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}',
+    'html,body{margin:0;padding:0;background:#fff;color:#000}',
+    'body{font:11px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;--gut:12mm}',
+    'h1,h2,h3,h4{font-family:inherit;margin:0;text-wrap:balance;letter-spacing:-.01em}',
+    'table{border-collapse:collapse;width:100%;font-size:13.5px}',
+    'th{font-size:11px;letter-spacing:.07em;text-transform:uppercase;text-align:left;font-weight:600;padding:9px 12px;white-space:nowrap}',
+    'td{padding:10px 12px;vertical-align:top}',
+    '.logoitem{display:inline-flex;align-items:center} .logoitem img{height:32px;width:auto;max-width:190px;object-fit:contain;display:block} .logoitem .lf{font:700 13px system-ui,sans-serif;color:#0D1A2C} .logoitem .lf[hidden]{display:none}',
+    '#printArea{display:block;background:#fff;color:#000;font:11px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}',
+    '#printArea h2{margin:0 0 2px;font-size:18px} #printArea h3{margin:12px 0 4px;font-size:13px;text-transform:capitalize}',
+    '#printArea section{break-inside:avoid} #printArea table{width:100%;border-collapse:collapse}',
+    '#printArea th,#printArea td{border:1px solid #888;padding:2px 5px;text-align:left;vertical-align:top;color:#000;background:#fff}',
+    '#printArea th{background:#e8e8e8} #printArea tr.p-cancel td{background:#fde2e2;color:#b00020} #printArea td.num,#printArea th.num{text-align:right}',
+    '.pd-head{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px}',
+    '.pd-logos{display:flex;gap:8px;align-items:center;min-height:34px} .pd-logos img{max-height:34px;width:auto} .pd-logos i{display:none}',
+    '.pd-title{display:flex;flex-direction:column;text-align:center} .pd-title b{font-size:15px;letter-spacing:.04em} .pd-title span{font-size:11px}',
+    '.pd-date{text-align:right;line-height:1.5} .pd-date b{font-size:13px} .pd-pg{font-size:10px;color:#444}',
+    '.pd-veh{margin:0 0 6px;font-size:12px}',
+    '.pd-tab{width:100%;border-collapse:collapse;table-layout:fixed}',
+    '.pd-tab th,.pd-tab td{border:1px solid #000;padding:3px 4px;vertical-align:top;word-break:break-word;height:19px;color:#000;background:#fff}',
+    '.pd-tab th{background:#e6e6e6;font-size:10px;text-transform:uppercase}',
+    '.pd-tab .pd-nr{width:9.5mm;padding-left:1px;padding-right:1px;text-align:center;font-weight:700;white-space:nowrap} .pd-tab .pd-t{width:15mm;text-align:center;font-family:ui-monospace,Menlo,monospace} .pd-tab .pd-v{width:14mm;text-align:center}',
+    '.pd-tab tr.pd-empty td{height:30px}',
+    '.pd-tab tr.p-cancel td{color:#c00000;text-decoration:line-through} .pd-tab tr.p-cancel td b{text-decoration:none;display:inline-block}',
+    '.pd-crew td{height:34px;font-size:12px} .pd-pos{margin-top:12px} .pd-pos ul{margin:4px 0 0 16px;padding:0} .pd-lines{height:90px;background:repeating-linear-gradient(transparent 0 21px,#999 21px 22px)}',
+    '.pd-sign{display:flex;justify-content:space-between;margin-top:22px;font-size:12px} .pd-fine{font-size:9.5px;color:#444;margin:8px 0 0} .pd-warn{color:#c00000;font-weight:700;margin:8px 0 0}',
+    '.pb-page{box-sizing:border-box;width:210mm;height:296mm;padding:9mm 9mm 15mm;position:relative;break-after:page;break-inside:auto}',
+    '.pb-page:last-child{break-after:auto}',
+    '.pb-odd{padding-left:calc(9mm + var(--gut))} .pb-even{padding-right:calc(9mm + var(--gut))}',
+    '.pb-foot{position:absolute;bottom:6mm;display:flex;justify-content:space-between;font-size:9.5px;color:#444;border-top:1px solid #999;padding-top:2px}',
+    '.pb-odd .pb-foot{left:calc(9mm + var(--gut));right:9mm} .pb-even .pb-foot{left:9mm;right:calc(9mm + var(--gut))}',
+    '.pb-cover{text-align:center;margin-top:55mm} .pb-cover h1{font-size:26px;letter-spacing:.04em;margin:26px 0 6px} .pb-cover h2{font-size:34px;text-transform:capitalize;margin:0 0 22px} .pb-cover p{margin:4px 0;font-size:13px}',
+    '.pb-cover .pb-big{font-size:64px;font-weight:700;margin:26px 0 0;line-height:1} .pb-cover .pd-logos img{max-height:56px} .pb-cover .pd-logos{justify-content:center}',
+    '.pb-index td,.pb-sum td{height:auto;padding:2px 6px} .pb-index td.num,.pb-sum td.num,.pb-index th.num,.pb-sum th.num{text-align:right}',
+    '.pd-empty-day{font-size:14px;margin:22px 0;color:#444}',
+    '.pd-by{font-size:9px;color:#333;margin-top:1px} .pd-chk{color:#b45309} .pd-ruled{margin-top:6px} .pd-ln{height:22px;border-bottom:1px solid #999}',
+    '#printArea .pd-tab th{font-size:9px;padding:3px 2px;letter-spacing:0}',
+    /* samo na zaslonu (predogled, odprt zavihek): ozadje, senca strani in siv pas notranjega roba za vezavo; pri tisku se nič od tega ne izpiše */
+    '@media screen{',
+    ' .pb-odd{background-image:linear-gradient(90deg,#e6ebf3 0,#e6ebf3 var(--gut),transparent var(--gut))} .pb-even{background-image:linear-gradient(270deg,#e6ebf3 0,#e6ebf3 var(--gut),transparent var(--gut))}',
+    ' body.m-view{overflow:hidden;background:#fff}',
+    ' body.m-tab{background:#cfd6e2;padding:0 0 28px} body.m-tab #printArea{background:transparent} body.m-tab .pb-page{margin:14px auto;box-shadow:0 2px 14px rgba(0,0,0,.28);background-color:#fff}',
+    ' .bk-bar{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 14px;background:#0d1a2c;color:#fff;font:13px/1.4 system-ui,sans-serif}',
+    ' .bk-bar b{font-size:14px} .bk-bar span{flex:1 1 280px;opacity:.92} .bk-bar button{font:700 14px system-ui,sans-serif;padding:9px 16px;border:0;border-radius:8px;background:#DD5207;color:#fff;cursor:pointer}',
+    ' @media (pointer:coarse){.bk-bar{font-size:26px;padding:18px 22px;gap:16px} .bk-bar b{font-size:28px} .bk-bar button{font-size:28px;padding:16px 28px;border-radius:14px}}',
+    '}',
+    '@media print{.bk-bar{display:none!important} body.m-tab .pb-page{margin:0;box-shadow:none}}'
+  ].join('\n');
+  const css = () => CSS;
+  /* mode: 'print' (cela knjiga), 'tab' (cela knjiga za zaslon: odprt zavihek), 'view' (ena stran za predogled; page = številka strani) */
+  function doc(b, mode, page){
+    mode = mode || 'print'; const dt = 'Knjiga prevozov ' + b.title;
+    const pages = mode === 'view' ? [b.pagesHtml[Math.min(b.pages, Math.max(1, +page || 1)) - 1] || ''] : b.pagesHtml;
+    const bar = mode === 'tab' ? `<div class="bk-bar"><b>${esc(dt)}</b><span>${b.pages} strani. Za tisk ali PDF izberi v meniju brskalnika (⋮ ali »Deli«) možnost <b>Natisni</b>; tam lahko izbereš tudi »Shrani kot PDF«. Papir A4 pokončno, merilo 100 %.</span><button type="button" id="bkGo">Natisni / PDF</button></div>` : '';
+    return `<!doctype html><html lang="sl"><head><meta charset="utf-8"><title>${esc(dt)}</title>${mode === 'tab' ? '<meta name="viewport" content="width=794">' : ''}<style>${CSS}</style></head><body class="m-${mode}" style="--gut:${b.opts.gut}mm">${bar}<div id="printArea" class="pbook">${pages.join('')}</div></body></html>`;
   }
+  const hooks = { print:null, open:null };
+  /* tisk: skrit okvir s celotno knjigo, nato print() samo tega okvirja (ne glavnega okna). Na nekaterih telefonih (iOS) to ne deluje: tam »odpri v zavihku«. */
+  function printFrame(b){
+    const html = doc(b, 'print');
+    audit('knjiga.tisk.mesec', { mesec:`${b.y}-${pad(b.m + 1)}`, strani:b.pages });
+    if (hooks.print) return hooks.print(html, b);
+    const old = document.getElementById('bkPrintFrame'); if (old) old.remove();
+    const fr = document.createElement('iframe'); fr.id = 'bkPrintFrame'; fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1; fr.title = 'Knjiga za tisk';
+    fr.style.cssText = 'position:fixed;left:-12000px;top:0;width:794px;height:1123px;border:0;visibility:hidden';
+    let done = false;
+    const clean = () => { if (done) return; done = true; setTimeout(() => fr.remove(), 1500); };
+    fr.onload = () => {
+      try { const w = fr.contentWindow; w.addEventListener('afterprint', clean); w.focus(); w.print(); setTimeout(clean, 10 * 60 * 1000); }
+      catch (e) { clean(); toast('Tiskanja ni mogoče zagnati v tem brskalniku. Uporabi »Odpri za tisk / PDF«.'); }
+    };
+    fr.srcdoc = html; document.body.appendChild(fr);
+    return fr;
+  }
+  /* odpre knjigo v novem zavihku (telefon: Deli/⋮ → Natisni → Shrani kot PDF). Vrne okno ali null, če je brskalnik blokiral pojavno okno. */
+  function openTab(b){
+    const html = doc(b, 'tab').replace(/(\ssrc=")(?!data:|blob:|https?:)([^"]*)"/g, (m, a, u) => { try { return a + new URL(u.replace(/&amp;/g, '&'), location.href).href + '"'; } catch (e) { return m; } });
+    audit('knjiga.odprto.mesec', { mesec:`${b.y}-${pad(b.m + 1)}`, strani:b.pages });
+    if (hooks.open) return hooks.open(html, b);
+    let url = ''; try { url = URL.createObjectURL(new Blob([html], { type:'text/html;charset=utf-8' })); } catch (e) { return null; }
+    const w = window.open(url, '_blank');
+    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) { /* nič */ } }, 15 * 60 * 1000);
+    if (w){ try { w.addEventListener('load', () => { const bt = w.document.getElementById('bkGo'); if (bt) bt.addEventListener('click', () => w.print()); }); } catch (e) { /* gumb je dodatek: meni brskalnika deluje vedno */ } }
+    return w || null;
+  }
+  /* zgodovinsko ime: tisk celotne knjige */
+  function print(y, m, o, built){ const b = built || build(y, m, o); printFrame(b); return b; }
   /* so podatki za mesec že naloženi iz skupne baze? (v lokalnem načinu vedno) */
   function monthReady(y, m){
     const a = `${y}-${pad(m + 1)}-01`, b = `${y}-${pad(m + 1)}-${pad(daysInMonth(y, m))}`;
     if (typeof SY === 'undefined' || !SY.range) return true;
     return a >= SY.range.from && b <= SY.range.to && !!SY.dayReady;
   }
-  return { DEF, opts, build, print, load, store, dayData, dayPages, monthReady, P1, P2, CONT };
+  return { DEF, opts, build, print, printFrame, openTab, doc, css, hooks, load, store, dayData, dayPages, monthReady, P1, P2, CONT };
 })();

@@ -268,6 +268,17 @@ details.warnbox summary{cursor:pointer;font-weight:600}
 .imap.picking .imap-vp{cursor:crosshair}
 .modal.modal-wide{width:min(860px,100%)}
 /* skeniranje strani knjige: označbe (barva + simbol + besedilo, ne samo barva) */
+.modal.bprint{width:min(1080px,100%)}
+.bk-grid{display:grid;gap:12px;grid-template-columns:minmax(0,1fr);grid-template-areas:"top" "prev" "act" "opts" "note"}
+.bk-top{grid-area:top} .bk-prevbox{grid-area:prev;min-width:0} .bk-act{grid-area:act} .bk-opts{grid-area:opts} .bk-note{grid-area:note}
+@media (min-width:900px){.bk-grid{grid-template-columns:minmax(280px,360px) minmax(0,1fr);grid-template-areas:"top prev" "opts prev" "act prev" "note prev";align-items:start}}
+.bk-opts{border:1px solid var(--line-2);border-radius:12px;padding:8px 12px;background:var(--surface)} .bk-opts>summary{cursor:pointer;font-weight:700;padding:4px 0}
+.bk-nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px} .bk-nav .btn.sm{min-width:44px;min-height:40px} .bk-nav select{max-width:100%;min-width:0;flex:1 1 150px}
+.bk-pgn{display:flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap} .bk-pgn input{width:68px;padding:6px 8px}
+.bk-prev{overflow:auto;max-height:80vh;background:#c9d1de;padding:8px;border-radius:10px;border:1px solid var(--line-2);-webkit-overflow-scrolling:touch}
+.bk-sheet{margin:0 auto;position:relative;box-shadow:0 2px 12px rgba(0,0,0,.3);background:#fff;overflow:hidden}
+.bk-frame{display:block;width:794px;height:1119px;border:0;background:#fff;transform-origin:0 0;position:absolute;left:0;top:0}
+.bk-prevwait{min-height:120px;display:flex;align-items:center;justify-content:center}
 .modal.bscan{width:min(980px,100%)}
 .bs-sum{position:sticky;top:-16px;z-index:3;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-4px -16px 0;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--line-2)}
 .bs-sum .sp,.bs-head .sp{flex:1}
@@ -275,6 +286,13 @@ details.warnbox summary{cursor:pointer;font-weight:600}
 .bs-cnt[data-lv=ok]{background:var(--ok-soft);color:var(--ok)} .bs-cnt[data-lv=chk]{background:var(--warn-soft);color:var(--warn)} .bs-cnt[data-lv=bad]{background:var(--bad-soft);color:var(--bad)}
 .bscan .stack>*,.bs-list,.bs-row{min-width:0;max-width:100%}
 .bscan .btn{white-space:normal;text-align:center} .bs-foot>.row{flex:1 1 auto;justify-content:flex-end;flex-wrap:wrap} .bs-foot .btn.primary{flex:1 1 220px}
+.bs-warm{font-size:13px;padding:8px 12px;border-radius:10px;background:var(--surface-2);color:var(--ink-2)}
+.bs-warm[data-st=ok]{background:var(--ok-soft);color:var(--ok)} .bs-warm[data-st=err]{background:var(--warn-soft);color:var(--warn)} .bs-warm:empty{display:none}
+.bs-busy{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line-2);border-radius:12px;background:var(--surface)}
+.bs-busy progress{width:100%;height:10px;accent-color:var(--accent)}
+.bs-photos{border:1px solid var(--line-2);border-radius:12px;padding:8px 12px;background:var(--surface)} .bs-photos>summary{cursor:pointer;font-weight:700;padding:4px 0}
+.bs-photo{margin:8px 0;max-height:46vh;overflow:auto;border:1px solid var(--line-2);border-radius:8px;background:#fff;-webkit-overflow-scrolling:touch}
+.bs-photo img{display:block;width:100%;height:auto} .bs-photo.zoom img{width:230%;max-width:none}
 .bs-list{display:flex;flex-direction:column;gap:12px}
 .bs-row{border:1px solid var(--line-2);border-left:6px solid var(--ok);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;background:var(--surface)}
 .bs-row[data-lv=chk]{border-left-color:var(--warn);background:linear-gradient(0deg,var(--surface),var(--surface)) padding-box}
@@ -623,23 +641,11 @@ a.btn{text-decoration:none}
   .pd-crew td{height:34px;font-size:12px} .pd-pos{margin-top:12px} .pd-pos ul{margin:4px 0 0 16px;padding:0} .pd-lines{height:90px;background:repeating-linear-gradient(transparent 0 21px,#999 21px 22px)}
   .pd-sign{display:flex;justify-content:space-between;margin-top:22px;font-size:12px} .pd-fine{font-size:9.5px;color:#444;margin:8px 0 0} .pd-warn{color:#c00000;font-weight:700;margin:8px 0 0}
 }
-/* Tisk knjige za cel mesec (strani A4 z notranjim robom za vezavo) */
-@page bookform{size:A4 portrait;margin:0}
+/* Knjiga za cel mesec (predogled, tisk, PDF): samostojna stilska tabela je v BOOK.css() (src/48-bookprint.js); tukaj ostanejo samo pravila, ki jih uporablja tudi tisk dneva */
 @media print{
-  #printArea.pbook{page:bookform;font:11px/1.3 system-ui,sans-serif;--gut:12mm}
-  #printArea.pbook .pb-page{box-sizing:border-box;width:210mm;height:296mm;padding:9mm 9mm 15mm;position:relative;break-after:page;break-inside:auto}
-  #printArea.pbook .pb-page:last-child{break-after:auto}
-  #printArea.pbook .pb-odd{padding-left:calc(9mm + var(--gut))}
-  #printArea.pbook .pb-even{padding-right:calc(9mm + var(--gut))}
-  .pb-foot{position:absolute;bottom:6mm;display:flex;justify-content:space-between;font-size:9.5px;color:#444;border-top:1px solid #999;padding-top:2px}
-  .pb-odd .pb-foot{left:calc(9mm + var(--gut));right:9mm} .pb-even .pb-foot{left:9mm;right:calc(9mm + var(--gut))}
-  #printArea .pb-cover{text-align:center;margin-top:55mm} #printArea .pb-cover h1{font-size:26px;letter-spacing:.04em;margin:26px 0 6px} #printArea .pb-cover h2{font-size:34px;text-transform:capitalize;margin:0 0 22px} #printArea .pb-cover p{margin:4px 0;font-size:13px}
-  #printArea .pb-cover .pb-big{font-size:64px;font-weight:700;margin:26px 0 0;line-height:1} #printArea .pb-cover .pd-logos img{max-height:56px}
-  .pb-index td,.pb-sum td{height:auto;padding:2px 6px} .pb-index td.num,.pb-sum td.num,.pb-index th.num,.pb-sum th.num{text-align:right}
   .pd-empty-day{font-size:14px;margin:22px 0;color:#444}
   .pd-by{font-size:9px;color:#333;margin-top:1px} .pd-chk{color:#b45309} .pd-ruled{margin-top:6px} .pd-ln{height:22px;border-bottom:1px solid #999}
   .pd-tab tr.p-cancel td b{display:inline-block}
-  #printArea.pbook .pd-tab th{font-size:9px;padding:3px 2px;letter-spacing:0}
 }
 </style>
 
@@ -1002,6 +1008,28 @@ const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(3
 const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g,'d').toLowerCase().trim();
 const clone = o => JSON.parse(JSON.stringify(o));
 const pad = n => String(n).padStart(2, '0');
+
+/* ---------- Seznam zaposlenih iz besedila ----------
+   En zaposleni na vrstico (ali ločeno z vejico, podpičjem, tabulatorjem). Sprejme »Ana K.«, »Ana K«, »AnaK« (zlepljeno, kot je napisano na papirnem seznamu)
+   in »Ana Kos«: zlepljeno ime se loči (»AnaK« → »Ana K.«), začetnica priimka dobi piko, VELIKE ali male črke se popravijo. Dvojniki (z obstoječimi in znotraj seznama) se preskočijo. */
+function parseStaffList(text, existing){
+  const seen = new Set((existing || []).map(norm)), add = [], dup = [], bad = [];
+  const cap = w => (w.length > 1 && (w === w.toLocaleUpperCase('sl') || w === w.toLocaleLowerCase('sl'))) ? w.charAt(0).toLocaleUpperCase('sl') + w.slice(1).toLocaleLowerCase('sl') : w;
+  String(text || '').split(/[\r\n;,\t]+/).forEach(raw => {
+    let t = raw.replace(/^\s*(?:\d+\s*[.)]\s+|[-•*]\s+)/, '').replace(/\s+/g, ' ').trim();
+    if (!t) return;
+    t = t.replace(/(\p{Ll})(\p{Lu})(?=\.|\s|$)/u, '$1 $2');
+    if (!/^\p{L}[\p{L} .'’\-]*$/u.test(t) || t.length > 60){ bad.push(raw.trim()); return; }
+    const parts = t.split(' ').filter(Boolean).map((w, i, a) => {
+      const ini = i === a.length - 1 && i > 0 && /^\p{L}\.?$/u.test(w);
+      return ini ? w.charAt(0).toLocaleUpperCase('sl') + '.' : cap(w);
+    });
+    const name = parts.join(' '), k = norm(name);
+    if (seen.has(k)){ dup.push(name); return; }
+    seen.add(k); add.push(name);
+  });
+  return { add, dup, bad };
+}
 
 /* ---------- Datumi ---------- */
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -3757,29 +3785,76 @@ const NSCAN = (() => {
   /* privzete vrednosti: tudi config.js iz starejše izdaje (brez bloka »ocr«) ohrani skeniranje slik; lib: '' ali on: false ga izklopi */
   const OCR_DEFAULT = { on:true, lib:'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js', lang:'slv' };
   const ocrCfg = () => Object.assign({}, OCR_DEFAULT, (typeof window !== 'undefined' && window.KP_CONFIG && window.KP_CONFIG.ocr) || {});
-  function ocr(png, onProgress, cfg = ocrCfg(), extra){
-    return new Promise((resolve, reject) => {
-      const fr = document.createElement('iframe'); let done = false, timer = 0;
-      fr.setAttribute('sandbox', 'allow-scripts'); fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1; fr.style.cssText = 'position:fixed;width:1px;height:1px;left:-9px;top:-9px;border:0;opacity:0';
-      const end = (fn, v) => { if (done) return; done = true; clearTimeout(timer); window.removeEventListener('message', onMsg); fr.remove(); fn(v); };
-      const onMsg = async e => {
-        if (e.source !== fr.contentWindow) return;
-        const m = e.data || {};
-        if (m.type === 'ready'){ fr.contentWindow.postMessage({ type:'run', cfg:{ lib:abs(cfg.lib), lang:cfg.lang || 'slv+eng', langPath:abs(cfg.langPath), workerPath:abs(cfg.workerPath), corePath:abs(cfg.corePath) }, image:await png.arrayBuffer(), words:!!(extra && extra.words), psm:extra && extra.psm ? String(extra.psm) : undefined }, '*'); }
-        else if (m.type === 'progress'){ if (onProgress) onProgress(m); }
-        else if (m.type === 'done') end(resolve, extra && extra.words ? { text:S_(m.text), words:Array.isArray(m.words) ? m.words : [], tsv:S_(m.tsv) } : S_(m.text));
-        else if (m.type === 'error') end(reject, new Error(S_(m.msg) || 'Razpoznava besedila ni uspela.'));
-      };
-      window.addEventListener('message', onMsg);
-      timer = setTimeout(() => end(reject, new Error('Razpoznava besedila je trajala predolgo. Poskusi znova ali prilepi besedilo.')), 240000);
-      fr.onerror = () => end(reject, new Error('Okvir za razpoznavo besedila se ni naložil.'));
-      fr.src = (cfg.frame || 'ocr/ocr.html');
-      document.body.appendChild(fr);
-    });
+  /* Seja razpoznave: en izoliran okvir in en delavec za vse slike. Okvir nima dovoljenja za shranjevanje (sandbox brez allow-same-origin), zato brskalnik v njem
+     ne more hraniti prenesenih datotek: prenos jedra (~5 MB) in modela (~2 MB) se zato naredi ENKRAT na sejo (v ozadju, ob odprtju okna), ne za vsako sliko znova.
+     Nadzor: če okvir 75 s ne pošlje nobenega napredka, se seja prekine z jasno napako; celotna omejitev 10 minut. Seja se po 6 minutah mirovanja sprosti (pomnilnik telefona). */
+  const OCR_T = { silence:75000, hard:600000, idle:360000 };   // spremenljivo samo zaradi preizkusov
+  const STAGE_LABEL = { lib:'nalagam program za razpoznavo', 'loading tesseract core':'prenašam jedro razpoznave (samo prvič v seji)', 'initializing tesseract':'zaganjam razpoznavo', 'loading language traineddata':'prenašam slovenski jezikovni model (samo prvič v seji)', 'initializing api':'zaganjam razpoznavo', 'recognizing text':'berem besedilo', prep:'pripravljam sliko' };
+  const stageLabel = st => STAGE_LABEL[st] || String(st || 'delam');
+  let SES = null;
+  function makeSession(cfg){
+    const fr = document.createElement('iframe'); let dead = false, deadErr = null, ready = false, readyRes, cur = null, silence = 0, hard = 0, idle = 0;
+    const readyP = new Promise(res => { readyRes = res; });
+    fr.setAttribute('sandbox', 'allow-scripts'); fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1; fr.style.cssText = 'position:fixed;width:1px;height:1px;left:-9px;top:-9px;border:0;opacity:0';
+    const clear = () => { clearTimeout(silence); clearTimeout(hard); };
+    const finish = (fn, v) => { if (!cur) return; const c = cur; cur = null; clear(); fn === 'ok' ? c.resolve(v) : c.reject(v); };
+    const post = m => fr.contentWindow && fr.contentWindow.postMessage(m, '*');
+    const destroy = err => { if (dead) return; dead = true; deadErr = err || null; clearTimeout(idle); clear(); try { post({ type:'close' }); } catch (e) { /* nič */ } window.removeEventListener('message', onMsg); fr.remove(); if (SES === api) SES = null; if (cur) finish('err', err || new Error('Razpoznava je bila prekinjena.')); };
+    const arm = () => { clearTimeout(silence); silence = setTimeout(() => destroy(new Error(`Razpoznava se je ustavila (${Math.round(OCR_T.silence / 1000)} s brez napredka). Najpogostejši vzrok je prekinjena ali počasna internetna povezava do cdn.jsdelivr.net. Poskusi znova ali preveri povezavo.`)), OCR_T.silence); };
+    const bump = () => { clearTimeout(idle); if (!dead) idle = setTimeout(() => destroy(), OCR_T.idle); };
+    const onMsg = e => {
+      if (e.source !== fr.contentWindow) return;
+      const m = e.data || {};
+      if (m.type === 'ready'){ ready = true; readyRes(); }
+      else if (m.type === 'progress'){ if (cur){ arm(); cur.listeners.forEach(f => { try { f(m); } catch (e) { /* prikaz ne sme ustaviti razpoznave */ } }); } }
+      else if (m.type === 'warmed'){ if (cur && cur.kind === 'warm') finish('ok'); }
+      else if (m.type === 'done'){ if (cur && cur.kind === 'run') finish('ok', cur.words ? { text:S_(m.text), words:Array.isArray(m.words) ? m.words : [], tsv:S_(m.tsv) } : S_(m.text)); }
+      else if (m.type === 'error'){ if (cur) finish('err', new Error(S_(m.msg) || 'Razpoznava besedila ni uspela.')); }
+    };
+    window.addEventListener('message', onMsg);
+    fr.onerror = () => destroy(new Error('Okvir za razpoznavo besedila se ni naložil.'));
+    fr.src = (cfg.frame || 'ocr/ocr.html'); document.body.appendChild(fr);
+    const cfgMsg = () => ({ lib:abs(cfg.lib), lang:cfg.lang || 'slv', langPath:abs(cfg.langPath), workerPath:abs(cfg.workerPath), corePath:abs(cfg.corePath) });
+    /* ena zahteva naenkrat; čakajoče zahteve ostanejo v vrsti */
+    let chain = Promise.resolve(), warmSt = null;
+    const request = (kind, msg, onProgress, words, listeners) => {
+      const job = chain.then(async () => {
+        if (dead) throw deadErr || new Error('Razpoznava je bila prekinjena.');
+        clearTimeout(idle);
+        await Promise.race([readyP, new Promise((_, rej) => setTimeout(() => rej(new Error('Okvir za razpoznavo besedila se ni odzval.')), 20000))]);
+        return new Promise((resolve, reject) => {
+          cur = { kind, resolve, reject, listeners:listeners || [onProgress], words }; arm(); clearTimeout(hard); hard = setTimeout(() => destroy(new Error('Razpoznava je trajala predolgo (' + Math.round(OCR_T.hard / 60000) + ' minut). Poskusi znova z manjšo ali boljšo fotografijo.')), OCR_T.hard);
+          Promise.resolve(msg()).then(m => post(m), reject);
+        });
+      });
+      chain = job.then(() => {}, () => {}).then(bump);
+      return job;
+    };
+    const api = {
+      cfg, get dead(){ return dead; }, get ready(){ return ready; },
+      /* vnaprejšnji zagon: če teče, se ob kasnejšem run() njegov prikaz napredka pridruži istemu prenosu */
+      warm: onProgress => { if (warmSt && !warmSt.done) { if (onProgress) warmSt.listeners.push(onProgress); return warmSt.p; } const st = warmSt = { done:false, listeners:[onProgress] }; st.p = request('warm', () => ({ type:'warm', cfg:cfgMsg() }), null, false, st.listeners).finally(() => { st.done = true; }); return st.p; },
+      get busy(){ return !!cur; },
+      run: async (png, onProgress, extra) => { if (warmSt && !warmSt.done && onProgress) warmSt.listeners.push(onProgress); const buf = await png.arrayBuffer(); return request('run', () => ({ type:'run', cfg:cfgMsg(), image:buf, words:!!(extra && extra.words), psm:extra && extra.psm ? String(extra.psm) : undefined }), onProgress, !!(extra && extra.words)); },
+      close: () => destroy(new Error('Razpoznava je bila prekinjena.'))
+    };
+    bump();
+    return api;
   }
+  /* seja za trenutne nastavitve (nova, če so se nastavitve spremenile ali je bila stara ustavljena) */
+  function ocrSession(cfg = ocrCfg()){
+    const key = JSON.stringify([cfg.lib, cfg.lang, cfg.langPath, cfg.workerPath, cfg.corePath, cfg.frame]);
+    if (SES && (SES.dead || SES.key !== key)){ const o = SES; SES = null; try { o.close(); } catch (e) { /* nič */ } }
+    if (!SES){ SES = makeSession(cfg); SES.key = key; }
+    return SES;
+  }
+  const ocrClose = () => { if (SES) SES.close(); };
+  /* prekinitev uporabnika: seja se ustavi samo, če ravno bere; drugače ostane pripravljena za naslednjo sliko */
+  const ocrAbort = () => { if (SES && SES.busy) SES.close(); };
+  function ocr(png, onProgress, cfg = ocrCfg(), extra){ return ocrSession(cfg).run(png, onProgress, extra); }
   const ocrEnabled = (cfg = ocrCfg()) => cfg.on !== false && !!cfg.lib;
 
-  return { parse, matchPatient, apply, pdfImages, prepare, ocr, ocrEnabled, ocrCfg, lines, zzzsIn, dates, title, fixDigits, toCanvas, enhance, toBlob };
+  return { parse, matchPatient, apply, pdfImages, prepare, ocr, ocrSession, ocrClose, ocrAbort, ocrLimits:OCR_T, stageLabel, ocrEnabled, ocrCfg, lines, zzzsIn, dates, title, fixDigits, toCanvas, enhance, toBlob };
 })();
 /* =====================================================================
    TISK DOPOLNIL NA OBRAZEC »NALOG ZA PREVOZ« (Obr. NLG/05)
@@ -4115,7 +4190,7 @@ const BOOK = (() => {
           <div class="pd-sign"><span>Pregledal: ______________________</span><span>Datum: ______________</span></div>`));
       } else out.push(sec(pn, p.inner()));
     });
-    return { html:out.join(''), pages:N, sheets:Math.ceil(N / (o.duplex ? 2 : 1)), days:shown.length, rides:T.tot, canc:T.canc, opts:o, dayStart:dayStart.map(s => ({ date:s.date, page:s.page })), totals:T };
+    return { y, m, title, html:out.join(''), pagesHtml:out, pages:N, sheets:Math.ceil(N / (o.duplex ? 2 : 1)), days:shown.length, rides:T.tot, canc:T.canc, opts:o, dayStart:dayStart.map(s => ({ date:s.date, page:s.page })), totals:T };
   }
 
   /* ---------- Možnosti se zapomnijo samo v tej napravi ---------- */
@@ -4123,22 +4198,105 @@ const BOOK = (() => {
   const load = () => { try { return opts(JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { return opts({}); } };
   const store = o => { try { localStorage.setItem(KEY, JSON.stringify(opts(o))); } catch (e) { /* brez shranjevanja */ } };
 
-  function print(y, m, o, built){
-    let el = document.getElementById('printArea');
-    if (!el){ el = document.createElement('div'); el.id = 'printArea'; document.body.appendChild(el); }
-    const b = built || build(y, m, o);
-    el.className = 'pbook'; el.style.setProperty('--gut', b.opts.gut + 'mm'); el.innerHTML = b.html;
-    audit('knjiga.tisk.mesec', { mesec:`${y}-${pad(m + 1)}`, strani:b.pages });
-    window.print();
-    return b;
+  /* ---------- Predogled, tisk in PDF ----------
+     Knjiga se NE tiska več iz glavnega okna aplikacije: vsaka pot (predogled strani, tisk, odpiranje v novem zavihku) dobi samostojen dokument z isto
+     stilsko tabelo (css()), zato je predogled enak natisnjenemu. Dokument nima skript (CSP), samo oznake in stil. */
+  const CSS = [
+    '@page{size:A4 portrait;margin:0}',
+    '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}',
+    'html,body{margin:0;padding:0;background:#fff;color:#000}',
+    'body{font:11px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;--gut:12mm}',
+    'h1,h2,h3,h4{font-family:inherit;margin:0;text-wrap:balance;letter-spacing:-.01em}',
+    'table{border-collapse:collapse;width:100%;font-size:13.5px}',
+    'th{font-size:11px;letter-spacing:.07em;text-transform:uppercase;text-align:left;font-weight:600;padding:9px 12px;white-space:nowrap}',
+    'td{padding:10px 12px;vertical-align:top}',
+    '.logoitem{display:inline-flex;align-items:center} .logoitem img{height:32px;width:auto;max-width:190px;object-fit:contain;display:block} .logoitem .lf{font:700 13px system-ui,sans-serif;color:#0D1A2C} .logoitem .lf[hidden]{display:none}',
+    '#printArea{display:block;background:#fff;color:#000;font:11px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}',
+    '#printArea h2{margin:0 0 2px;font-size:18px} #printArea h3{margin:12px 0 4px;font-size:13px;text-transform:capitalize}',
+    '#printArea section{break-inside:avoid} #printArea table{width:100%;border-collapse:collapse}',
+    '#printArea th,#printArea td{border:1px solid #888;padding:2px 5px;text-align:left;vertical-align:top;color:#000;background:#fff}',
+    '#printArea th{background:#e8e8e8} #printArea tr.p-cancel td{background:#fde2e2;color:#b00020} #printArea td.num,#printArea th.num{text-align:right}',
+    '.pd-head{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px}',
+    '.pd-logos{display:flex;gap:8px;align-items:center;min-height:34px} .pd-logos img{max-height:34px;width:auto} .pd-logos i{display:none}',
+    '.pd-title{display:flex;flex-direction:column;text-align:center} .pd-title b{font-size:15px;letter-spacing:.04em} .pd-title span{font-size:11px}',
+    '.pd-date{text-align:right;line-height:1.5} .pd-date b{font-size:13px} .pd-pg{font-size:10px;color:#444}',
+    '.pd-veh{margin:0 0 6px;font-size:12px}',
+    '.pd-tab{width:100%;border-collapse:collapse;table-layout:fixed}',
+    '.pd-tab th,.pd-tab td{border:1px solid #000;padding:3px 4px;vertical-align:top;word-break:break-word;height:19px;color:#000;background:#fff}',
+    '.pd-tab th{background:#e6e6e6;font-size:10px;text-transform:uppercase}',
+    '.pd-tab .pd-nr{width:9.5mm;padding-left:1px;padding-right:1px;text-align:center;font-weight:700;white-space:nowrap} .pd-tab .pd-t{width:15mm;text-align:center;font-family:ui-monospace,Menlo,monospace} .pd-tab .pd-v{width:14mm;text-align:center}',
+    '.pd-tab tr.pd-empty td{height:30px}',
+    '.pd-tab tr.p-cancel td{color:#c00000;text-decoration:line-through} .pd-tab tr.p-cancel td b{text-decoration:none;display:inline-block}',
+    '.pd-crew td{height:34px;font-size:12px} .pd-pos{margin-top:12px} .pd-pos ul{margin:4px 0 0 16px;padding:0} .pd-lines{height:90px;background:repeating-linear-gradient(transparent 0 21px,#999 21px 22px)}',
+    '.pd-sign{display:flex;justify-content:space-between;margin-top:22px;font-size:12px} .pd-fine{font-size:9.5px;color:#444;margin:8px 0 0} .pd-warn{color:#c00000;font-weight:700;margin:8px 0 0}',
+    '.pb-page{box-sizing:border-box;width:210mm;height:296mm;padding:9mm 9mm 15mm;position:relative;break-after:page;break-inside:auto}',
+    '.pb-page:last-child{break-after:auto}',
+    '.pb-odd{padding-left:calc(9mm + var(--gut))} .pb-even{padding-right:calc(9mm + var(--gut))}',
+    '.pb-foot{position:absolute;bottom:6mm;display:flex;justify-content:space-between;font-size:9.5px;color:#444;border-top:1px solid #999;padding-top:2px}',
+    '.pb-odd .pb-foot{left:calc(9mm + var(--gut));right:9mm} .pb-even .pb-foot{left:9mm;right:calc(9mm + var(--gut))}',
+    '.pb-cover{text-align:center;margin-top:55mm} .pb-cover h1{font-size:26px;letter-spacing:.04em;margin:26px 0 6px} .pb-cover h2{font-size:34px;text-transform:capitalize;margin:0 0 22px} .pb-cover p{margin:4px 0;font-size:13px}',
+    '.pb-cover .pb-big{font-size:64px;font-weight:700;margin:26px 0 0;line-height:1} .pb-cover .pd-logos img{max-height:56px} .pb-cover .pd-logos{justify-content:center}',
+    '.pb-index td,.pb-sum td{height:auto;padding:2px 6px} .pb-index td.num,.pb-sum td.num,.pb-index th.num,.pb-sum th.num{text-align:right}',
+    '.pd-empty-day{font-size:14px;margin:22px 0;color:#444}',
+    '.pd-by{font-size:9px;color:#333;margin-top:1px} .pd-chk{color:#b45309} .pd-ruled{margin-top:6px} .pd-ln{height:22px;border-bottom:1px solid #999}',
+    '#printArea .pd-tab th{font-size:9px;padding:3px 2px;letter-spacing:0}',
+    /* samo na zaslonu (predogled, odprt zavihek): ozadje, senca strani in siv pas notranjega roba za vezavo; pri tisku se nič od tega ne izpiše */
+    '@media screen{',
+    ' .pb-odd{background-image:linear-gradient(90deg,#e6ebf3 0,#e6ebf3 var(--gut),transparent var(--gut))} .pb-even{background-image:linear-gradient(270deg,#e6ebf3 0,#e6ebf3 var(--gut),transparent var(--gut))}',
+    ' body.m-view{overflow:hidden;background:#fff}',
+    ' body.m-tab{background:#cfd6e2;padding:0 0 28px} body.m-tab #printArea{background:transparent} body.m-tab .pb-page{margin:14px auto;box-shadow:0 2px 14px rgba(0,0,0,.28);background-color:#fff}',
+    ' .bk-bar{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 14px;background:#0d1a2c;color:#fff;font:13px/1.4 system-ui,sans-serif}',
+    ' .bk-bar b{font-size:14px} .bk-bar span{flex:1 1 280px;opacity:.92} .bk-bar button{font:700 14px system-ui,sans-serif;padding:9px 16px;border:0;border-radius:8px;background:#DD5207;color:#fff;cursor:pointer}',
+    ' @media (pointer:coarse){.bk-bar{font-size:26px;padding:18px 22px;gap:16px} .bk-bar b{font-size:28px} .bk-bar button{font-size:28px;padding:16px 28px;border-radius:14px}}',
+    '}',
+    '@media print{.bk-bar{display:none!important} body.m-tab .pb-page{margin:0;box-shadow:none}}'
+  ].join('\n');
+  const css = () => CSS;
+  /* mode: 'print' (cela knjiga), 'tab' (cela knjiga za zaslon: odprt zavihek), 'view' (ena stran za predogled; page = številka strani) */
+  function doc(b, mode, page){
+    mode = mode || 'print'; const dt = 'Knjiga prevozov ' + b.title;
+    const pages = mode === 'view' ? [b.pagesHtml[Math.min(b.pages, Math.max(1, +page || 1)) - 1] || ''] : b.pagesHtml;
+    const bar = mode === 'tab' ? `<div class="bk-bar"><b>${esc(dt)}</b><span>${b.pages} strani. Za tisk ali PDF izberi v meniju brskalnika (⋮ ali »Deli«) možnost <b>Natisni</b>; tam lahko izbereš tudi »Shrani kot PDF«. Papir A4 pokončno, merilo 100 %.</span><button type="button" id="bkGo">Natisni / PDF</button></div>` : '';
+    return `<!doctype html><html lang="sl"><head><meta charset="utf-8"><title>${esc(dt)}</title>${mode === 'tab' ? '<meta name="viewport" content="width=794">' : ''}<style>${CSS}</style></head><body class="m-${mode}" style="--gut:${b.opts.gut}mm">${bar}<div id="printArea" class="pbook">${pages.join('')}</div></body></html>`;
   }
+  const hooks = { print:null, open:null };
+  /* tisk: skrit okvir s celotno knjigo, nato print() samo tega okvirja (ne glavnega okna). Na nekaterih telefonih (iOS) to ne deluje: tam »odpri v zavihku«. */
+  function printFrame(b){
+    const html = doc(b, 'print');
+    audit('knjiga.tisk.mesec', { mesec:`${b.y}-${pad(b.m + 1)}`, strani:b.pages });
+    if (hooks.print) return hooks.print(html, b);
+    const old = document.getElementById('bkPrintFrame'); if (old) old.remove();
+    const fr = document.createElement('iframe'); fr.id = 'bkPrintFrame'; fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1; fr.title = 'Knjiga za tisk';
+    fr.style.cssText = 'position:fixed;left:-12000px;top:0;width:794px;height:1123px;border:0;visibility:hidden';
+    let done = false;
+    const clean = () => { if (done) return; done = true; setTimeout(() => fr.remove(), 1500); };
+    fr.onload = () => {
+      try { const w = fr.contentWindow; w.addEventListener('afterprint', clean); w.focus(); w.print(); setTimeout(clean, 10 * 60 * 1000); }
+      catch (e) { clean(); toast('Tiskanja ni mogoče zagnati v tem brskalniku. Uporabi »Odpri za tisk / PDF«.'); }
+    };
+    fr.srcdoc = html; document.body.appendChild(fr);
+    return fr;
+  }
+  /* odpre knjigo v novem zavihku (telefon: Deli/⋮ → Natisni → Shrani kot PDF). Vrne okno ali null, če je brskalnik blokiral pojavno okno. */
+  function openTab(b){
+    const html = doc(b, 'tab').replace(/(\ssrc=")(?!data:|blob:|https?:)([^"]*)"/g, (m, a, u) => { try { return a + new URL(u.replace(/&amp;/g, '&'), location.href).href + '"'; } catch (e) { return m; } });
+    audit('knjiga.odprto.mesec', { mesec:`${b.y}-${pad(b.m + 1)}`, strani:b.pages });
+    if (hooks.open) return hooks.open(html, b);
+    let url = ''; try { url = URL.createObjectURL(new Blob([html], { type:'text/html;charset=utf-8' })); } catch (e) { return null; }
+    const w = window.open(url, '_blank');
+    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) { /* nič */ } }, 15 * 60 * 1000);
+    if (w){ try { w.addEventListener('load', () => { const bt = w.document.getElementById('bkGo'); if (bt) bt.addEventListener('click', () => w.print()); }); } catch (e) { /* gumb je dodatek: meni brskalnika deluje vedno */ } }
+    return w || null;
+  }
+  /* zgodovinsko ime: tisk celotne knjige */
+  function print(y, m, o, built){ const b = built || build(y, m, o); printFrame(b); return b; }
   /* so podatki za mesec že naloženi iz skupne baze? (v lokalnem načinu vedno) */
   function monthReady(y, m){
     const a = `${y}-${pad(m + 1)}-01`, b = `${y}-${pad(m + 1)}-${pad(daysInMonth(y, m))}`;
     if (typeof SY === 'undefined' || !SY.range) return true;
     return a >= SY.range.from && b <= SY.range.to && !!SY.dayReady;
   }
-  return { DEF, opts, build, print, load, store, dayData, dayPages, monthReady, P1, P2, CONT };
+  return { DEF, opts, build, print, printFrame, openTab, doc, css, hooks, load, store, dayData, dayPages, monthReady, P1, P2, CONT };
 })();
 /* =====================================================================
    SKENIRANJE STRANI PAPIRNE KNJIGE (fotografija strani → prevozi v dnevu)
@@ -4520,7 +4678,8 @@ const BSCAN = (() => {
   const fromOcr = r => (r && r.words && r.words.length) ? r.words : tsvWords(r && r.tsv);
 
   /* ---------- Priprava fotografije (samo v brskalniku): zasuk, kontrast, izrezi ---------- */
-  const MAX_SIDE = 2800, MAX_PAGES = 6;
+  const MAX_SIDE = 2200, MAX_PAGES = 6;   /* 2200 px zadošča za tiskano mrežo in rokopis; večja slika razpoznavo samo upočasni */
+  const tick = () => new Promise(r => setTimeout(r, 0));   /* umik zaslonu: telefon med težko obdelavo ne sme zamrzniti prikaza */
   const cv2 = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; };
   /* naklon vrstic v stopinjah (+ = vrstice se spuščajo proti desni): največja ostrina projekcije temnih točk na navpično os */
   function skewAngle(cv){
@@ -4579,8 +4738,10 @@ const BSCAN = (() => {
     const out = []; for (const im of imgs.slice(0, MAX_PAGES)) out.push(await NSCAN.toCanvas(im, MAX_SIDE)); return out;
   }
   async function preparePage(cv){
-    const angle = skewAngle(cv), color = rotated(cv, angle);
-    return { color, angle, png:await NSCAN.toBlob(binarize(color)) };
+    await tick(); const angle = skewAngle(cv);
+    await tick(); const color = rotated(cv, angle);
+    await tick(); const bw = binarize(color);
+    await tick(); return { color, angle, png:await NSCAN.toBlob(bw) };
   }
   /* izrez vrstice iz fotografije (za primerjavo prebranega z originalom) */
   function cropRow(color, row, tbl, pitch){
@@ -4589,16 +4750,32 @@ const BSCAN = (() => {
     const k = Math.min(1, 1000 / w), c = cv2(w * k, h * k); c.getContext('2d').drawImage(color, x0, y0, w, h, 0, 0, c.width, c.height);
     try { return c.toDataURL('image/jpeg', 0.72); } catch (e) { return ''; }
   }
-  /* cel postopek za eno ali več slik/PDF: vrne vrstice vseh strani (slika se ne shrani nikamor) */
-  async function run(files, onProgress){
-    const cfg = NSCAN.ocrCfg(), pages = []; let n = 0;
-    for (const f of files){ for (const cv of await loadPages(f)){ if (n++ >= MAX_PAGES) break; pages.push(cv); } }
-    const res = { pages:[], rows:[], date:null, notes:[], words:0 };
+  /* pomanjšana fotografija strani (JPEG): ostane na voljo tudi, če razpoznava odpove, da lahko prevoze vneseš ročno ob sliki */
+  function photoUrl(cv){
+    const k = Math.min(1, 1400 / Math.max(cv.width, cv.height)), c = cv2(cv.width * k, cv.height * k); c.getContext('2d').drawImage(cv, 0, 0, c.width, c.height);
+    try { return c.toDataURL('image/jpeg', 0.7); } catch (e) { return ''; }
+  }
+  const hooks = { onPhoto:null };
+  const canceledErr = () => { const e = new Error('Razpoznava je bila prekinjena.'); e.canceled = true; return e; };
+  /* vnaprejšnji zagon razpoznave (prenos jedra in modela) med tem, ko uporabnik izbira fotografijo */
+  const warm = onProgress => NSCAN.ocrEnabled() ? NSCAN.ocrSession().warm(onProgress) : Promise.resolve();
+  const cancel = ctl => { if (ctl) ctl.cancelled = true; NSCAN.ocrAbort(); };
+  /* cel postopek za eno ali več slik/PDF: vrne vrstice vseh strani (slika se ne shrani nikamor). ctl = { cancelled } omogoča prekinitev. */
+  async function run(files, onProgress, ctl){
+    const cfg = NSCAN.ocrCfg(), pages = [], ctlr = ctl || {}; let n = 0;
+    const say = (stage, i, np, pct) => { if (onProgress) onProgress({ stage, page:i + 1, pages:np, pct:pct || 0, label:(np > 1 ? `Stran ${i + 1}/${np}: ` : '') + NSCAN.stageLabel(stage) }); };
+    const chk = () => { if (ctlr.cancelled) throw canceledErr(); };
+    if (onProgress) onProgress({ stage:'prep', page:1, pages:1, pct:0, label:'berem fotografijo' });
+    for (const f of files){ await tick(); for (const cv of await loadPages(f)){ if (n++ >= MAX_PAGES) break; pages.push(cv); } }
+    chk();
+    const res = { pages:[], rows:[], date:null, notes:[], words:0, photos:[] };
+    pages.forEach((cv, i) => { const u = photoUrl(cv); res.photos.push(u); if (hooks.onPhoto) hooks.onPhoto(i, u, pages.length); });
     for (let i = 0; i < pages.length; i++){
       const tag = pages.length > 1 ? `Stran ${i + 1}/${pages.length}: ` : '';
-      if (onProgress) onProgress({ stage:'prep', page:i + 1, pages:pages.length, pct:0, label:tag + 'priprava slike' });
-      const prep = await preparePage(pages[i]);
-      const r = await NSCAN.ocr(prep.png, p => { if (onProgress) onProgress({ stage:p.stage, page:i + 1, pages:pages.length, pct:p.pct || 0, label:tag + (p.stage || '') }); }, cfg, { words:true, psm:cfg.bookPsm || '4' });
+      chk(); say('prep', i, pages.length, 0);
+      const prep = await preparePage(pages[i]); chk();
+      let r; try { r = await NSCAN.ocr(prep.png, p => { say(p.stage, i, pages.length, p.pct); }, cfg, { words:true, psm:cfg.bookPsm || '4' }); } catch (e) { if (ctlr.cancelled) throw canceledErr(); throw e; }
+      chk(); say('prep', i, pages.length, 1); await tick();
       const words = fromOcr(r), ps = parse(words, prep.color.width, prep.color.height);
       const pitch = ps.rows.length > 1 ? med(ps.rows.slice(1).map((x, j) => (x.y0 + x.y1) / 2 - (ps.rows[j].y0 + ps.rows[j].y1) / 2)) : 60;
       ps.rows.forEach(row => { row.page = i + 1; if (!row.empty) row.crop = cropRow(prep.color, row, ps.tbl, Math.abs(pitch)); });
@@ -4619,7 +4796,7 @@ const BSCAN = (() => {
   const FIELD_LABEL = { name:'ime', from:'od', to:'do', time:'ura', note:'opomba' };
   const chkText = row => (row.todo || []).map(k => FIELD_LABEL[k]).join(', ');
 
-  return { parse, cleanWords, cellOf, ed, sim, simNS, simName, ocrNorm, parseTime, placeSuggest, patientSuggest, vocab, chkText, FIELD_LABEL, LV, headKey, tsvWords, fromOcr, skewAngle, rotated, binarize, loadPages, preparePage, cropRow, run };
+  return { parse, cleanWords, cellOf, ed, sim, simNS, simName, ocrNorm, parseTime, placeSuggest, patientSuggest, vocab, chkText, FIELD_LABEL, LV, headKey, tsvWords, fromOcr, skewAngle, rotated, binarize, loadPages, preparePage, cropRow, run, warm, cancel, hooks, photoUrl, MAX_SIDE };
 })();
 /* =====================================================================
    ZASLONI
@@ -5400,7 +5577,16 @@ function renderSettings(){
     body = `<div class="card card-pad stack"><div class="card-head" style="margin:0"><h3>Zaposleni</h3></div>
       <form class="row" data-form="addStaff" style="flex-wrap:nowrap"><input type="text" name="name" placeholder="Ime in priimek" aria-label="Ime zaposlenega" required autocomplete="off"><select name="team" style="width:auto" aria-label="Ekipa"><option value="redna">Redna ekipa</option><option value="NN">NN ekipa</option></select><button class="btn primary" type="submit">Dodaj</button></form>
       ${S.staff.length ? `<div class="tablewrap"><table class="edtable"><thead><tr><th>Ime in priimek</th><th>Privzeta ekipa</th><th>Račun za aplikacijo posadke</th><th></th></tr></thead><tbody>${S.staff.map((s, i) => `<tr><td>${field(`staff.${i}.name`, s.name, { label:'Ime' })}${s.demo ? ' <span class="chip warn">PRIMER</span>' : ''}</td><td><select data-path="staff.${i}.team" aria-label="Ekipa"><option value="redna" ${s.team==='redna'?'selected':''}>Redna</option><option value="NN" ${s.team==='NN'?'selected':''}>NN</option></select></td><td><select data-path="staff.${i}.userId" aria-label="Račun">${accountOptions(s.userId)}</select></td><td><button type="button" class="icon-btn" data-act="delStaff" data-i="${i}" aria-label="Izbriši">${IC.x}</button></td></tr>`).join('')}</tbody></table></div>
-      <p class="hint" style="margin:0">Zaposlenega poveži z računom (Nastavitve → Uporabniki), da bo po »Objavi razpored« videl svoje prevoze v aplikaciji in javljal korake.</p>` : '<div class="empty-state">Še ni zaposlenih. Dodani zaposleni se v Dispečerju izberejo z enim dotikom.</div>'}</div>`;
+      <p class="hint" style="margin:0">Zaposlenega poveži z računom (Nastavitve → Uporabniki), da bo po »Objavi razpored« videl svoje prevoze v aplikaciji in javljal korake.</p>` : '<div class="empty-state">Še ni zaposlenih. Dodani zaposleni se v Dispečerju izberejo z enim dotikom.</div>'}
+      <details class="stimp" ${S.staff.length ? '' : 'open'}><summary><b>Uvozi seznam zaposlenih</b></summary>
+        <form class="stack" data-form="importStaff" style="gap:8px;margin-top:8px">
+          <p class="hint" style="margin:0">Prilepi imena (eno na vrstico) ali izberi besedilno datoteko (.txt, .csv). Sprejme »Ana K.«, »Ana K« in zlepljeno »AnaK«. Že vpisani se preskočijo.</p>
+          <textarea name="list" rows="6" data-role="stlist" placeholder="Ana K.&#10;Beta B.&#10;Gama G." aria-label="Seznam zaposlenih" spellcheck="false" autocomplete="off"></textarea>
+          <div class="row" style="gap:8px;flex-wrap:wrap"><label class="btn" for="stfile" style="cursor:pointer">Izberi datoteko …</label><input id="stfile" type="file" accept=".txt,.csv,text/plain,text/csv" data-role="stfile" style="position:absolute;opacity:0;width:1px;height:1px">
+            <select name="team" style="width:auto" aria-label="Ekipa za vse uvožene"><option value="redna">Redna ekipa</option><option value="NN">NN ekipa</option></select>
+            <button class="btn primary" type="submit" data-role="stgo" disabled>Dodaj</button></div>
+          <div class="hint" data-role="stprev" role="status">Seznam je prazen.</div>
+        </form></details></div>`;
   } else if (T === 'pravila'){
     body = rulesTab();
   } else if (T === 'dializa'){
@@ -5461,6 +5647,25 @@ function renderAuth(mode, msg=''){
       <p class="legalnote">Podatke o pacientih obravnavaj skladno z internimi pravili zdravstvenega doma. Vsaka prijava in ogled pacienta se beležita.</p>`;
     const fbb = $('#fbCheck'); if (fbb) fbb.onclick = () => { fbb.disabled = true; fbCheck().finally(() => { fbb.disabled = false; }); };
   }
+}
+
+/* uvoz zaposlenih: sprotni predogled (koliko bo dodanih, koliko že obstaja) */
+function stPreview(){
+  const ta = document.querySelector('[data-role=stlist]'); if (!ta) return null;
+  const r = parseStaffList(ta.value, S.staff.map(s => s.name)), pv = document.querySelector('[data-role=stprev]'), go = document.querySelector('[data-role=stgo]');
+  if (go){ go.disabled = !r.add.length; go.textContent = r.add.length ? `Dodaj ${r.add.length}` : 'Dodaj'; }
+  if (pv){
+    pv.textContent = !ta.value.trim() ? 'Seznam je prazen.' : (r.add.length ? `Dodal bom ${r.add.length}: ${r.add.join(', ')}.` : 'Ni novih imen za dodajanje.') + (r.dup.length ? ` Že na seznamu (preskočeno): ${r.dup.join(', ')}.` : '') + (r.bad.length ? ` Ni videti kot ime (preskočeno): ${r.bad.join(', ')}.` : '');
+  }
+  return r;
+}
+if (typeof document !== 'undefined' && document.addEventListener){
+  document.addEventListener('input', e => { if (e.target && e.target.dataset && e.target.dataset.role === 'stlist') stPreview(); });
+  document.addEventListener('change', async e => {
+    const t = e.target; if (!t || !t.dataset || t.dataset.role !== 'stfile') return;
+    const f = t.files && t.files[0]; t.value = ''; if (!f) return;
+    try { const txt = await f.text(), ta = document.querySelector('[data-role=stlist]'); if (ta){ ta.value = (ta.value ? ta.value.replace(/\s+$/, '') + '\n' : '') + txt; stPreview(); } } catch (err) { toast('Datoteke ni mogoče prebrati.'); }
+  });
 }
 /* =====================================================================
    ZASLONI 2: pacienti in nalogi, živo stanje, aplikacija posadke, pravila, uporabniki, varnost, logotipi, podatki, predogled
@@ -6799,10 +7004,13 @@ const MAP = (() => {
    VMESNIK: tisk knjige za mesec (pogovorno okno) in skeniranje strani papirne knjige (pregled z označbami nejasnega)
    ===================================================================== */
 
-/* ---------- Tisk knjige za mesec ---------- */
+/* ---------- Predogled in tisk knjige za mesec ----------
+   Okno: mesec → predogled strani (ena stran naenkrat, enaka natisnjeni; telefon in računalnik) → tisk ali odpiranje v zavihku (PDF).
+   Predogled je izoliran okvir (sandbox, brez skript) z istim dokumentom, kot gre v tisk (BOOK.doc). */
+const BK_W = 794, BK_H = 1119;   // A4 (210 × 296 mm) v CSS pikslih pri 96 dpi
 function bkOpen(){
-  const { y, m } = UI.month;
-  UI.modal = { type:'bprint', y, m, o:BOOK.load(), b:null, wait:false, tries:0, err:'', t:0 };
+  const { y, m } = UI.month, wide = typeof window !== 'undefined' && window.innerWidth >= 900;
+  UI.modal = { type:'bprint', y, m, o:BOOK.load(), b:null, wait:false, tries:0, err:'', msg:'', t:0, pg:1, zoom:'fit', optOpen:wide, bid:0 };
   bkEnsure(UI.modal); renderModal(); bkBuildSoon(UI.modal, 30);
 }
 function bkEnsure(m){
@@ -6818,56 +7026,120 @@ function bkBuildSoon(m, delay){
       renderModal(); if (m.wait) m.t = setTimeout(() => bkBuildSoon(m, 0), 1200); return;
     }
     m.wait = false; m.err = '';
-    try { m.b = BOOK.build(m.y, m.m, m.o); } catch (e) { m.err = 'Knjige ni mogoče sestaviti: ' + String(e && e.message || e); }
+    try { m.b = BOOK.build(m.y, m.m, m.o); m.bid++; m.pg = Math.min(m.b.pages, Math.max(1, m.pg | 0)); } catch (e) { m.err = 'Knjige ni mogoče sestaviti: ' + String(e && e.message || e); }
     if (UI.modal === m) renderModal();
   }, delay);
 }
+const bkCoarse = () => { try { return !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches); } catch (e) { return false; } };
+function bkJumps(b){
+  const o = b.opts, out = [];
+  if (o.front){ out.push(['Naslovnica', 1], ['Kazalo', 2]); }
+  b.dayStart.forEach(d => out.push([`${fmtDMY(d.date)} · ${DOW_LONG[dow(d.date)]}`, d.page]));
+  if (o.summary) out.push(['Mesečni povzetek', b.pages]);
+  return out;
+}
 function renderBPrint(host, m){
   host.hidden = false; delete host.dataset.pk;
-  const o = m.o, b = m.b;
+  const o = m.o, b = m.b, coarse = bkCoarse();
   const chk = (k, label, hint) => `<label class="row bk-opt" style="gap:8px;flex-wrap:nowrap;align-items:flex-start"><input type="checkbox" data-bk="${k}" ${o[k] ? 'checked' : ''}><span><b>${label}</b>${hint ? `<span class="hint" style="display:block">${hint}</span>` : ''}</span></label>`;
   const info = m.err ? `<div class="banner bad"><span>${IC.alert}</span><div>${esc(m.err)}</div></div>`
     : m.wait ? '<div class="row" style="gap:8px"><span class="spin" aria-hidden="true"></span><span role="status">Podatki za ta mesec se nalagajo …</span></div>'
     : !b ? '<div class="row" style="gap:8px"><span class="spin" aria-hidden="true"></span><span role="status">Sestavljam knjigo …</span></div>'
     : `<div class="banner"><span>${IC.info}</span><div role="status"><b>${b.pages}</b> strani${o.duplex ? ` (<b>${b.sheets}</b> listov, obojestransko)` : ''} · ${b.days} dni · <b>${b.rides}</b> prevozov${b.canc ? `, ${b.canc} odpovedanih` : ''}.</div></div>`;
+  const ready = !!(b && !m.wait);
+  const jumps = ready ? bkJumps(b) : [];
+  const prev = ready ? `<section class="bk-prevbox" aria-label="Predogled knjige">
+      <div class="bk-nav">
+        <button type="button" class="btn sm" data-act="bkPg" data-d="-1" aria-label="Prejšnja stran" data-role="bkprevbtn">◀</button>
+        <label class="bk-pgn">Stran <input type="number" min="1" max="${b.pages}" step="1" inputmode="numeric" data-bk="pg" value="${m.pg}" aria-label="Številka strani"> / ${b.pages}</label>
+        <button type="button" class="btn sm" data-act="bkPg" data-d="1" aria-label="Naslednja stran" data-role="bknextbtn">▶</button>
+        <select data-bk="jump" aria-label="Skoči na dan" data-role="bkjump">${jumps.map(([t, p]) => `<option value="${p}">str. ${p} · ${esc(t)}</option>`).join('')}</select>
+        <select data-bk="zoom" aria-label="Povečava predogleda"><option value="fit" ${m.zoom === 'fit' ? 'selected' : ''}>Prilagodi zaslonu</option><option value="1" ${m.zoom === '1' ? 'selected' : ''}>100 %</option><option value="1.5" ${m.zoom === '1.5' ? 'selected' : ''}>150 %</option></select>
+      </div>
+      <div class="bk-prev" data-role="bkprev"><div class="bk-sheet" data-role="bksheet"><iframe class="bk-frame" sandbox title="Predogled strani knjige" data-role="bkframe" tabindex="-1"></iframe></div></div>
+      <p class="hint" style="margin:6px 0 0">Predogled je enak natisu. Siv pas ob notranjem robu je prostor za vezavo (ne natisne se).</p></section>`
+    : `<section class="bk-prevbox bk-prevwait" aria-label="Predogled knjige">${m.err ? '' : '<div class="row" style="gap:8px"><span class="spin" aria-hidden="true"></span><span>Predogled se pripravlja …</span></div>'}</section>`;
+  const btnPrint = `<button type="button" class="btn ${coarse ? '' : 'primary'}" data-act="bkPrint" ${ready ? '' : 'disabled'}>Natisni knjigo</button>`;
+  const btnTab = `<button type="button" class="btn ${coarse ? 'primary' : ''}" data-act="bkTab" ${ready ? '' : 'disabled'} title="Knjiga se odpre v novem zavihku: tam izberi Natisni ali Shrani kot PDF (priporočeno na telefonu)">Odpri za tisk / PDF</button>`;
   host.innerHTML = `<div class="modal-back" data-act="closeModal"></div><div class="modal modal-wide bprint" role="dialog" aria-modal="true" aria-labelledby="mTitle">
-    <div class="modal-head"><h3 id="mTitle">Natisni knjigo meseca</h3><button type="button" class="icon-btn" data-act="closeModal" aria-label="Zapri">${IC.x}</button></div>
-    <div class="stack" style="gap:12px">
-      <div class="field"><label for="bk-ym">Mesec</label><input id="bk-ym" type="month" data-bk="ym" value="${m.y}-${pad(m.m + 1)}" style="max-width:220px"></div>
-      <div class="stack" style="gap:8px">
+    <div class="modal-head"><h3 id="mTitle">Knjiga meseca: predogled in tisk</h3><button type="button" class="icon-btn" data-act="closeModal" aria-label="Zapri">${IC.x}</button></div>
+    <div class="bk-grid">
+      <div class="bk-top stack" style="gap:10px"><div class="field"><label for="bk-ym">Mesec</label><input id="bk-ym" type="month" data-bk="ym" value="${m.y}-${pad(m.m + 1)}" style="max-width:220px"></div>${info}</div>
+      ${prev}
+      <div class="bk-act stack" style="gap:8px">
+        ${m.msg ? `<div class="banner bad" role="alert"><span>${IC.alert}</span><div>${esc(m.msg)}</div></div>` : ''}
+        <div class="row" style="gap:8px;flex-wrap:wrap">${coarse ? btnTab + btnPrint : btnPrint + btnTab}</div>
+        <p class="hint" style="margin:0"><b>Telefon:</b> pritisni »Odpri za tisk / PDF«, nato v meniju brskalnika (⋮ ali »Deli«) izberi »Natisni« ali »Shrani kot PDF«. <b>Računalnik:</b> »Natisni knjigo« odpre okno tiskanja (tam je tudi »Shrani kot PDF«).</p>
+        <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><button type="button" class="btn" data-act="bkList" title="Starejši, krajši izpis: ena tabela po dnevih, A4 ležeče">Samo seznam (ležeče)</button><button type="button" class="btn" data-act="closeModal">Zapri</button></div>
+      </div>
+      <details class="bk-opts" data-role="bkopts" ${m.optOpen ? 'open' : ''}><summary>Možnosti knjige</summary><div class="stack" style="gap:8px;margin-top:8px">
         ${chk('front', 'Naslovnica in kazalo', 'prva stran: naslovnica, druga: kazalo z datumi in številkami strani')}
         ${chk('duplex', 'Obojestransko, vsak dan na nov list', 'dan se začne na desni strani; zadnja stran dneva je črtana stran za opombe; rob za vezavo se menja po straneh')}
         ${chk('summary', 'Mesečni povzetek na koncu', 'število prevozov, kilometrina in prevozi po vozilih, podpis')}
         ${chk('skipEmpty', 'Izpusti dneve brez vpisov', 'privzeto so v knjigi vsi dnevi meseca, tudi prazni')}
         ${chk('km', 'Stolpec »Km« pri prevozih', 'ga v papirni knjigi ni; kilometrina OD→DO po cestah')}
         <div class="field" style="max-width:220px"><label for="bk-gut">Rob za vezavo (mm)</label><input id="bk-gut" type="number" min="0" max="30" step="1" data-bk="gut" value="${o.gut}" inputmode="numeric"></div>
-      </div>
-      ${info}
-      <p class="hint" style="margin:0">Tiskalnik: papir <b>A4 pokončno</b>, merilo <b>100 %</b> (ne »prilagodi strani«), brez glave in noge. Obojestransko: obrni ob <b>dolgem robu</b>. V pogovornem oknu tiskanja lahko izbereš tudi »Shrani kot PDF«. Strani so oštevilčene in v kazalu.</p>
-      <p class="hint" style="margin:0">Opravljeni prevozi imajo dejansko uro pobiranja, vozilo in ime tistega, ki je prevoz opravil (✓), če je to vpisano. Prevozi z oznako ⚠ so bili prebrani s fotografije in še niso potrjeni.</p>
-      <div class="row" style="justify-content:space-between;flex-wrap:wrap"><button type="button" class="btn" data-act="bkList" title="Starejši, krajši izpis: ena tabela po dnevih, A4 ležeče">Samo seznam (ležeče)</button>
-        <span class="row"><button type="button" class="btn" data-act="closeModal">Zapri</button><button type="button" class="btn primary" data-act="bkPrint" ${(b && !m.wait) ? '' : 'disabled'}>Natisni knjigo</button></span></div>
+        <p class="hint" style="margin:0">Tiskalnik: papir <b>A4 pokončno</b>, merilo <b>100 %</b> (ne »prilagodi strani«), brez glave in noge. Obojestransko: obrni ob <b>dolgem robu</b>.</p>
+      </div></details>
+      <p class="hint bk-note" style="margin:0">Opravljeni prevozi imajo dejansko uro pobiranja, vozilo in ime tistega, ki je prevoz opravil (✓), če je to vpisano. Prevozi z oznako ⚠ so bili prebrani s fotografije in še niso potrjeni.</p>
     </div></div>`;
+  bkPaintPrev(m);
+}
+/* predogled: nastavi stran in merilo (okvir je vedno velik kot A4 pri 96 dpi in se samo pomanjša/poveča) */
+function bkPaintPrev(m){
+  if (UI.modal !== m || !m.b) return;
+  const fr = document.querySelector('[data-role=bkframe]'), prev = document.querySelector('[data-role=bkprev]'), sheet = document.querySelector('[data-role=bksheet]'); if (!fr || !prev || !sheet) return;
+  const n = m.b.pages; m.pg = Math.min(n, Math.max(1, m.pg | 0 || 1));
+  const sig = m.bid + ':' + m.pg;
+  if (fr.dataset.sig !== sig){ fr.dataset.sig = sig; fr.srcdoc = BOOK.doc(m.b, 'view', m.pg); }
+  const cw = Math.max(120, prev.clientWidth - 16), wide = window.innerWidth >= 900, maxH = wide ? Math.max(380, window.innerHeight * 0.68) : 1e9;
+  const k = m.zoom === 'fit' ? Math.min(1.5, cw / BK_W, maxH / BK_H) : (+m.zoom || 1);
+  sheet.style.width = Math.round(BK_W * k) + 'px'; sheet.style.height = Math.round(BK_H * k) + 'px';
+  fr.style.transform = 'scale(' + k + ')'; m.k = k;
+  const inp = document.querySelector('input[data-bk=pg]'); if (inp && document.activeElement !== inp) inp.value = m.pg;
+  const pb = document.querySelector('[data-role=bkprevbtn]'), nb = document.querySelector('[data-role=bknextbtn]'); if (pb) pb.disabled = m.pg <= 1; if (nb) nb.disabled = m.pg >= n;
+  const jp = document.querySelector('[data-role=bkjump]'); if (jp){ let sel = null; [...jp.options].forEach(op => { if (+op.value <= m.pg) sel = op; }); if (sel) jp.value = sel.value; }
+}
+function bkGoto(m, p){ if (!m || m.type !== 'bprint' || !m.b) return; m.pg = Math.min(m.b.pages, Math.max(1, parseInt(p, 10) || 1)); bkPaintPrev(m); }
+/* sveža knjiga iz trenutnih podatkov (za tisk in odpiranje) */
+function bkFresh(m){
+  if (!BOOK.monthReady(m.y, m.m)){ m.msg = 'Podatki za ta mesec se še nalagajo. Počakaj trenutek.'; renderModal(); return null; }
+  BOOK.store(m.o); m.msg = '';
+  try { return BOOK.build(m.y, m.m, m.o); } catch (e) { m.msg = 'Knjige ni mogoče sestaviti: ' + String(e && e.message || e); renderModal(); return null; }
 }
 function bkPrint(){
   const m = UI.modal; if (!m || m.type !== 'bprint') return;
-  if (!BOOK.monthReady(m.y, m.m)){ m.err = 'Podatki za ta mesec se še nalagajo. Počakaj trenutek.'; renderModal(); return; }
-  BOOK.store(m.o);
-  let b; try { b = BOOK.build(m.y, m.m, m.o); } catch (e) { m.err = 'Knjige ni mogoče sestaviti: ' + String(e && e.message || e); renderModal(); return; }
-  BOOK.print(m.y, m.m, m.o, b);
+  const b = bkFresh(m); if (!b) return;
+  try { BOOK.printFrame(b); } catch (e) { m.msg = 'Tiskanja ni mogoče zagnati: ' + String(e && e.message || e) + ' Poskusi »Odpri za tisk / PDF«.'; renderModal(); }
+}
+function bkTab(){
+  const m = UI.modal; if (!m || m.type !== 'bprint') return;
+  const b = bkFresh(m); if (!b) return;
+  const w = BOOK.openTab(b);
+  if (!w){ m.msg = 'Brskalnik je blokiral novo okno. Dovoli pojavna okna za to stran in poskusi znova.'; renderModal(); }
 }
 if (typeof document !== 'undefined' && document.addEventListener){
   document.addEventListener('change', e => {
     const t = e.target, m = UI.modal; if (!t || !m || m.type !== 'bprint' || !t.dataset || t.dataset.bk === undefined) return;
     const k = t.dataset.bk;
+    if (k === 'pg'){ bkGoto(m, t.value); return; }
+    if (k === 'jump'){ bkGoto(m, t.value); return; }
+    if (k === 'zoom'){ m.zoom = t.value; bkPaintPrev(m); return; }
     if (k === 'ym'){
       const mm = /^(\d{4})-(\d{2})$/.exec(t.value); if (!mm) return;
-      m.y = +mm[1]; m.m = +mm[2] - 1; m.tries = 0; bkEnsure(m);
+      m.y = +mm[1]; m.m = +mm[2] - 1; m.tries = 0; m.pg = 1; bkEnsure(m);
     } else if (k === 'gut') m.o.gut = t.value;
     else m.o[k] = t.checked;
     m.o = BOOK.opts(m.o); BOOK.store(m.o);
     renderModal(); bkBuildSoon(m, 30);
   });
+  document.addEventListener('toggle', e => { const t = e.target, m = UI.modal; if (t && t.dataset && t.dataset.role === 'bkopts' && m && m.type === 'bprint'){ m.optOpen = t.open; bkPaintPrev(m); } }, true);
+  document.addEventListener('keydown', e => {
+    const m = UI.modal; if (!m || m.type !== 'bprint' || !m.b || e.altKey || e.ctrlKey || e.metaKey) return;
+    const tg = e.target && e.target.tagName; if (tg === 'INPUT' || tg === 'SELECT' || tg === 'TEXTAREA') return;
+    if (e.key === 'ArrowLeft'){ bkGoto(m, m.pg - 1); e.preventDefault(); } else if (e.key === 'ArrowRight'){ bkGoto(m, m.pg + 1); e.preventDefault(); }
+  });
+  window.addEventListener('resize', () => { const m = UI.modal; if (m && m.type === 'bprint') bkPaintPrev(m); });
 }
 
 /* ---------- Skeniranje strani papirne knjige ----------
@@ -6881,11 +7153,12 @@ const bsWorst = (a, b) => (BSCAN.LV[b] > BSCAN.LV[a] ? b : a);
 const bsNr = row => { const n = parseInt(String(row.nrEdit == null ? '' : row.nrEdit).trim(), 10); return n >= 1 && n <= 60 ? n : null; };
 const bsDateOk = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && !isNaN(new Date(d + 'T12:00:00'));
 function bsOpen(){
-  UI.modal = { type:'bscan', step:'in', busy:'', err:'', date:(UI.view === 'dan' && UI.date) || '', dateSrc:(UI.view === 'dan' && UI.date) ? 'user' : '', dateTouched:false, rows:[], notes:[], only:false, done:null, doneTouched:false, pages:0, words:0, empties:0, jumpKey:'' };
-  renderModal();
+  UI.modal = { type:'bscan', step:'in', busy:'', err:'', date:(UI.view === 'dan' && UI.date) || '', dateSrc:(UI.view === 'dan' && UI.date) ? 'user' : '', dateTouched:false, rows:[], notes:[], only:false, done:null, doneTouched:false, pages:0, words:0, empties:0, jumpKey:'', warm:'', warmMsg:'', photos:[], manual:false, photoOpen:false, zoom:false, ctl:null, lastFiles:null, seq:0 };
+  renderModal(); bsWarm(UI.modal);
 }
 /* raven polja po popravkih dispečerja: urejeno polje velja za pregledano, če ni prazno (ura: veljavna) */
 function bsLvl(row, k){
+  if (row.manual){ if (k !== 'time') return 'ok'; const v = String(row.f.time || '').trim(), p = v ? BSCAN.parseTime(v) : null; return p && !p.v && !p.dia ? 'bad' : 'ok'; }
   const fl = row.fl[k]; if (!fl) return 'ok';
   if (!row.touched[k]) return fl.lvl;
   const v = String(row.f[k] || '').trim();
@@ -6895,11 +7168,12 @@ function bsLvl(row, k){
   return v ? 'ok' : 'bad';
 }
 function bsNrLvl(m, row){
-  const n = bsNr(row); if (n == null) return 'bad';
+  const n = bsNr(row); if (n == null) return row.manual && !bsFilled(row) ? 'ok' : 'bad';
   const dup = m.rows.some(x => x !== row && x.on && bsNr(x) === n);
   if (row.touched.nr) return dup ? 'chk' : 'ok';
   return dup || row.nrLvl === 'chk' ? 'chk' : 'ok';
 }
+const bsFilled = row => !!(String(row.f.name || '').trim() || String(row.f.from || '').trim() || String(row.f.to || '').trim());
 function bsRowLvl(m, row){
   let l = 'ok'; ['name', 'from', 'to', 'time', 'note'].forEach(k => { l = bsWorst(l, bsLvl(row, k)); });
   const nl = bsNrLvl(m, row); if (nl !== 'ok') l = bsWorst(l, 'chk');
@@ -6919,14 +7193,14 @@ function bsReason(row, k){
 }
 function bsStats(m){
   const s = { ok:0, chk:0, bad:0, on:0, flagged:0 };
-  m.rows.forEach(r => { const l = bsRowLvl(m, r); s[l]++; if (r.on){ s.on++; if (l !== 'ok') s.flagged++; } });
+  m.rows.forEach(r => { const l = bsRowLvl(m, r); s[l]++; if (r.on && bsFilled(r)){ s.on++; if (l !== 'ok') s.flagged++; } });
   return s;
 }
 function bsFieldHTML(m, row, k, label, cls){
-  const id = `bs-${row.key}-${k}`, l = bsLvl(row, k), why = bsReason(row, k), sug = (row.fl[k].sug || []).slice(0, 3);
+  const id = `bs-${row.key}-${k}`, l = bsLvl(row, k), why = bsReason(row, k), sug = ((row.fl[k] || {}).sug || []).slice(0, 3);
   const chips = (l !== 'ok' && !row.touched[k]) ? sug.map((s, i) => `<button type="button" class="chip toggle bs-sug" data-act="bsSug" data-k="${row.key}|${k}|${i}">${esc(s.label)}</button>`).join('') : '';
   return `<div class="field bs-f ${cls || ''}" data-lv="${l}" data-bsf="${k}"><label for="${id}">${esc(label)}</label>
-    <input id="${id}" type="text" data-bs="f" data-key="${row.key}" data-k="${k}" value="${esc(row.f[k] || '')}" autocomplete="off" ${k === 'time' ? 'inputmode="numeric" maxlength="8" placeholder="08:00"' : ''} ${l === 'bad' ? 'aria-invalid="true"' : ''} aria-describedby="${id}-w">
+    <input id="${id}" type="text" data-bs="f" data-key="${row.key}" data-k="${k}" value="${esc(row.f[k] || '')}" autocomplete="off" ${k === 'time' ? 'inputmode="numeric" maxlength="8" placeholder="08:00"' : ''} ${k === 'name' ? 'list="bsPat"' : ''} ${l === 'bad' ? 'aria-invalid="true"' : ''} aria-describedby="${id}-w">
     <div class="bs-reason" id="${id}-w" role="note">${esc(why)}</div><div class="bs-sugs">${chips}</div></div>`;
 }
 function bsRowHTML(m, row){
@@ -6936,7 +7210,7 @@ function bsRowHTML(m, row){
   return `<article class="bs-row" data-bsrow="${row.key}" data-lv="${l}" ${m.only && l === 'ok' ? 'hidden' : ''}>
     <div class="bs-head"><label class="check bs-on"><input type="checkbox" data-bs="on" data-key="${row.key}" ${row.on ? 'checked' : ''}> Vpiši</label>
       <label class="bs-nr" for="bs-${row.key}-nr">Polje <input id="bs-${row.key}-nr" type="number" min="1" max="60" inputmode="numeric" data-bs="nr" data-key="${row.key}" value="${esc(row.nrEdit)}" data-lv="${bsNrLvl(m, row)}"></label>
-      <span class="bs-lv" data-role="bslv"><span aria-hidden="true">${BS_SYM[l]}</span> ${BS_LABEL[l]}</span><span class="bs-todo" data-role="bstodo">${todo ? '· ' + esc(todo) : ''}</span><span class="sp"></span>
+      <span class="bs-lv" data-role="bslv" ${row.manual && l === 'ok' ? 'hidden' : ''}><span aria-hidden="true">${BS_SYM[l]}</span> ${BS_LABEL[l]}</span><span class="bs-todo" data-role="bstodo">${todo ? '· ' + esc(todo) : ''}</span><span class="sp"></span>
       <button type="button" class="btn sm" data-act="bsConfirm" data-key="${row.key}" data-role="bsconf" ${l === 'ok' ? 'hidden' : ''} title="Primerjal sem s sliko: vse je prav">Vse je prav</button></div>
     ${row.crop ? `<div class="bs-cropwrap"><img class="bs-crop" src="${row.crop}" alt="Izrez vrstice ${esc(row.nrEdit || '')} s fotografije"></div>` : ''}
     <div class="bs-grid">${BS_FIELDS.map(([k, lb, , c]) => bsFieldHTML(m, row, k, lb, c)).join('')}${modeSel}${diaSel}
@@ -6944,6 +7218,7 @@ function bsRowHTML(m, row){
 }
 function bsSumHTML(m){
   const s = bsStats(m), bad = s.chk + s.bad;
+  if (m.manual){ const n = m.rows.filter(r => r.on && bsFilled(r)).length; return `<span class="bs-cnt" data-lv="ok">✎ Ročni vnos: ${n} ${n === 1 ? 'izpolnjena vrstica' : 'izpolnjenih vrstic'}</span><span class="sp"></span>${bad ? `<button type="button" class="btn sm primary" data-act="bsJump">Skoči na naslednje nejasno</button>` : ''}`; }
   const head = !m.rows.length ? '' : bad ? `<span class="bs-cnt" data-lv="ok">✔ ${s.ok} prebrano</span><span class="bs-cnt" data-lv="chk">⚠ ${s.chk} preveri</span><span class="bs-cnt" data-lv="bad">✖ ${s.bad} popravi</span>`
     : `<span class="bs-cnt" data-lv="ok">✔ Vseh ${s.ok} vrstic je prebranih zanesljivo.</span>`;
   return `${head}<span class="sp"></span>${bad ? `<button type="button" class="btn sm primary" data-act="bsJump">Skoči na naslednje nejasno</button>` : ''}
@@ -6970,45 +7245,102 @@ function renderBScan(host, m){
       ${m.notes.length ? `<div class="banner" style="background:var(--warn-soft);color:var(--warn)"><span>${IC.alert}</span><div>${m.notes.map(n => esc(n)).join('<br>')}</div></div>` : ''}
       <div class="row" style="gap:16px;align-items:flex-start;flex-wrap:wrap">${bsDateHTML(m)}
         <label class="check" style="margin-top:22px" title="Prevozi s te strani so že narejeni (knjiga za nazaj): označijo se kot opravljeni"><input type="checkbox" data-bs="done" ${m.done ? 'checked' : ''}> Prevozi so že opravljeni</label></div>
-      <p class="hint" style="margin:0">Primerjaj vsako vrstico s sliko izreza. Rumena in rdeča polja so tista, ki jih nisem razumel: izberi predlog, popravi ali pritisni »Vse je prav«. Rdeče vrstice niso izbrane za vpis. Karkoli ostane nepotrjeno, se vpiše z oznako <b>⚠ preveri</b>, ki ostane vidna v dnevu in v natisnjeni knjigi, dokler je ne potrdiš.${m.empties ? ` · Prazne vrstice: ${m.empties}.` : ''}</p>
+      ${bsPhotosHTML(m)}
+      <p class="hint" style="margin:0">${m.manual ? 'Ročni vnos ob fotografiji: vpiši ime, od, do in uro za vsak prevoz; prazne vrstice se preskočijo. Ime lahko izbereš s seznama bolnikov. Ročno vpisane vrstice niso označene z ⚠.' : 'Primerjaj vsako vrstico s sliko izreza. Rumena in rdeča polja so tista, ki jih nisem razumel: izberi predlog, popravi ali pritisni »Vse je prav«. Rdeče vrstice niso izbrane za vpis. Karkoli ostane nepotrjeno, se vpiše z oznako <b>⚠ preveri</b>, ki ostane vidna v dnevu in v natisnjeni knjigi, dokler je ne potrdiš.'}${m.empties ? ` · Prazne vrstice: ${m.empties}.` : ''}</p>
       <div class="bs-list" data-role="bslist">${list || '<div class="empty-state">Na strani ni vpisanih vrstic.</div>'}</div>
+      <div class="row"><button type="button" class="btn sm" data-act="bsAddRow">+ Dodaj vrstico</button></div>
+      <datalist id="bsPat">${S.patients.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), 'sl')).map(p => `<option value="${esc(p.name)}"></option>`).join('')}</datalist>
       ${m.err ? `<div class="banner bad"><span>${IC.alert}</span><div>${esc(m.err)}</div></div>` : ''}
       <div class="row bs-foot" style="justify-content:space-between;flex-wrap:wrap"><button type="button" class="btn" data-act="bsBack">Nazaj (nova fotografija)</button>
         <span class="row"><button type="button" class="btn" data-act="closeModal">Prekliči</button><button type="button" class="btn primary" data-act="bsApply" data-role="bsapply">${esc(bsApplyLabel(m))}</button></span></div>`;
   } else {
-    body = `<div class="banner"><span>${IC.info}</span><div>Fotografiraj stran papirne knjige (ali izberi PDF-sken). Aplikacija prebere številke polj, imena, naslove in ure ter jih postavi v dan. <b>Fotografija se ne pošlje nikamor in se ne shrani</b>; branje poteka v tej napravi (prvič se prenese program za razpoznavo besedila).</div></div>
+    body = `<div class="banner"><span>${IC.info}</span><div>Fotografiraj stran papirne knjige (ali izberi PDF-sken). Aplikacija prebere številke polj, imena, naslove in ure ter jih postavi v dan. <b>Fotografija se ne pošlje nikamor in se ne shrani</b>; branje poteka v tej napravi. Program za branje se ob odprtju okna enkrat prenese (približno 7 MB) in nato velja za vse strani.</div></div>
+      ${ocrOn ? `<div class="bs-warm" data-role="bswarm" data-st="${esc(m.warm)}" role="status">${esc(bsWarmText(m))}</div>` : ''}
       <div class="stack" style="gap:8px"><div class="row" style="gap:8px;flex-wrap:wrap"><label class="btn primary" for="bsFile" style="cursor:pointer">${ocrOn ? 'Izberi fotografije ali PDF' : 'Razpoznava izklopljena'}</label>
         <label class="btn" for="bsCam" style="cursor:pointer">Fotografiraj</label></div>
         <input id="bsFile" type="file" accept="image/*,application/pdf,.pdf" multiple style="position:absolute;opacity:0;width:1px;height:1px" ${m.busy ? 'disabled' : ''}>
         <input id="bsCam" type="file" accept="image/*" capture="environment" style="position:absolute;opacity:0;width:1px;height:1px" ${m.busy ? 'disabled' : ''}>
-        ${m.busy ? `<div class="row" style="gap:8px"><span class="spin" aria-hidden="true"></span><span data-role="bsbusy" role="status">${esc(m.busy)}</span></div>` : ''}</div>
+        ${m.busy ? `<div class="bs-busy" role="status"><div class="row" style="gap:8px;flex-wrap:nowrap"><span class="spin" aria-hidden="true"></span><span data-role="bsbusy" style="flex:1;min-width:0">${esc(m.busy)}</span><span class="hint" data-role="bsel" style="white-space:nowrap"></span></div>
+          <progress data-role="bsbar" max="100" aria-label="Napredek branja"></progress><div class="hint" data-role="bsslow" hidden>Na telefonu lahko branje ene strani traja do dve minuti. Če se ne premakne, pritisni »Prekini« in prevoze vnesi ročno ob fotografiji.</div>
+          <div class="row"><button type="button" class="btn sm" data-act="bsCancel">Prekini</button></div></div>` : ''}</div>
       <ul class="hint bs-tips" style="margin:0;padding-left:18px">
         <li>Knjigo položi ravno, v celoti v kader, brez sence in bliska; telefon drži vzporedno z listom.</li>
         <li>Ena fotografija = ena stran. Za dan z več stranmi izberi več fotografij naenkrat (isti dan).</li>
         <li><b>Tiskano ali lepo berljivo pisavo</b> aplikacija prebere dobro. <b>Hitro ročno pisavo pogosto napačno</b>: takšna polja dobijo oznako ⚠ ali ✖ in jih preveriš s sliko vrstice. Nič se ne vpiše neopazno.</li>
       </ul>
       ${m.err ? `<div class="banner bad"><span>${IC.alert}</span><div>${esc(m.err)}</div></div>` : ''}
+      ${m.err && !m.busy && m.photos.some(Boolean) ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn primary" data-act="bsManual">Vnesi ročno ob fotografiji</button>${m.lastFiles ? '<button type="button" class="btn" data-act="bsRetry">Poskusi znova</button>' : ''}</div>` : ''}
       <div class="row" style="justify-content:flex-end"><button type="button" class="btn" data-act="closeModal">Zapri</button></div>`;
   }
   host.innerHTML = `<div class="modal-back" data-act="closeModal"></div><div class="modal modal-wide bscan" role="dialog" aria-modal="true" aria-labelledby="mTitle">
     <div class="modal-head"><h3 id="mTitle">Skeniraj stran knjige</h3><button type="button" class="icon-btn" data-act="closeModal" aria-label="Zapri">${IC.x}</button></div><div class="stack" style="gap:12px">${body}</div></div>`;
 }
+const bsWarmText = m => m.warm === 'ok' ? '✔ Razpoznava je pripravljena: strani se berejo brez novega prenosa.'
+  : m.warm === 'busy' ? 'Razpoznava se pripravlja v ozadju' + (m.warmP ? ' (' + BSCAN.stageLabel(m.warmP) + ')' : '') + '. Fotografijo lahko izbereš že zdaj.'
+  : m.warm === 'err' ? '⚠ Razpoznave ni bilo mogoče pripraviti vnaprej: ' + (m.warmMsg || 'neznana napaka') + ' Ob izbiri fotografije poskusim znova.' : '';
+function bsPaintWarm(m){
+  if (UI.modal !== m) return; const el = document.querySelector('[data-role=bswarm]'); if (!el) return;
+  el.dataset.st = m.warm; el.textContent = bsWarmText(m);
+}
+/* vnaprejšnji zagon branja (jedro in model) takoj ob odprtju okna: do izbire fotografije je že pripravljeno */
+function bsWarm(m){
+  if (!NSCAN.ocrEnabled()) return;
+  m.warm = 'busy'; m.warmP = null; bsPaintWarm(m);
+  let p; try { p = BSCAN.warm(x => { m.warmP = x.stage; bsPaintWarm(m); }); } catch (e) { p = Promise.reject(e); }
+  Promise.resolve(p).then(() => { m.warm = 'ok'; bsPaintWarm(m); }, e => { m.warm = 'err'; m.warmMsg = String(e && e.message || e); bsPaintWarm(m); });
+}
+function bsProgress(m, p){
+  if (UI.modal !== m) return;
+  const el = document.querySelector('[data-role=bsbusy]'); if (!el) return;
+  const pc = p.pct > 0 && p.pct <= 1 ? Math.round(p.pct * 100) : 0;
+  el.textContent = p.label + (pc ? ' ' + pc + ' %' : ' …');
+  const bar = document.querySelector('[data-role=bsbar]'); if (bar){ if (pc) bar.value = pc; else bar.removeAttribute('value'); }
+}
 async function bsFiles(list){
-  const m = UI.modal; if (!m || m.type !== 'bscan') return;
+  const m = UI.modal; if (!m || m.type !== 'bscan' || m.busy) return;
   const files = Array.from(list || []).filter(Boolean); if (!files.length) return;
   if (!NSCAN.ocrEnabled()){ m.err = 'Razpoznava besedila iz slike ni vklopljena (config.js → ocr).'; renderModal(); return; }
-  m.err = ''; m.busy = 'Pripravljam sliko …'; renderModal();
+  m.err = ''; m.busy = 'berem fotografijo …'; m.photos = []; m.manual = false; m.lastFiles = files; m.ctl = { cancelled:false }; m.t0 = Date.now(); renderModal();
+  const ctl = m.ctl;
+  const timer = setInterval(() => {
+    if (UI.modal !== m || !m.busy){ clearInterval(timer); if (UI.modal !== m){ BSCAN.cancel(ctl); } return; }
+    const sec = Math.round((Date.now() - m.t0) / 1000), el = document.querySelector('[data-role=bsel]'), sl = document.querySelector('[data-role=bsslow]');
+    if (el) el.textContent = sec + ' s'; if (sl && sec >= 60) sl.hidden = false;
+  }, 1000);
+  BSCAN.hooks.onPhoto = (i, url) => { if (UI.modal === m) m.photos[i] = url; };
   try {
-    const res = await BSCAN.run(files, p => {
-      const el = document.querySelector('[data-role=bsbusy]'); if (!el) return;
-      const pc = p.pct != null && isFinite(p.pct) && p.pct > 0 ? ' ' + Math.round(p.pct * 100) + ' %' : '';
-      el.textContent = (p.page && p.pages > 1 ? `Stran ${p.page}/${p.pages}: ` : '') + (p.stage === 'lib' ? 'nalagam razpoznavo besedila (prvič lahko traja minuto ali dve) …' : p.stage === 'prep' ? 'pripravljam sliko …' : 'berem besedilo …' + pc);
-    });
+    const res = await BSCAN.run(files, p => bsProgress(m, p), ctl);
     if (UI.modal !== m) return;
     bsLoad(m, res);
-  } catch (e) { m.err = String(e && e.message || e); }
+  } catch (e) { m.err = e && e.canceled ? 'Branje je prekinjeno.' : String(e && e.message || e); }
+  finally { clearInterval(timer); BSCAN.hooks.onPhoto = null; }
   m.busy = '';
   if (UI.modal === m) renderModal();
+}
+function bsCancel(){ const m = UI.modal; if (!m || m.type !== 'bscan' || !m.busy) return; m.busy = 'prekinjam …'; const el = document.querySelector('[data-role=bsbusy]'); if (el) el.textContent = m.busy; BSCAN.cancel(m.ctl); }
+function bsRetry(){ const m = UI.modal; if (!m || m.type !== 'bscan' || m.busy || !m.lastFiles) return; bsFiles(m.lastFiles); }
+/* če razpoznava ne uspe: prevoze vneseš sam, ob celi fotografiji (prazne vrstice 1–12, po potrebi še dodaš) */
+function bsBlankRow(m){
+  const n = m.rows.length + 1, key = 'm' + (++m.seq);
+  return { key, page:1, nr:n, nrEdit:String(n), nrLvl:'ok', lvl:'ok', todo:[], manual:true, on:true, touched:{}, fl:{}, crop:'', f:{ name:'', from:'', to:'', time:'', mode:'sede', dia:'', note:'', pid:'' } };
+}
+function bsManual(){
+  const m = UI.modal; if (!m || m.type !== 'bscan' || m.busy) return;
+  m.rows = []; for (let i = 0; i < 12; i++) m.rows.push(bsBlankRow(m));
+  m.manual = true; m.step = 'review'; m.err = ''; m.notes = []; m.empties = 0; m.photoOpen = true; m.only = false; m.pages = m.photos.filter(Boolean).length; renderModal();
+}
+function bsAddRow(){
+  const m = UI.modal; if (!m || m.type !== 'bscan' || m.step !== 'review') return;
+  const row = Object.assign(bsBlankRow(m), { nr:null }); row.nrEdit = String(Math.max(0, ...m.rows.map(r => bsNr(r) || 0)) + 1);
+  m.rows.push(row); renderModal();
+  const last = document.querySelector('.bs-row:last-child input[data-k=name]'); if (last){ try { last.focus({ preventScroll:false }); } catch (e) { last.focus(); } }
+}
+function bsZoom(){ const m = UI.modal; if (!m || m.type !== 'bscan') return; m.zoom = !m.zoom; const el = document.querySelector('[data-role=bsphoto]'); if (el) el.classList.toggle('zoom', m.zoom); }
+function bsPhotosHTML(m){
+  if (!m.photos || !m.photos.some(Boolean)) return '';
+  return `<details class="bs-photos" data-role="bsphotos" ${m.photoOpen ? 'open' : ''}><summary>Cela fotografija strani (za primerjavo)</summary>
+    <div class="bs-photo ${m.zoom ? 'zoom' : ''}" data-role="bsphoto">${m.photos.map((u, i) => u ? `<img src="${u}" alt="Fotografija strani ${i + 1}">` : '').join('')}</div>
+    <div class="row"><button type="button" class="btn sm" data-act="bsZoom">Povečaj / pomanjšaj</button></div></details>`;
 }
 function bsLoad(m, res){
   const rows = res.rows.filter(r => !r.empty);
@@ -7023,7 +7355,7 @@ function bsLoad(m, res){
 function bsPaintRow(m, row){
   const card = document.querySelector(`[data-bsrow="${row.key}"]`); if (!card) return;
   const l = bsRowLvl(m, row); card.dataset.lv = l;
-  const lv = card.querySelector('[data-role=bslv]'); if (lv) lv.innerHTML = `<span aria-hidden="true">${BS_SYM[l]}</span> ${BS_LABEL[l]}`;
+  const lv = card.querySelector('[data-role=bslv]'); if (lv){ lv.innerHTML = `<span aria-hidden="true">${BS_SYM[l]}</span> ${BS_LABEL[l]}`; lv.hidden = !!row.manual && l === 'ok'; }
   const td = card.querySelector('[data-role=bstodo]'); if (td){ const t = bsTodo(m, row); td.textContent = t ? '· ' + t : ''; }
   const cf = card.querySelector('[data-role=bsconf]'); if (cf) cf.hidden = l === 'ok';
   const nr = card.querySelector('[data-bs=nr]'); if (nr) nr.dataset.lv = bsNrLvl(m, row);
@@ -7073,15 +7405,15 @@ function bsJump(){
   const inp = next.querySelector('.bs-f[data-lv=bad] input, .bs-f[data-lv=chk] input') || next.querySelector('input[data-bs=f]');
   if (inp) { try { inp.focus({ preventScroll:true }); } catch (e) { inp.focus(); } }
 }
-function bsBack(){ const m = UI.modal; if (!m || m.type !== 'bscan') return; m.step = 'in'; m.rows = []; m.err = ''; m.notes = []; renderModal(); }
+function bsBack(){ const m = UI.modal; if (!m || m.type !== 'bscan') return; m.step = 'in'; m.rows = []; m.err = ''; m.notes = []; m.manual = false; m.photos = []; renderModal(); bsPaintWarm(m); }
 function bsApply(){
   const m = UI.modal; if (!m || m.type !== 'bscan' || m.step !== 'review') return;
   if (!bsDateOk(m.date)){ m.err = 'Vpiši datum strani.'; renderModal(); return; }
   const date = m.date, mm = { y:+date.slice(0, 4), m:+date.slice(5, 7) - 1 };
   bkEnsure(mm);
   if (!BOOK.monthReady(mm.y, mm.m)){ m.err = 'Podatki za ta mesec se še nalagajo. Počakaj trenutek in poskusi znova.'; renderModal(); return; }
-  const sel = m.rows.filter(r => r.on).sort((a, b) => (bsNr(a) == null ? 999 : bsNr(a)) - (bsNr(b) == null ? 999 : bsNr(b)));
-  if (!sel.length){ m.err = 'Ni izbranih vrstic za vpis.'; renderModal(); return; }
+  const sel = m.rows.filter(r => r.on && bsFilled(r)).sort((a, b) => (bsNr(a) == null ? 999 : bsNr(a)) - (bsNr(b) == null ? 999 : bsNr(b)));
+  if (!sel.length){ m.err = m.manual ? 'Vpiši vsaj eno vrstico (ime, od, do).' : 'Ni izbranih vrstic za vpis.'; renderModal(); return; }
   const a = ensureDay(date); let n = 0, dup = 0, moved = 0, flagged = 0; const put = [];
   for (const row of sel){
     const f = row.f, nr = bsNr(row), nm = String(f.name || '').trim(), fr = String(f.from || '').trim(), to = String(f.to || '').trim();
@@ -7100,12 +7432,13 @@ function bsApply(){
   }
   save();
   put.forEach(({ t, ok }) => { try { afterAddressChange(date, t, 'to'); } catch (e) { /* kilometrina se izračuna pozneje */ } if (ok && t.from && typeof learnAddress === 'function') learnAddress(t.from); });
-  audit('knjiga.skenirano', { dan:date, n, chk:flagged, strani:m.pages });
+  audit('knjiga.skenirano', { dan:date, n, chk:flagged, strani:m.pages, rocno:m.manual ? 1 : 0 });
   UI.modal = null; renderModal(); UI.date = date;
   toast(`Vpisanih ${n} prevozov${flagged ? ` · ${flagged} z oznako ⚠ preveri` : ''}${dup ? ` · ${dup} že vpisanih preskočenih` : ''}${moved ? ` · ${moved} v drugo polje (zasedeno)` : ''}`);
   go('dan');
 }
 if (typeof document !== 'undefined' && document.addEventListener){
+  document.addEventListener('toggle', e => { const t = e.target, m = UI.modal; if (t && t.dataset && t.dataset.role === 'bsphotos' && m && m.type === 'bscan') m.photoOpen = t.open; }, true);
   document.addEventListener('input', e => {
     const t = e.target, m = UI.modal; if (!t || !m || m.type !== 'bscan' || !t.dataset) return;
     if (t.dataset.bs === 'f'){ const row = bsRow(m, t.dataset.key); if (row){ row.f[t.dataset.k] = t.value; if (t.dataset.k === 'name') row.f.pid = ''; } }
@@ -7117,7 +7450,7 @@ if (typeof document !== 'undefined' && document.addEventListener){
     const b = t.dataset && t.dataset.bs; if (b === undefined) return;
     if (b === 'f'){
       const row = bsRow(m, t.dataset.key), k = t.dataset.k; if (!row) return;
-      row.f[k] = t.value; if (k === 'name') row.f.pid = '';
+      row.f[k] = t.value; if (k === 'name'){ const pt = t.value.trim() ? S.patients.find(x => norm(x.name) === norm(t.value)) : null; row.f.pid = pt ? pt.id : ''; }
       if (k === 'time'){ const p = BSCAN.parseTime(t.value); if (p.v){ row.f.time = p.v; t.value = p.v; } else if (p.dia){ row.f.dia = p.dia; row.f.time = ''; t.value = ''; } }
       if (['name', 'from', 'to', 'time'].includes(k)) row.touched[k] = true;
       if (k === 'mode' && t.value === 'vzorci') row.touched.from = true;
@@ -7281,10 +7614,17 @@ document.addEventListener('click', async e => {
     case 'bsApply': bsApply(); break;
     case 'bsJump': bsJump(); break;
     case 'bsBack': bsBack(); break;
+    case 'bsCancel': bsCancel(); break;
+    case 'bsRetry': bsRetry(); break;
+    case 'bsManual': bsManual(); break;
+    case 'bsAddRow': bsAddRow(); break;
+    case 'bsZoom': bsZoom(); break;
     case 'bsConfirm': bsConfirm(el.dataset.key); break;
     case 'bsSug': bsSug(el); break;
     case 'chkOk': { const art = el.closest('[data-ride]'); const hit = art && rideById(art.dataset.date, art.dataset.ride); if (hit){ hit.r.chk = ''; save(); audit('knjiga.preverjeno', { dan:art.dataset.date, nr:hit.nr }); rerender(); toast(`Prevoz ${hit.nr} potrjen`); } break; }
     case 'bkPrint': bkPrint(); break;
+    case 'bkTab': bkTab(); break;
+    case 'bkPg': bkGoto(UI.modal, (UI.modal && UI.modal.pg || 1) + (parseInt(el.dataset.d, 10) || 0)); break;
     case 'bkList': printMonth(); break;
     case 'monthToday': { const d = new Date(); UI.month = { y:d.getFullYear(), m:d.getMonth() }; render(); break; }
     case 'dayPrev': UI.date = addDays(UI.date, -1); ensureRange(addDays(UI.date, -1), addDays(UI.date, 1)); render(); break;
@@ -7688,6 +8028,13 @@ document.addEventListener('submit', async e => {
     else if (kind === 'addNotice'){ S.notices.push({ id:uid(), vehicleId:fd.get('vehicleId'), tip:fd.get('tip'), from:fd.get('from'), to:fd.get('to') || '', note:(fd.get('note') || '').trim(), closed:false }); save(); render(); toast('Posebnost dodana'); }
     else if (kind === 'diaAdd'){ const p = patientById(fd.get('pid')); if (!p){ toast('Izberi pacienta'); return; } p.dt = { t:fd.get('t') === 'pop' ? 'pop' : 'dop', d:[1, 3, 5] }; save(); rerender(); toast(`${p.name}: dodan na dializo (pon, sre, pet). Popravi dneve po potrebi.`); }
     else if (kind === 'addStaff'){ const name = (fd.get('name') || '').trim(); if (name){ S.staff.push({ id:uid(), name, team:fd.get('team'), userId:'' }); save(); rerender(); } }
+    else if (kind === 'importStaff'){
+      const r = parseStaffList(fd.get('list') || '', S.staff.map(s => s.name)), team = fd.get('team') === 'NN' ? 'NN' : 'redna';
+      if (!r.add.length){ toast('Ni novih imen za dodajanje.'); return; }
+      r.add.forEach(name => S.staff.push({ id:uid(), name, team, userId:'' }));
+      audit('osebje.uvoz', { dodanih:r.add.length, preskocenih:r.dup.length });
+      save(); rerender(); toast(`Dodanih ${r.add.length} zaposlenih${r.dup.length ? ` · ${r.dup.length} že na seznamu` : ''}`);
+    }
     else if (kind === 'addUser'){
       if (!isAdmin()) return;
       const un = (fd.get('username') || '').trim(), pw = fd.get('pw') || '';

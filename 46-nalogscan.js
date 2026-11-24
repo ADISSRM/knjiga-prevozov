@@ -342,27 +342,74 @@ const NSCAN = (() => {
   /* privzete vrednosti: tudi config.js iz starejše izdaje (brez bloka »ocr«) ohrani skeniranje slik; lib: '' ali on: false ga izklopi */
   const OCR_DEFAULT = { on:true, lib:'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js', lang:'slv' };
   const ocrCfg = () => Object.assign({}, OCR_DEFAULT, (typeof window !== 'undefined' && window.KP_CONFIG && window.KP_CONFIG.ocr) || {});
-  function ocr(png, onProgress, cfg = ocrCfg(), extra){
-    return new Promise((resolve, reject) => {
-      const fr = document.createElement('iframe'); let done = false, timer = 0;
-      fr.setAttribute('sandbox', 'allow-scripts'); fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1; fr.style.cssText = 'position:fixed;width:1px;height:1px;left:-9px;top:-9px;border:0;opacity:0';
-      const end = (fn, v) => { if (done) return; done = true; clearTimeout(timer); window.removeEventListener('message', onMsg); fr.remove(); fn(v); };
-      const onMsg = async e => {
-        if (e.source !== fr.contentWindow) return;
-        const m = e.data || {};
-        if (m.type === 'ready'){ fr.contentWindow.postMessage({ type:'run', cfg:{ lib:abs(cfg.lib), lang:cfg.lang || 'slv+eng', langPath:abs(cfg.langPath), workerPath:abs(cfg.workerPath), corePath:abs(cfg.corePath) }, image:await png.arrayBuffer(), words:!!(extra && extra.words), psm:extra && extra.psm ? String(extra.psm) : undefined }, '*'); }
-        else if (m.type === 'progress'){ if (onProgress) onProgress(m); }
-        else if (m.type === 'done') end(resolve, extra && extra.words ? { text:S_(m.text), words:Array.isArray(m.words) ? m.words : [], tsv:S_(m.tsv) } : S_(m.text));
-        else if (m.type === 'error') end(reject, new Error(S_(m.msg) || 'Razpoznava besedila ni uspela.'));
-      };
-      window.addEventListener('message', onMsg);
-      timer = setTimeout(() => end(reject, new Error('Razpoznava besedila je trajala predolgo. Poskusi znova ali prilepi besedilo.')), 240000);
-      fr.onerror = () => end(reject, new Error('Okvir za razpoznavo besedila se ni naložil.'));
-      fr.src = (cfg.frame || 'ocr/ocr.html');
-      document.body.appendChild(fr);
-    });
+  /* Seja razpoznave: en izoliran okvir in en delavec za vse slike. Okvir nima dovoljenja za shranjevanje (sandbox brez allow-same-origin), zato brskalnik v njem
+     ne more hraniti prenesenih datotek: prenos jedra (~5 MB) in modela (~2 MB) se zato naredi ENKRAT na sejo (v ozadju, ob odprtju okna), ne za vsako sliko znova.
+     Nadzor: če okvir 75 s ne pošlje nobenega napredka, se seja prekine z jasno napako; celotna omejitev 10 minut. Seja se po 6 minutah mirovanja sprosti (pomnilnik telefona). */
+  const OCR_T = { silence:75000, hard:600000, idle:360000 };   // spremenljivo samo zaradi preizkusov
+  const STAGE_LABEL = { lib:'nalagam program za razpoznavo', 'loading tesseract core':'prenašam jedro razpoznave (samo prvič v seji)', 'initializing tesseract':'zaganjam razpoznavo', 'loading language traineddata':'prenašam slovenski jezikovni model (samo prvič v seji)', 'initializing api':'zaganjam razpoznavo', 'recognizing text':'berem besedilo', prep:'pripravljam sliko' };
+  const stageLabel = st => STAGE_LABEL[st] || String(st || 'delam');
+  let SES = null;
+  function makeSession(cfg){
+    const fr = document.createElement('iframe'); let dead = false, deadErr = null, ready = false, readyRes, cur = null, silence = 0, hard = 0, idle = 0;
+    const readyP = new Promise(res => { readyRes = res; });
+    fr.setAttribute('sandbox', 'allow-scripts'); fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1; fr.style.cssText = 'position:fixed;width:1px;height:1px;left:-9px;top:-9px;border:0;opacity:0';
+    const clear = () => { clearTimeout(silence); clearTimeout(hard); };
+    const finish = (fn, v) => { if (!cur) return; const c = cur; cur = null; clear(); fn === 'ok' ? c.resolve(v) : c.reject(v); };
+    const post = m => fr.contentWindow && fr.contentWindow.postMessage(m, '*');
+    const destroy = err => { if (dead) return; dead = true; deadErr = err || null; clearTimeout(idle); clear(); try { post({ type:'close' }); } catch (e) { /* nič */ } window.removeEventListener('message', onMsg); fr.remove(); if (SES === api) SES = null; if (cur) finish('err', err || new Error('Razpoznava je bila prekinjena.')); };
+    const arm = () => { clearTimeout(silence); silence = setTimeout(() => destroy(new Error(`Razpoznava se je ustavila (${Math.round(OCR_T.silence / 1000)} s brez napredka). Najpogostejši vzrok je prekinjena ali počasna internetna povezava do cdn.jsdelivr.net. Poskusi znova ali preveri povezavo.`)), OCR_T.silence); };
+    const bump = () => { clearTimeout(idle); if (!dead) idle = setTimeout(() => destroy(), OCR_T.idle); };
+    const onMsg = e => {
+      if (e.source !== fr.contentWindow) return;
+      const m = e.data || {};
+      if (m.type === 'ready'){ ready = true; readyRes(); }
+      else if (m.type === 'progress'){ if (cur){ arm(); cur.listeners.forEach(f => { try { f(m); } catch (e) { /* prikaz ne sme ustaviti razpoznave */ } }); } }
+      else if (m.type === 'warmed'){ if (cur && cur.kind === 'warm') finish('ok'); }
+      else if (m.type === 'done'){ if (cur && cur.kind === 'run') finish('ok', cur.words ? { text:S_(m.text), words:Array.isArray(m.words) ? m.words : [], tsv:S_(m.tsv) } : S_(m.text)); }
+      else if (m.type === 'error'){ if (cur) finish('err', new Error(S_(m.msg) || 'Razpoznava besedila ni uspela.')); }
+    };
+    window.addEventListener('message', onMsg);
+    fr.onerror = () => destroy(new Error('Okvir za razpoznavo besedila se ni naložil.'));
+    fr.src = (cfg.frame || 'ocr/ocr.html'); document.body.appendChild(fr);
+    const cfgMsg = () => ({ lib:abs(cfg.lib), lang:cfg.lang || 'slv', langPath:abs(cfg.langPath), workerPath:abs(cfg.workerPath), corePath:abs(cfg.corePath) });
+    /* ena zahteva naenkrat; čakajoče zahteve ostanejo v vrsti */
+    let chain = Promise.resolve(), warmSt = null;
+    const request = (kind, msg, onProgress, words, listeners) => {
+      const job = chain.then(async () => {
+        if (dead) throw deadErr || new Error('Razpoznava je bila prekinjena.');
+        clearTimeout(idle);
+        await Promise.race([readyP, new Promise((_, rej) => setTimeout(() => rej(new Error('Okvir za razpoznavo besedila se ni odzval.')), 20000))]);
+        return new Promise((resolve, reject) => {
+          cur = { kind, resolve, reject, listeners:listeners || [onProgress], words }; arm(); clearTimeout(hard); hard = setTimeout(() => destroy(new Error('Razpoznava je trajala predolgo (' + Math.round(OCR_T.hard / 60000) + ' minut). Poskusi znova z manjšo ali boljšo fotografijo.')), OCR_T.hard);
+          Promise.resolve(msg()).then(m => post(m), reject);
+        });
+      });
+      chain = job.then(() => {}, () => {}).then(bump);
+      return job;
+    };
+    const api = {
+      cfg, get dead(){ return dead; }, get ready(){ return ready; },
+      /* vnaprejšnji zagon: če teče, se ob kasnejšem run() njegov prikaz napredka pridruži istemu prenosu */
+      warm: onProgress => { if (warmSt && !warmSt.done) { if (onProgress) warmSt.listeners.push(onProgress); return warmSt.p; } const st = warmSt = { done:false, listeners:[onProgress] }; st.p = request('warm', () => ({ type:'warm', cfg:cfgMsg() }), null, false, st.listeners).finally(() => { st.done = true; }); return st.p; },
+      get busy(){ return !!cur; },
+      run: async (png, onProgress, extra) => { if (warmSt && !warmSt.done && onProgress) warmSt.listeners.push(onProgress); const buf = await png.arrayBuffer(); return request('run', () => ({ type:'run', cfg:cfgMsg(), image:buf, words:!!(extra && extra.words), psm:extra && extra.psm ? String(extra.psm) : undefined }), onProgress, !!(extra && extra.words)); },
+      close: () => destroy(new Error('Razpoznava je bila prekinjena.'))
+    };
+    bump();
+    return api;
   }
+  /* seja za trenutne nastavitve (nova, če so se nastavitve spremenile ali je bila stara ustavljena) */
+  function ocrSession(cfg = ocrCfg()){
+    const key = JSON.stringify([cfg.lib, cfg.lang, cfg.langPath, cfg.workerPath, cfg.corePath, cfg.frame]);
+    if (SES && (SES.dead || SES.key !== key)){ const o = SES; SES = null; try { o.close(); } catch (e) { /* nič */ } }
+    if (!SES){ SES = makeSession(cfg); SES.key = key; }
+    return SES;
+  }
+  const ocrClose = () => { if (SES) SES.close(); };
+  /* prekinitev uporabnika: seja se ustavi samo, če ravno bere; drugače ostane pripravljena za naslednjo sliko */
+  const ocrAbort = () => { if (SES && SES.busy) SES.close(); };
+  function ocr(png, onProgress, cfg = ocrCfg(), extra){ return ocrSession(cfg).run(png, onProgress, extra); }
   const ocrEnabled = (cfg = ocrCfg()) => cfg.on !== false && !!cfg.lib;
 
-  return { parse, matchPatient, apply, pdfImages, prepare, ocr, ocrEnabled, ocrCfg, lines, zzzsIn, dates, title, fixDigits, toCanvas, enhance, toBlob };
+  return { parse, matchPatient, apply, pdfImages, prepare, ocr, ocrSession, ocrClose, ocrAbort, ocrLimits:OCR_T, stageLabel, ocrEnabled, ocrCfg, lines, zzzsIn, dates, title, fixDigits, toCanvas, enhance, toBlob };
 })();

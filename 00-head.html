@@ -259,6 +259,17 @@ details.warnbox summary{cursor:pointer;font-weight:600}
 .imap.picking .imap-vp{cursor:crosshair}
 .modal.modal-wide{width:min(860px,100%)}
 /* skeniranje strani knjige: označbe (barva + simbol + besedilo, ne samo barva) */
+.modal.bprint{width:min(1080px,100%)}
+.bk-grid{display:grid;gap:12px;grid-template-columns:minmax(0,1fr);grid-template-areas:"top" "prev" "act" "opts" "note"}
+.bk-top{grid-area:top} .bk-prevbox{grid-area:prev;min-width:0} .bk-act{grid-area:act} .bk-opts{grid-area:opts} .bk-note{grid-area:note}
+@media (min-width:900px){.bk-grid{grid-template-columns:minmax(280px,360px) minmax(0,1fr);grid-template-areas:"top prev" "opts prev" "act prev" "note prev";align-items:start}}
+.bk-opts{border:1px solid var(--line-2);border-radius:12px;padding:8px 12px;background:var(--surface)} .bk-opts>summary{cursor:pointer;font-weight:700;padding:4px 0}
+.bk-nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px} .bk-nav .btn.sm{min-width:44px;min-height:40px} .bk-nav select{max-width:100%;min-width:0;flex:1 1 150px}
+.bk-pgn{display:flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap} .bk-pgn input{width:68px;padding:6px 8px}
+.bk-prev{overflow:auto;max-height:80vh;background:#c9d1de;padding:8px;border-radius:10px;border:1px solid var(--line-2);-webkit-overflow-scrolling:touch}
+.bk-sheet{margin:0 auto;position:relative;box-shadow:0 2px 12px rgba(0,0,0,.3);background:#fff;overflow:hidden}
+.bk-frame{display:block;width:794px;height:1119px;border:0;background:#fff;transform-origin:0 0;position:absolute;left:0;top:0}
+.bk-prevwait{min-height:120px;display:flex;align-items:center;justify-content:center}
 .modal.bscan{width:min(980px,100%)}
 .bs-sum{position:sticky;top:-16px;z-index:3;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-4px -16px 0;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--line-2)}
 .bs-sum .sp,.bs-head .sp{flex:1}
@@ -266,6 +277,13 @@ details.warnbox summary{cursor:pointer;font-weight:600}
 .bs-cnt[data-lv=ok]{background:var(--ok-soft);color:var(--ok)} .bs-cnt[data-lv=chk]{background:var(--warn-soft);color:var(--warn)} .bs-cnt[data-lv=bad]{background:var(--bad-soft);color:var(--bad)}
 .bscan .stack>*,.bs-list,.bs-row{min-width:0;max-width:100%}
 .bscan .btn{white-space:normal;text-align:center} .bs-foot>.row{flex:1 1 auto;justify-content:flex-end;flex-wrap:wrap} .bs-foot .btn.primary{flex:1 1 220px}
+.bs-warm{font-size:13px;padding:8px 12px;border-radius:10px;background:var(--surface-2);color:var(--ink-2)}
+.bs-warm[data-st=ok]{background:var(--ok-soft);color:var(--ok)} .bs-warm[data-st=err]{background:var(--warn-soft);color:var(--warn)} .bs-warm:empty{display:none}
+.bs-busy{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line-2);border-radius:12px;background:var(--surface)}
+.bs-busy progress{width:100%;height:10px;accent-color:var(--accent)}
+.bs-photos{border:1px solid var(--line-2);border-radius:12px;padding:8px 12px;background:var(--surface)} .bs-photos>summary{cursor:pointer;font-weight:700;padding:4px 0}
+.bs-photo{margin:8px 0;max-height:46vh;overflow:auto;border:1px solid var(--line-2);border-radius:8px;background:#fff;-webkit-overflow-scrolling:touch}
+.bs-photo img{display:block;width:100%;height:auto} .bs-photo.zoom img{width:230%;max-width:none}
 .bs-list{display:flex;flex-direction:column;gap:12px}
 .bs-row{border:1px solid var(--line-2);border-left:6px solid var(--ok);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;background:var(--surface)}
 .bs-row[data-lv=chk]{border-left-color:var(--warn);background:linear-gradient(0deg,var(--surface),var(--surface)) padding-box}
@@ -614,23 +632,11 @@ a.btn{text-decoration:none}
   .pd-crew td{height:34px;font-size:12px} .pd-pos{margin-top:12px} .pd-pos ul{margin:4px 0 0 16px;padding:0} .pd-lines{height:90px;background:repeating-linear-gradient(transparent 0 21px,#999 21px 22px)}
   .pd-sign{display:flex;justify-content:space-between;margin-top:22px;font-size:12px} .pd-fine{font-size:9.5px;color:#444;margin:8px 0 0} .pd-warn{color:#c00000;font-weight:700;margin:8px 0 0}
 }
-/* Tisk knjige za cel mesec (strani A4 z notranjim robom za vezavo) */
-@page bookform{size:A4 portrait;margin:0}
+/* Knjiga za cel mesec (predogled, tisk, PDF): samostojna stilska tabela je v BOOK.css() (src/48-bookprint.js); tukaj ostanejo samo pravila, ki jih uporablja tudi tisk dneva */
 @media print{
-  #printArea.pbook{page:bookform;font:11px/1.3 system-ui,sans-serif;--gut:12mm}
-  #printArea.pbook .pb-page{box-sizing:border-box;width:210mm;height:296mm;padding:9mm 9mm 15mm;position:relative;break-after:page;break-inside:auto}
-  #printArea.pbook .pb-page:last-child{break-after:auto}
-  #printArea.pbook .pb-odd{padding-left:calc(9mm + var(--gut))}
-  #printArea.pbook .pb-even{padding-right:calc(9mm + var(--gut))}
-  .pb-foot{position:absolute;bottom:6mm;display:flex;justify-content:space-between;font-size:9.5px;color:#444;border-top:1px solid #999;padding-top:2px}
-  .pb-odd .pb-foot{left:calc(9mm + var(--gut));right:9mm} .pb-even .pb-foot{left:9mm;right:calc(9mm + var(--gut))}
-  #printArea .pb-cover{text-align:center;margin-top:55mm} #printArea .pb-cover h1{font-size:26px;letter-spacing:.04em;margin:26px 0 6px} #printArea .pb-cover h2{font-size:34px;text-transform:capitalize;margin:0 0 22px} #printArea .pb-cover p{margin:4px 0;font-size:13px}
-  #printArea .pb-cover .pb-big{font-size:64px;font-weight:700;margin:26px 0 0;line-height:1} #printArea .pb-cover .pd-logos img{max-height:56px}
-  .pb-index td,.pb-sum td{height:auto;padding:2px 6px} .pb-index td.num,.pb-sum td.num,.pb-index th.num,.pb-sum th.num{text-align:right}
   .pd-empty-day{font-size:14px;margin:22px 0;color:#444}
   .pd-by{font-size:9px;color:#333;margin-top:1px} .pd-chk{color:#b45309} .pd-ruled{margin-top:6px} .pd-ln{height:22px;border-bottom:1px solid #999}
   .pd-tab tr.p-cancel td b{display:inline-block}
-  #printArea.pbook .pd-tab th{font-size:9px;padding:3px 2px;letter-spacing:0}
 }
 </style>
 

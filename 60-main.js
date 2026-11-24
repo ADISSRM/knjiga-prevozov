@@ -150,10 +150,17 @@ document.addEventListener('click', async e => {
     case 'bsApply': bsApply(); break;
     case 'bsJump': bsJump(); break;
     case 'bsBack': bsBack(); break;
+    case 'bsCancel': bsCancel(); break;
+    case 'bsRetry': bsRetry(); break;
+    case 'bsManual': bsManual(); break;
+    case 'bsAddRow': bsAddRow(); break;
+    case 'bsZoom': bsZoom(); break;
     case 'bsConfirm': bsConfirm(el.dataset.key); break;
     case 'bsSug': bsSug(el); break;
     case 'chkOk': { const art = el.closest('[data-ride]'); const hit = art && rideById(art.dataset.date, art.dataset.ride); if (hit){ hit.r.chk = ''; save(); audit('knjiga.preverjeno', { dan:art.dataset.date, nr:hit.nr }); rerender(); toast(`Prevoz ${hit.nr} potrjen`); } break; }
     case 'bkPrint': bkPrint(); break;
+    case 'bkTab': bkTab(); break;
+    case 'bkPg': bkGoto(UI.modal, (UI.modal && UI.modal.pg || 1) + (parseInt(el.dataset.d, 10) || 0)); break;
     case 'bkList': printMonth(); break;
     case 'monthToday': { const d = new Date(); UI.month = { y:d.getFullYear(), m:d.getMonth() }; render(); break; }
     case 'dayPrev': UI.date = addDays(UI.date, -1); ensureRange(addDays(UI.date, -1), addDays(UI.date, 1)); render(); break;
@@ -557,6 +564,13 @@ document.addEventListener('submit', async e => {
     else if (kind === 'addNotice'){ S.notices.push({ id:uid(), vehicleId:fd.get('vehicleId'), tip:fd.get('tip'), from:fd.get('from'), to:fd.get('to') || '', note:(fd.get('note') || '').trim(), closed:false }); save(); render(); toast('Posebnost dodana'); }
     else if (kind === 'diaAdd'){ const p = patientById(fd.get('pid')); if (!p){ toast('Izberi pacienta'); return; } p.dt = { t:fd.get('t') === 'pop' ? 'pop' : 'dop', d:[1, 3, 5] }; save(); rerender(); toast(`${p.name}: dodan na dializo (pon, sre, pet). Popravi dneve po potrebi.`); }
     else if (kind === 'addStaff'){ const name = (fd.get('name') || '').trim(); if (name){ S.staff.push({ id:uid(), name, team:fd.get('team'), userId:'' }); save(); rerender(); } }
+    else if (kind === 'importStaff'){
+      const r = parseStaffList(fd.get('list') || '', S.staff.map(s => s.name)), team = fd.get('team') === 'NN' ? 'NN' : 'redna';
+      if (!r.add.length){ toast('Ni novih imen za dodajanje.'); return; }
+      r.add.forEach(name => S.staff.push({ id:uid(), name, team, userId:'' }));
+      audit('osebje.uvoz', { dodanih:r.add.length, preskocenih:r.dup.length });
+      save(); rerender(); toast(`Dodanih ${r.add.length} zaposlenih${r.dup.length ? ` · ${r.dup.length} že na seznamu` : ''}`);
+    }
     else if (kind === 'addUser'){
       if (!isAdmin()) return;
       const un = (fd.get('username') || '').trim(), pw = fd.get('pw') || '';

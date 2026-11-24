@@ -440,7 +440,9 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   const r2 = await rv();
   ok('skeniranje (slika): OCR v izoliranem okvirju (sandbox brez allow-same-origin), knjižnica naložena šele zdaj, rezultat izpolni polja', tessSeen.length === 1 && r2.zzzs === '012345678' && /^Marija Novakova/.test(r2.name), JSON.stringify({ t:tessSeen.length, zzzs:r2.zzzs }));
   const ifr = await page.evaluate(() => ({ seen:window.__ifr.slice(), left:document.querySelectorAll('iframe').length }));
-  ok('skeniranje: okvir je »allow-scripts« brez dostopa do podatkov aplikacije in se po branju odstrani', ifr.seen.length === 1 && ifr.seen[0] === 'allow-scripts|ocr/ocr.html' && ifr.left === 0, JSON.stringify(ifr));
+  ok('skeniranje: okvir je »allow-scripts« brez dostopa do podatkov aplikacije in ostane pripravljen za naslednje slike (seja)', ifr.seen.length === 1 && ifr.seen[0] === 'allow-scripts|ocr/ocr.html' && ifr.left === 1, JSON.stringify(ifr));
+  await page.evaluate(() => NSCAN.ocrClose()); await page.waitForTimeout(100);
+  ok('skeniranje: ob zapiranju seje se okvir odstrani', (await page.evaluate(() => document.querySelectorAll('iframe[sandbox]').length)) === 0);
   // lasten izvod knjižnice: relativna pot iz config.js (ocr.lib) se mora razrešiti glede na stran aplikacije, ne glede na okvir v mapi ocr/
   const own = await page.evaluate(async b64 => { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
     try { return await NSCAN.ocr(new Blob([u], { type:'image/png' }), null, { on:true, lib:'ocr/vendor/tess-stub.js', lang:'slv' }); } catch (e) { return 'NAPAKA ' + e.message; } }, png.toString('base64'));
@@ -525,25 +527,76 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   await page.click('.nprint [data-act="closeModal"] >> nth=-1');
   ok('tisk: dnevnik sprememb ne vsebuje podatkov pacienta', await page.evaluate(() => !/Novakova|012345678|Primerna|Dobova/.test(JSON.stringify(AUDIT))));
 
-  // ---------- tisk knjige za mesec (pogovorno okno, strani, PDF) ----------
-  await page.evaluate(() => { window.__prints = []; window.print = function(){ const a = document.getElementById('printArea'); window.__prints.push({ html:a ? a.innerHTML : '', cls:a ? a.className : '' }); }; });
+  // ---------- knjiga meseca: predogled (računalnik in telefon), tisk v skritem okvirju, odpiranje v zavihku ----------
   await page.evaluate(d => { const [y, m] = d.split('-'); UI.month = { y: +y, m: +m - 1 }; UI.view = 'knjiga'; rerender(); }, date);
   await page.waitForSelector('[data-act="bkOpen"]');
   await page.click('[data-act="bkOpen"]'); await page.waitForFunction(() => UI.modal && UI.modal.b && !UI.modal.wait, null, { timeout: 15000 });
-  const bk1 = await page.evaluate(() => ({ pages:UI.modal.b.pages, sheets:UI.modal.b.sheets, rides:UI.modal.b.rides, dis:document.querySelector('[data-act=bkPrint]').disabled, txt:document.querySelector('.bprint .banner').textContent }));
-  ok('tisk knjige meseca: okno sestavi knjigo (strani, listi, prevozi) in je pripravljeno za tisk', bk1.pages > 30 && bk1.sheets === Math.ceil(bk1.pages / 2) && bk1.rides >= 5 && !bk1.dis && /strani/.test(bk1.txt), JSON.stringify(bk1));
+  await page.waitForSelector('[data-role=bkframe]');
+  const bk1 = await page.evaluate(() => ({ pages:UI.modal.b.pages, sheets:UI.modal.b.sheets, rides:UI.modal.b.rides, dis:document.querySelector('[data-act=bkPrint]').disabled, disTab:document.querySelector('[data-act=bkTab]').disabled, txt:document.querySelector('.bprint .banner').textContent }));
+  ok('knjiga meseca: okno sestavi knjigo (strani, listi, prevozi) in je pripravljeno za tisk', bk1.pages > 30 && bk1.sheets === Math.ceil(bk1.pages / 2) && bk1.rides >= 5 && !bk1.dis && !bk1.disTab && /strani/.test(bk1.txt), JSON.stringify(bk1));
+  await page.waitForTimeout(400);
+  const pv = await page.evaluate(() => { const fr = document.querySelector('[data-role=bkframe]'); return { sandbox:fr.getAttribute('sandbox'), n:(fr.srcdoc.match(/class="pb-page /g) || []).length, script:/<script/i.test(fr.srcdoc), cover:/KNJIGA REŠEVALNIH PREVOZOV/.test(fr.srcdoc), odd:/pb-page pb-odd/.test(fr.srcdoc), k:UI.modal.k, cw:document.querySelector('[data-role=bkprev]').clientWidth, sw:Math.round(document.querySelector('[data-role=bksheet]').getBoundingClientRect().width) }; });
+  ok('predogled: ena stran (naslovnica) v izoliranem okvirju brez skript (sandbox), prilagojena širini', pv.sandbox === '' && pv.n === 1 && !pv.script && pv.cover && pv.odd && pv.sw <= pv.cw && pv.k > 0.3, JSON.stringify(pv));
+  const shotBuf = await (await page.$('[data-role=bkframe]')).screenshot(); await page.screenshot({ path: OUT + '/10-knjiga-predogled.png' });
+  ok('predogled: okvir res izriše stran (ni prazen, logotipi in tabele so vidni)', shotBuf.length > 12000, String(shotBuf.length));
+  await page.click('[data-act="bkPg"][data-d="1"]');
+  const nv1 = await page.evaluate(() => ({ pg:UI.modal.pg, kazalo:/KAZALO/i.test(document.querySelector('[data-role=bkframe]').srcdoc), prevDis:document.querySelector('[data-role=bkprevbtn]').disabled, inp:document.querySelector('input[data-bk=pg]').value }));
+  ok('predogled: »naslednja stran« pokaže kazalo, vnos številke strani se posodobi', nv1.pg === 2 && nv1.kazalo && !nv1.prevDis && nv1.inp === '2', JSON.stringify(nv1));
+  const jmp = await page.evaluate(() => UI.modal.b.dayStart[4]);
+  await page.selectOption('[data-bk=jump]', String(jmp.page));
+  const nv2 = await page.evaluate(p => ({ pg:UI.modal.pg, foot:new RegExp('str\\. ' + p + ' / ' + UI.modal.b.pages).test(document.querySelector('[data-role=bkframe]').srcdoc), sel:document.querySelector('[data-role=bkjump]').value }), jmp.page);
+  ok('predogled: »skoči na dan« odpre prvo stran izbranega dneva z nogo »str. N / M«', nv2.pg === jmp.page && nv2.foot && nv2.sel === String(jmp.page), JSON.stringify(nv2));
+  await page.fill('input[data-bk=pg]', '9999'); await page.press('input[data-bk=pg]', 'Tab');
+  ok('predogled: številka strani izven obsega se omeji na zadnjo stran', (await page.evaluate(() => UI.modal.pg === UI.modal.b.pages)));
+  await page.fill('input[data-bk=pg]', '1'); await page.press('input[data-bk=pg]', 'Tab');
+  await page.selectOption('[data-bk=zoom]', '1');
+  ok('predogled: povečava 100 % pokaže A4 v pravi velikosti (794 px) z drsenjem', (await page.evaluate(() => Math.round(document.querySelector('[data-role=bksheet]').getBoundingClientRect().width))) === 794);
+  await page.selectOption('[data-bk=zoom]', 'fit');
+  // telefon: okno se odpre na zaslonu 390 px (možnosti zložene, predogled čez širino)
+  const vs0 = page.viewportSize();
+  await page.click('.bprint [data-act="closeModal"] >> nth=-1');
+  await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(250);
+  await page.evaluate(() => bkOpen()); await page.waitForFunction(() => UI.modal && UI.modal.b && !UI.modal.wait, null, { timeout: 15000 }); await page.waitForSelector('[data-role=bkframe]'); await page.waitForTimeout(400);
+  const phn = await page.evaluate(() => { const m = document.querySelector('.bprint'), pr = document.querySelector('[data-role=bkprev]'), R = m.getBoundingClientRect().right, bt = [...document.querySelectorAll('[data-act=bkPrint],[data-act=bkTab]')].map(b => { const r = b.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1; }); return { sw:m.scrollWidth, cw:m.clientWidth, sheet:Math.round(document.querySelector('[data-role=bksheet]').getBoundingClientRect().width), prev:pr.clientWidth, k:UI.modal.k, bt, order:[...document.querySelectorAll('.bk-grid > *')].map(e => e.className.split(' ')[0]).join(','), opts:document.querySelector('[data-role=bkopts]').open, off:[...m.querySelectorAll('*')].filter(e => e.getBoundingClientRect().right > R + 1 && !e.closest('.bk-prev')).slice(0, 3).map(e => e.tagName + '.' + e.className) }; });
+  await page.screenshot({ path: OUT + '/10b-knjiga-predogled-telefon.png' });
+  ok('predogled na telefonu (390 px): okno ni širše od zaslona, stran se prilagodi širini, oba gumba (tisk, zavihek) sta vidna, možnosti so zložene', phn.sw <= phn.cw + 1 && phn.sheet <= phn.prev && phn.k < 0.6 && phn.bt.length === 2 && phn.bt.every(Boolean) && phn.opts === false && phn.off.length === 0, JSON.stringify(phn));
+  await page.click('[data-act="bkPg"][data-d="1"]');
+  ok('predogled na telefonu: listanje deluje (stran 2)', (await page.evaluate(() => UI.modal.pg)) === 2);
+  await page.click('.bprint [data-act="closeModal"] >> nth=-1');
+  await page.setViewportSize(vs0); await page.waitForTimeout(250);
+  await page.evaluate(() => bkOpen()); await page.waitForFunction(() => UI.modal && UI.modal.b && !UI.modal.wait, null, { timeout: 15000 }); await page.waitForSelector('[data-role=bkframe]');
+  // tisk: dokument, ki gre v tiskalnik (zaznan prek kavlja), ima iste strani kot okno
+  await page.evaluate(() => { window.__bk = null; BOOK.hooks.print = (html, b) => { window.__bk = { html, pages:b.pages }; return null; }; });
   await page.click('[data-act="bkPrint"]');
-  const bp = await page.evaluate(() => window.__prints[window.__prints.length - 1]);
+  const bp = await page.evaluate(() => window.__bk);
   const bpPages = (bp.html.match(/class="pb-page /g) || []).length;
-  ok('tisk knjige meseca: v tiskalnik gre knjiga z natanko toliko stranmi kot v oknu, z nogo »str. N / M« in vpisanimi prevozi', /pbook/.test(bp.cls) && bpPages === bk1.pages && new RegExp('str\\. 1 / ' + bk1.pages).test(bp.html) && /Ivan Novak/.test(bp.html) && /OBR REŠ 08/.test(bp.html) && /KAZALO/i.test(bp.html), JSON.stringify({ cls:bp.cls, bpPages, want:bk1.pages }));
-  await page.emulateMedia({ media:'print' }); const bpdf = OUT + '/tisk-knjiga-meseca.pdf'; await page.pdf({ path:bpdf, format:'A4', preferCSSPageSize:true, printBackground:true }); await page.emulateMedia({ media:'screen' });
+  ok('tisk knjige: v tiskalnik gre samostojen dokument z natanko toliko stranmi kot v oknu, z nogo »str. N / M« in vpisanimi prevozi', /id="printArea" class="pbook"/.test(bp.html) && bpPages === bk1.pages && new RegExp('str\\. 1 / ' + bk1.pages).test(bp.html) && /Ivan Novak/.test(bp.html) && /OBR REŠ 08/.test(bp.html) && /KAZALO/i.test(bp.html) && !/<script/i.test(bp.html), JSON.stringify({ bpPages, want:bk1.pages }));
+  const pg2 = await ctx.newPage(); await pg2.setContent(bp.html); await pg2.emulateMedia({ media:'print' });
+  const bpdf = OUT + '/tisk-knjiga-meseca.pdf'; await pg2.pdf({ path:bpdf, format:'A4', preferCSSPageSize:true, printBackground:true }); await pg2.close();
   let binfo = ''; try { binfo = require('child_process').execFileSync('pdfinfo', [bpdf]).toString(); } catch (e) { binfo = ''; }
   const bnPg = binfo ? +((/Pages:\s+(\d+)/.exec(binfo) || [])[1]) : bk1.pages, bsz = (/Page size:\s+([\d.]+) x ([\d.]+)/.exec(binfo) || []);
-  ok('tisk knjige meseca: PDF ima natanko toliko strani A4 pokonci, kot jih napove okno (brez prazne zadnje strani)', bnPg === bk1.pages && (!binfo || (Math.abs(+bsz[1] - 595.3) < 1.5 && Math.abs(+bsz[2] - 841.9) < 1.5)), bnPg + ' / ' + bk1.pages + (bsz[1] ? ', ' + bsz[1] + ' x ' + bsz[2] : ''));
+  ok('tisk knjige: PDF iz samostojnega dokumenta ima natanko toliko strani A4 pokonci, kot jih napove okno (brez prazne zadnje strani)', bnPg === bk1.pages && (!binfo || (Math.abs(+bsz[1] - 595.3) < 1.5 && Math.abs(+bsz[2] - 841.9) < 1.5)), bnPg + ' / ' + bk1.pages + (bsz[1] ? ', ' + bsz[1] + ' x ' + bsz[2] : ''));
+  // pravi tisk prek skritega okvirja (brez kavlja): okvir se naloži pod CSP in vsebuje celo knjigo
+  await page.evaluate(() => { BOOK.hooks.print = null; });
+  await page.click('[data-act="bkPrint"]'); await page.waitForSelector('#bkPrintFrame', { state:'attached' });
+  const pf = await page.evaluate(async () => { const fr = document.getElementById('bkPrintFrame'); for (let i = 0; i < 80 && !(fr.contentDocument && fr.contentDocument.readyState === 'complete' && fr.contentDocument.querySelector('.pb-page')); i++) await new Promise(r => setTimeout(r, 100)); const d = fr.contentDocument; return { pages:d.querySelectorAll('.pb-page').length, h:Math.round(d.querySelector('.pb-page').getBoundingClientRect().height), area:!!d.getElementById('printArea'), gut:d.body.style.getPropertyValue('--gut'), aria:fr.getAttribute('aria-hidden') }; });
+  ok('tisk knjige: skriti okvir za tisk vsebuje celo knjigo (stran A4 = 296 mm), rob za vezavo je nastavljen', pf.pages === bk1.pages && Math.abs(pf.h - 1119) <= 2 && pf.area && /^\d+mm$/.test(pf.gut) && pf.aria === 'true', JSON.stringify(pf));
+  await page.evaluate(() => { const f = document.getElementById('bkPrintFrame'); if (f) f.remove(); });
+  // odpiranje v zavihku (telefon: Deli → Natisni / PDF)
+  await page.evaluate(() => { window.__tab = null; BOOK.hooks.open = (html, b) => { window.__tab = { html, pages:b.pages }; return {}; }; });
+  await page.click('[data-act="bkTab"]');
+  const tbk = await page.evaluate(() => window.__tab);
+  ok('odpri za tisk/PDF: dokument za zaslon ima širino 794 px za telefon, vrstico z navodilom in vse strani, brez skript', /m-tab/.test(tbk.html) && /name="viewport" content="width=794"/.test(tbk.html) && /class="bk-bar"/.test(tbk.html) && (tbk.html.match(/class="pb-page /g) || []).length === bk1.pages && !/<script/i.test(tbk.html) && !/ src="logos\//.test(tbk.html), String(tbk.html.length));
+  await page.evaluate(() => { BOOK.hooks.open = null; });
+  const [pop] = await Promise.all([ctx.waitForEvent('page'), page.click('[data-act="bkTab"]')]);
+  await pop.waitForLoadState('load');
+  const popI = await pop.evaluate(() => ({ url:location.protocol, pages:document.querySelectorAll('.pb-page').length, w:Math.round(document.querySelector('.pb-page').getBoundingClientRect().width), bar:!!document.querySelector('.bk-bar'), title:document.title })).catch(e => ({ err:String(e) }));
+  ok('odpri za tisk/PDF: pravo novo okno (blob) pokaže celo knjigo s stilom A4 in naslovom za ime PDF', popI.url === 'blob:' && popI.pages === bk1.pages && popI.w === 794 && popI.bar && /Knjiga prevozov/i.test(popI.title), JSON.stringify(popI));
+  await pop.close();
   await page.uncheck('[data-bk=duplex]'); await page.waitForFunction(() => UI.modal && UI.modal.b && UI.modal.o.duplex === false);
   const bk2 = await page.evaluate(() => ({ pages:UI.modal.b.pages, saved:JSON.parse(localStorage.getItem('kp.book.opts') || '{}').duplex }));
-  ok('tisk knjige meseca: izklop obojestranskega tiska skrajša knjigo, izbira se zapomni v tej napravi', bk2.pages < bk1.pages && bk2.saved === false, JSON.stringify(bk2));
-  await page.click('.bprint [data-act="closeModal"] >> nth=-1'); await page.evaluate(() => { const el = document.getElementById('printArea'); if (el){ el.innerHTML = ''; el.className = ''; } });
+  ok('knjiga meseca: izklop obojestranskega tiska skrajša knjigo, izbira se zapomni v tej napravi', bk2.pages < bk1.pages && bk2.saved === false, JSON.stringify(bk2));
+  await page.click('.bprint [data-act="closeModal"] >> nth=-1');
 
   // ---------- skeniranje strani knjige: pravi tok (datoteka → izolirani okvir OCR → besede → pregled z označbami → vpis); OCR je posnetek, ki vrne besede ----------
   const { gen: bgen } = require(SRC + '/tests/bookscan-gen.js');
@@ -563,13 +616,20 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   await page.evaluate(() => { window.KP_CONFIG = window.KP_CONFIG || {}; window.KP_CONFIG.ocr = { on:true, lib:'ocr/vendor/tess-book.js', lang:'slv' }; });
   const bpng = Buffer.from(await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1500; c.height = 1400; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 1500, 1400); g.fillStyle = '#222'; for (let i = 0; i < 12; i++) g.fillRect(60, 290 + i * 70, 1300, 3); return c.toDataURL('image/png').split(',')[1]; }), 'base64');
   await page.evaluate(() => { UI.view = 'knjiga'; rerender(); }); await page.waitForSelector('[data-act="bsOpen"]');
+  const fBefore = await page.evaluate(() => window.__ifr.filter(x => /ocr\.html/.test(x)).length);
   await page.click('[data-act="bsOpen"]'); await page.waitForSelector('#bsFile');
   ok('skeniranje knjige: okno ponuja izbiro fotografij, kamero in jasna navodila (ročna pisava = pogosto ⚠)', !!(await page.$('#bsCam')) && /ročno pisavo pogosto napačno/.test(await page.textContent('.bscan')));
+  await page.waitForSelector('[data-role=bswarm][data-st=ok]', { timeout: 15000 });
+  ok('skeniranje knjige: razpoznava se pripravi vnaprej ob odprtju okna (»pripravljena«), še preden je izbrana fotografija; knjižnica se naloži enkrat', bookSeen.length === 1 && /pripravljena/.test(await page.textContent('[data-role=bswarm]')), String(bookSeen.length));
   await page.setInputFiles('#bsFile', { name:'stran.png', mimeType:'image/png', buffer:bpng });
   await page.waitForSelector('.bs-row', { timeout: 40000 });
   const bs1 = await page.evaluate(() => { const q = l => document.querySelectorAll(`.bs-row[data-lv=${l}]`).length; return { rows:document.querySelectorAll('.bs-row').length, ok:q('ok'), chk:q('chk'), bad:q('bad'), crops:[...document.querySelectorAll('.bs-crop')].filter(i => /^data:image\/jpeg/.test(i.src)).length, date:document.getElementById('bs-date').value, dateLv:document.querySelector('[data-role=bsdate]').dataset.lv, sum:document.querySelector('[data-role=bssum]').textContent.replace(/\s+/g, ' '), on:[...document.querySelectorAll('[data-bs=on]')].map(c => c.checked ? 1 : 0).join(''), done:document.querySelector('[data-bs=done]').checked }; });
   ok('skeniranje knjige: branje prek izoliranega okvirja da 9 vrstic: 4 zeleno, 2 rumeno, 3 rdeče, vsaka s sliko izreza', bs1.rows === 9 && bs1.ok === 4 && bs1.chk === 2 && bs1.bad === 3 && bs1.crops === 9 && bookSeen.length === 1, JSON.stringify(bs1));
   ok('skeniranje knjige: datum je prebran s slike in označen »preveri«, povzetek šteje ✔ ⚠ ✖, rdeče vrstice niso izbrane, prevozi za nazaj so »opravljeni«', bs1.date === bsDay && bs1.dateLv === 'chk' && /✔ 4 prebrano/.test(bs1.sum) && /⚠ 2 preveri/.test(bs1.sum) && /✖ 3 popravi/.test(bs1.sum) && bs1.on === '111010101' && bs1.done === true, JSON.stringify({ date:bs1.date, dateLv:bs1.dateLv, on:bs1.on, done:bs1.done, sum:bs1.sum }));
+  const fAfter = await page.evaluate(() => window.__ifr.filter(x => /ocr\.html/.test(x)).length);
+  ok('skeniranje knjige: priprava vnaprej in branje uporabita isti okvir in isto knjižnico (brez ponovnega prenosa za vsako stran)', fAfter === fBefore + 1 && bookSeen.length === 1, JSON.stringify({ fBefore, fAfter, lib:bookSeen.length }));
+  const ph1 = await page.evaluate(() => ({ photos:UI.modal.photos.filter(Boolean).length, det:!!document.querySelector('details.bs-photos img[src^="data:image/jpeg"]') }));
+  ok('skeniranje knjige: v pregledu je na voljo cela fotografija strani (zloženo) za primerjavo', ph1.photos === 1 && ph1.det, JSON.stringify(ph1));
   await page.screenshot({ path: OUT + '/9-scan-review.png' });
   await page.click('[data-act="bsJump"]');
   ok('skeniranje knjige: »Skoči na naslednje nejasno« premakne fokus v označeno polje', await page.evaluate(() => { const a = document.activeElement, row = a && a.closest && a.closest('.bs-row'); return !!row && row.dataset.lv !== 'ok' && !!a.closest('.bs-f') && a.closest('.bs-f').dataset.lv !== 'ok'; }));
@@ -610,6 +670,70 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   const afterOk = await page.evaluate(d => { const [y, m] = d.split('-'); return { chips:document.querySelectorAll('.rchk').length, flag:(S.rides[d][2] || {}).chk, warn:dayWarnings(d).some(w => /prebrano s fotografije/.test(w.text)), book:BOOK.build(+y, +m - 1, BOOK.opts({})).html.includes('⚠ preveri') }; }, bsDay);
   ok('skeniranje knjige: »Preverjeno« odstrani oznako povsod (prevoz, opozorila, natisnjena knjiga)', afterOk.chips === 0 && afterOk.flag === '' && !afterOk.warn && !afterOk.book, JSON.stringify(afterOk));
   ok('skeniranje knjige: dnevnik sprememb ne vsebuje imen, naslovov ali ur pacientov', await page.evaluate(() => { const s = JSON.stringify(AUDIT); return /knjiga\.skenirano/.test(s) && /knjiga\.preverjeno/.test(s) && !/Novak Janez|Petek|Zupan|Dobova|Artiče/.test(s); }));
+
+  // ---------- skeniranje knjige: prekinitev, nadzor zastoja, napaka priprave, ročni vnos ob fotografiji ----------
+  const HANG = `self.Tesseract={createWorker:async function(lang,n,o){ if(o&&o.logger)o.logger({status:'loading language traineddata',progress:.4}); return{setParameters:async function(){},recognize:function(){return new Promise(function(){})},terminate:async function(){}}}};`;
+  const FAILW = `self.Tesseract={createWorker:async function(){ throw new Error('Prenos modela ni uspel'); }};`;
+  await ctx.route(/\/ocr\/vendor\/tess-hang\.js$/, route => route.fulfill({ status:200, contentType:'text/javascript', body:HANG }));
+  await ctx.route(/\/ocr\/vendor\/tess-fail\.js$/, route => route.fulfill({ status:200, contentType:'text/javascript', body:FAILW }));
+  const openBs = async lib => { await page.evaluate(l => { window.KP_CONFIG.ocr = { on:true, lib:l, lang:'slv' }; UI.modal = null; UI.view = 'knjiga'; rerender(); }, lib); await page.waitForSelector('[data-act="bsOpen"]'); await page.click('[data-act="bsOpen"]'); await page.waitForSelector('#bsFile'); };
+  await openBs('ocr/vendor/tess-fail.js');
+  await page.waitForSelector('[data-role=bswarm][data-st=err]', { timeout: 15000 });
+  ok('skeniranje knjige: če priprave ni mogoče izvesti, je napaka vidna že ob odprtju okna (z razlago), ne šele po dolgem čakanju', /Prenos modela ni uspel/.test(await page.textContent('[data-role=bswarm]')));
+  await page.setInputFiles('#bsFile', { name:'stran.png', mimeType:'image/png', buffer:bpng });
+  await page.waitForSelector('.bscan .banner.bad', { timeout: 20000 });
+  const fl = await page.evaluate(() => ({ err:document.querySelector('.bscan .banner.bad').textContent, man:!!document.querySelector('[data-act=bsManual]'), retry:!!document.querySelector('[data-act=bsRetry]') }));
+  ok('skeniranje knjige: ob napaki branja ostane fotografija in ponujena sta »Vnesi ročno ob fotografiji« in »Poskusi znova«', /Prenos modela ni uspel/.test(fl.err) && fl.man && fl.retry, JSON.stringify(fl));
+  await page.click('.bscan [data-act="closeModal"] >> nth=-1');
+  await openBs('ocr/vendor/tess-hang.js');
+  await page.waitForSelector('[data-role=bswarm][data-st=ok]', { timeout: 15000 });
+  await page.setInputFiles('#bsFile', { name:'stran.png', mimeType:'image/png', buffer:bpng });
+  await page.waitForSelector('[data-act="bsCancel"]', { timeout: 20000 }); await page.waitForTimeout(1700);
+  const busy1 = await page.evaluate(() => ({ lbl:document.querySelector('[data-role=bsbusy]').textContent, el:document.querySelector('[data-role=bsel]').textContent, bar:!!document.querySelector('progress[data-role=bsbar]') }));
+  ok('skeniranje knjige: med branjem so vidni korak (slovensko), pretekli čas, vrstica napredka in gumb »Prekini«', /berem|pripravljam|zaganjam|prenašam/.test(busy1.lbl) && /^\d+ s$/.test(busy1.el) && busy1.bar, JSON.stringify(busy1));
+  await page.click('[data-act="bsCancel"]'); await page.waitForSelector('.bscan .banner.bad', { timeout: 10000 });
+  const c1 = await page.evaluate(() => ({ err:document.querySelector('.bscan .banner.bad').textContent, man:!!document.querySelector('[data-act=bsManual]'), retry:!!document.querySelector('[data-act=bsRetry]'), busy:!!document.querySelector('[data-act=bsCancel]') }));
+  ok('skeniranje knjige: »Prekini« takoj ustavi branje; fotografija ostane, ponujen je ročni vnos', /prekinjeno/.test(c1.err) && c1.man && c1.retry && !c1.busy, JSON.stringify(c1));
+  await page.evaluate(() => { NSCAN.ocrLimits.silence = 1500; });
+  await page.click('[data-act="bsRetry"]'); await page.waitForSelector('.bscan .banner.bad:has-text("ustavila")', { timeout: 20000 });
+  await page.evaluate(() => { NSCAN.ocrLimits.silence = 75000; });
+  ok('skeniranje knjige: če se branje ustavi (brez napredka), se po omejenem času samo prekine z jasno napako namesto neskončnega čakanja', true);
+  await page.click('[data-act="bsManual"]'); await page.waitForSelector('.bs-row');
+  const manDay = await page.evaluate(d => { let x = addDays(d, -2); while (isStandby(x)) x = addDays(x, -1); return x; }, bsDay);
+  await page.click('[data-act="bsAddRow"]');
+  const mn = await page.evaluate(() => ({ rows:document.querySelectorAll('.bs-row').length, photo:!!document.querySelector('details.bs-photos[open] img[src^="data:image/jpeg"]'), pats:document.querySelectorAll('#bsPat option').length, flags:document.querySelectorAll('.bs-row:not([data-lv=ok])').length, apply:document.querySelector('[data-role=bsapply]').textContent, focus:!!(document.activeElement && document.activeElement.closest('.bs-row:last-child')) }));
+  ok('ročni vnos ob fotografiji: 12 praznih vrstic + dodana, cela fotografija odprta, seznam bolnikov za ime, brez oznak ⚠, vpis 0', mn.rows === 13 && mn.photo && mn.pats >= 3 && mn.flags === 0 && /Vpiši 0 prevozov/.test(mn.apply) && mn.focus, JSON.stringify(mn));
+  const k0 = await page.evaluate(() => UI.modal.rows[0].key);
+  await page.fill(`#bs-${k0}-name`, 'Novak Janez'); await page.press(`#bs-${k0}-name`, 'Tab');
+  await page.fill(`#bs-${k0}-from`, 'Dobova 25'); await page.press(`#bs-${k0}-from`, 'Tab');
+  await page.fill(`#bs-${k0}-to`, 'OI LJ'); await page.press(`#bs-${k0}-to`, 'Tab');
+  await page.fill(`#bs-${k0}-time`, '8.30'); await page.press(`#bs-${k0}-time`, 'Tab');
+  await page.fill('#bs-date', manDay); await page.press('#bs-date', 'Tab');
+  await page.screenshot({ path: OUT + '/9e-scan-manual.png' });
+  const ap2 = await page.textContent('[data-role=bsapply]');
+  ok('ročni vnos: gumb za vpis šteje samo izpolnjene vrstice (ni »⚠« pri ročno vpisanih), povzetek ne trdi, da je kaj »prebrano«', /Vpiši 1 prevoz/.test(ap2) && !/⚠/.test(ap2) && /Ročni vnos: 1 izpolnjena vrstica/.test(await page.textContent('[data-role=bssum]')) && !/prebran/.test(await page.textContent('[data-role=bssum]')), ap2);
+  await page.click('[data-act="bsApply"]'); await page.waitForTimeout(400);
+  const mr = await page.evaluate(d => { const r = (S.rides[d] || [])[0] || {}; return { name:r.name, from:r.from, to:r.to, time:r.time, pid:!!r.patientId, chk:r.chk, n:(S.rides[d] || []).filter(isFilled).length }; }, manDay);
+  ok('ročni vnos: prevoz je vpisan s polji, uro 08:30, bolnikom iz baze (po imenu) in brez oznake »preveri«', mr.name === 'Novak Janez' && mr.from === 'Dobova 25' && mr.to === 'OI LJ' && mr.time === '08:30' && mr.pid && !mr.chk && mr.n === 1, JSON.stringify(mr));
+
+  // ---------- uvoz zaposlenih (izmišljena imena) ----------
+  await page.click('[data-nav="nastavitve"]'); await page.click('[data-act="setTab"][data-k="zaposleni"]'); await page.waitForSelector('form[data-form="importStaff"]', { state:'attached' });
+  const st0 = await page.evaluate(() => S.staff.length);
+  await page.evaluate(() => { document.querySelector('details.stimp').open = true; });
+  await page.fill('[data-role=stlist]', 'AnaK\nBetaB\nGama G.\nAnaK\n1234');
+  const stp = await page.evaluate(() => ({ prev:document.querySelector('[data-role=stprev]').textContent, go:document.querySelector('[data-role=stgo]').textContent, dis:document.querySelector('[data-role=stgo]').disabled }));
+  ok('uvoz zaposlenih: sprotni predogled pove, koliko imen bo dodanih (zlepljena imena se ločijo), kaj je dvojnik in kaj ni ime', /Dodal bom 3: Ana K\., Beta B\., Gama G\./.test(stp.prev) && /preskočeno\): Ana K\./.test(stp.prev) && /1234/.test(stp.prev) && stp.go === 'Dodaj 3' && !stp.dis, JSON.stringify(stp));
+  await page.setInputFiles('#stfile', { name:'osebje.txt', mimeType:'text/plain', buffer:Buffer.from('Delta D\nEpsilon E\n') });
+  await page.waitForFunction(() => /Delta D/.test(document.querySelector('[data-role=stlist]').value) && document.querySelector('[data-role=stgo]').textContent === 'Dodaj 5');
+  await page.selectOption('form[data-form=importStaff] select[name=team]', 'NN'); await page.click('[data-role=stgo]');
+  await page.waitForTimeout(300);
+  const st1 = await page.evaluate(() => ({ n:S.staff.length, last:S.staff.slice(-5).map(s => s.name + '|' + s.team).join(','), audit:JSON.stringify(AUDIT), rows:document.querySelectorAll('table.edtable tbody tr').length }));
+  ok('uvoz zaposlenih: dodanih 5 (iz besedila in datoteke), z izbrano ekipo, vidni v tabeli', st1.n === st0 + 5 && st1.last === 'Ana K.|NN,Beta B.|NN,Gama G.|NN,Delta D.|NN,Epsilon E.|NN' && st1.rows >= 5, JSON.stringify({ n:st1.n, last:st1.last }));
+  ok('uvoz zaposlenih: dnevnik sprememb beleži samo število, ne imen', /osebje\.uvoz/.test(st1.audit) && !/Ana K|Beta B|Delta D|Epsilon/.test(st1.audit));
+  await page.evaluate(() => { document.querySelector('details.stimp').open = true; });
+  await page.fill('[data-role=stlist]', 'AnaK\nDelta D');
+  const st2 = await page.evaluate(() => ({ prev:document.querySelector('[data-role=stprev]').textContent, dis:document.querySelector('[data-role=stgo]').disabled }));
+  ok('uvoz zaposlenih: ponovni uvoz že vpisanih imen nič ne doda (gumb onemogočen)', /Ni novih imen/.test(st2.prev) && st2.dis, JSON.stringify(st2));
   await page.evaluate(o => { if (o) window.KP_CONFIG.ocr = o; else delete window.KP_CONFIG.ocr; }, ocrBefore);
 
   // objava razporeda: lokalni način nima Firebase, zato samo preveri, da gumb ne sproži napake

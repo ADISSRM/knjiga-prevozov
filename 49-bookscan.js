@@ -378,7 +378,8 @@ const BSCAN = (() => {
   const fromOcr = r => (r && r.words && r.words.length) ? r.words : tsvWords(r && r.tsv);
 
   /* ---------- Priprava fotografije (samo v brskalniku): zasuk, kontrast, izrezi ---------- */
-  const MAX_SIDE = 2800, MAX_PAGES = 6;
+  const MAX_SIDE = 2200, MAX_PAGES = 6;   /* 2200 px zadošča za tiskano mrežo in rokopis; večja slika razpoznavo samo upočasni */
+  const tick = () => new Promise(r => setTimeout(r, 0));   /* umik zaslonu: telefon med težko obdelavo ne sme zamrzniti prikaza */
   const cv2 = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; };
   /* naklon vrstic v stopinjah (+ = vrstice se spuščajo proti desni): največja ostrina projekcije temnih točk na navpično os */
   function skewAngle(cv){
@@ -437,8 +438,10 @@ const BSCAN = (() => {
     const out = []; for (const im of imgs.slice(0, MAX_PAGES)) out.push(await NSCAN.toCanvas(im, MAX_SIDE)); return out;
   }
   async function preparePage(cv){
-    const angle = skewAngle(cv), color = rotated(cv, angle);
-    return { color, angle, png:await NSCAN.toBlob(binarize(color)) };
+    await tick(); const angle = skewAngle(cv);
+    await tick(); const color = rotated(cv, angle);
+    await tick(); const bw = binarize(color);
+    await tick(); return { color, angle, png:await NSCAN.toBlob(bw) };
   }
   /* izrez vrstice iz fotografije (za primerjavo prebranega z originalom) */
   function cropRow(color, row, tbl, pitch){
@@ -447,16 +450,32 @@ const BSCAN = (() => {
     const k = Math.min(1, 1000 / w), c = cv2(w * k, h * k); c.getContext('2d').drawImage(color, x0, y0, w, h, 0, 0, c.width, c.height);
     try { return c.toDataURL('image/jpeg', 0.72); } catch (e) { return ''; }
   }
-  /* cel postopek za eno ali več slik/PDF: vrne vrstice vseh strani (slika se ne shrani nikamor) */
-  async function run(files, onProgress){
-    const cfg = NSCAN.ocrCfg(), pages = []; let n = 0;
-    for (const f of files){ for (const cv of await loadPages(f)){ if (n++ >= MAX_PAGES) break; pages.push(cv); } }
-    const res = { pages:[], rows:[], date:null, notes:[], words:0 };
+  /* pomanjšana fotografija strani (JPEG): ostane na voljo tudi, če razpoznava odpove, da lahko prevoze vneseš ročno ob sliki */
+  function photoUrl(cv){
+    const k = Math.min(1, 1400 / Math.max(cv.width, cv.height)), c = cv2(cv.width * k, cv.height * k); c.getContext('2d').drawImage(cv, 0, 0, c.width, c.height);
+    try { return c.toDataURL('image/jpeg', 0.7); } catch (e) { return ''; }
+  }
+  const hooks = { onPhoto:null };
+  const canceledErr = () => { const e = new Error('Razpoznava je bila prekinjena.'); e.canceled = true; return e; };
+  /* vnaprejšnji zagon razpoznave (prenos jedra in modela) med tem, ko uporabnik izbira fotografijo */
+  const warm = onProgress => NSCAN.ocrEnabled() ? NSCAN.ocrSession().warm(onProgress) : Promise.resolve();
+  const cancel = ctl => { if (ctl) ctl.cancelled = true; NSCAN.ocrAbort(); };
+  /* cel postopek za eno ali več slik/PDF: vrne vrstice vseh strani (slika se ne shrani nikamor). ctl = { cancelled } omogoča prekinitev. */
+  async function run(files, onProgress, ctl){
+    const cfg = NSCAN.ocrCfg(), pages = [], ctlr = ctl || {}; let n = 0;
+    const say = (stage, i, np, pct) => { if (onProgress) onProgress({ stage, page:i + 1, pages:np, pct:pct || 0, label:(np > 1 ? `Stran ${i + 1}/${np}: ` : '') + NSCAN.stageLabel(stage) }); };
+    const chk = () => { if (ctlr.cancelled) throw canceledErr(); };
+    if (onProgress) onProgress({ stage:'prep', page:1, pages:1, pct:0, label:'berem fotografijo' });
+    for (const f of files){ await tick(); for (const cv of await loadPages(f)){ if (n++ >= MAX_PAGES) break; pages.push(cv); } }
+    chk();
+    const res = { pages:[], rows:[], date:null, notes:[], words:0, photos:[] };
+    pages.forEach((cv, i) => { const u = photoUrl(cv); res.photos.push(u); if (hooks.onPhoto) hooks.onPhoto(i, u, pages.length); });
     for (let i = 0; i < pages.length; i++){
       const tag = pages.length > 1 ? `Stran ${i + 1}/${pages.length}: ` : '';
-      if (onProgress) onProgress({ stage:'prep', page:i + 1, pages:pages.length, pct:0, label:tag + 'priprava slike' });
-      const prep = await preparePage(pages[i]);
-      const r = await NSCAN.ocr(prep.png, p => { if (onProgress) onProgress({ stage:p.stage, page:i + 1, pages:pages.length, pct:p.pct || 0, label:tag + (p.stage || '') }); }, cfg, { words:true, psm:cfg.bookPsm || '4' });
+      chk(); say('prep', i, pages.length, 0);
+      const prep = await preparePage(pages[i]); chk();
+      let r; try { r = await NSCAN.ocr(prep.png, p => { say(p.stage, i, pages.length, p.pct); }, cfg, { words:true, psm:cfg.bookPsm || '4' }); } catch (e) { if (ctlr.cancelled) throw canceledErr(); throw e; }
+      chk(); say('prep', i, pages.length, 1); await tick();
       const words = fromOcr(r), ps = parse(words, prep.color.width, prep.color.height);
       const pitch = ps.rows.length > 1 ? med(ps.rows.slice(1).map((x, j) => (x.y0 + x.y1) / 2 - (ps.rows[j].y0 + ps.rows[j].y1) / 2)) : 60;
       ps.rows.forEach(row => { row.page = i + 1; if (!row.empty) row.crop = cropRow(prep.color, row, ps.tbl, Math.abs(pitch)); });
@@ -477,5 +496,5 @@ const BSCAN = (() => {
   const FIELD_LABEL = { name:'ime', from:'od', to:'do', time:'ura', note:'opomba' };
   const chkText = row => (row.todo || []).map(k => FIELD_LABEL[k]).join(', ');
 
-  return { parse, cleanWords, cellOf, ed, sim, simNS, simName, ocrNorm, parseTime, placeSuggest, patientSuggest, vocab, chkText, FIELD_LABEL, LV, headKey, tsvWords, fromOcr, skewAngle, rotated, binarize, loadPages, preparePage, cropRow, run };
+  return { parse, cleanWords, cellOf, ed, sim, simNS, simName, ocrNorm, parseTime, placeSuggest, patientSuggest, vocab, chkText, FIELD_LABEL, LV, headKey, tsvWords, fromOcr, skewAngle, rotated, binarize, loadPages, preparePage, cropRow, run, warm, cancel, hooks, photoUrl, MAX_SIDE };
 })();

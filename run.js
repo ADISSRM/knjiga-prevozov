@@ -1037,6 +1037,18 @@ test('skeniranje knjige: podobnost besed (zamenjave 0/o, 1/l, rn/m) in vrstni re
   assert.ok(sn('Janez Novak', 'Novak Janez') > 0.99);
 });
 
+test('uvoz zaposlenih: zlepljena imena, začetnice, velike črke, dvojniki, nesmiselne vrstice (izmišljena imena)', () => {
+  const t = boot(); const pl = (txt, ex) => t.js(`parseStaffList(${JSON.stringify(txt)}, ${JSON.stringify(ex || [])})`);
+  const r = pl('AnaK\nTest Beta B\nGama G.\n3. DELTA D\nEpsilonŠ\nČrt Ž\n  \nAnaK\nTest Beta B.\n12345\nZeta Zlatko');
+  assert.deepStrictEqual(r.add, ['Ana K.', 'Test Beta B.', 'Gama G.', 'Delta D.', 'Epsilon Š.', 'Črt Ž.', 'Zeta Zlatko'], 'oblika »Ime I.«');
+  assert.deepStrictEqual(r.dup, ['Ana K.', 'Test Beta B.'], 'dvojniki znotraj seznama');
+  assert.deepStrictEqual(r.bad, ['12345'], 'številke niso ime');
+  const e = pl('Gama G.; Eta E, Teta T\tIota I', ['gama g.', 'Eta E.']);
+  assert.deepStrictEqual(e.add, ['Teta T.', 'Iota I.'], 'ločila ; , tabulator'); assert.deepStrictEqual(e.dup, ['Gama G.', 'Eta E.'], 'obstoječi so preskočeni (brez razlike velikosti črk)');
+  assert.deepStrictEqual(pl('McDonald K').add, ['McDonald K.'], 'velika črka sredi besede ni zlepljeno ime');
+  assert.deepStrictEqual(pl('').add, []); assert.deepStrictEqual(pl('   \n\n').add, []);
+});
+
 /* ------------------------------------------------------------------ zagon */
 (async () => {
   let pass = 0, fail = 0;

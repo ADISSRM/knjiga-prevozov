@@ -777,7 +777,16 @@ function renderSettings(){
     body = `<div class="card card-pad stack"><div class="card-head" style="margin:0"><h3>Zaposleni</h3></div>
       <form class="row" data-form="addStaff" style="flex-wrap:nowrap"><input type="text" name="name" placeholder="Ime in priimek" aria-label="Ime zaposlenega" required autocomplete="off"><select name="team" style="width:auto" aria-label="Ekipa"><option value="redna">Redna ekipa</option><option value="NN">NN ekipa</option></select><button class="btn primary" type="submit">Dodaj</button></form>
       ${S.staff.length ? `<div class="tablewrap"><table class="edtable"><thead><tr><th>Ime in priimek</th><th>Privzeta ekipa</th><th>Račun za aplikacijo posadke</th><th></th></tr></thead><tbody>${S.staff.map((s, i) => `<tr><td>${field(`staff.${i}.name`, s.name, { label:'Ime' })}${s.demo ? ' <span class="chip warn">PRIMER</span>' : ''}</td><td><select data-path="staff.${i}.team" aria-label="Ekipa"><option value="redna" ${s.team==='redna'?'selected':''}>Redna</option><option value="NN" ${s.team==='NN'?'selected':''}>NN</option></select></td><td><select data-path="staff.${i}.userId" aria-label="Račun">${accountOptions(s.userId)}</select></td><td><button type="button" class="icon-btn" data-act="delStaff" data-i="${i}" aria-label="Izbriši">${IC.x}</button></td></tr>`).join('')}</tbody></table></div>
-      <p class="hint" style="margin:0">Zaposlenega poveži z računom (Nastavitve → Uporabniki), da bo po »Objavi razpored« videl svoje prevoze v aplikaciji in javljal korake.</p>` : '<div class="empty-state">Še ni zaposlenih. Dodani zaposleni se v Dispečerju izberejo z enim dotikom.</div>'}</div>`;
+      <p class="hint" style="margin:0">Zaposlenega poveži z računom (Nastavitve → Uporabniki), da bo po »Objavi razpored« videl svoje prevoze v aplikaciji in javljal korake.</p>` : '<div class="empty-state">Še ni zaposlenih. Dodani zaposleni se v Dispečerju izberejo z enim dotikom.</div>'}
+      <details class="stimp" ${S.staff.length ? '' : 'open'}><summary><b>Uvozi seznam zaposlenih</b></summary>
+        <form class="stack" data-form="importStaff" style="gap:8px;margin-top:8px">
+          <p class="hint" style="margin:0">Prilepi imena (eno na vrstico) ali izberi besedilno datoteko (.txt, .csv). Sprejme »Ana K.«, »Ana K« in zlepljeno »AnaK«. Že vpisani se preskočijo.</p>
+          <textarea name="list" rows="6" data-role="stlist" placeholder="Ana K.&#10;Beta B.&#10;Gama G." aria-label="Seznam zaposlenih" spellcheck="false" autocomplete="off"></textarea>
+          <div class="row" style="gap:8px;flex-wrap:wrap"><label class="btn" for="stfile" style="cursor:pointer">Izberi datoteko …</label><input id="stfile" type="file" accept=".txt,.csv,text/plain,text/csv" data-role="stfile" style="position:absolute;opacity:0;width:1px;height:1px">
+            <select name="team" style="width:auto" aria-label="Ekipa za vse uvožene"><option value="redna">Redna ekipa</option><option value="NN">NN ekipa</option></select>
+            <button class="btn primary" type="submit" data-role="stgo" disabled>Dodaj</button></div>
+          <div class="hint" data-role="stprev" role="status">Seznam je prazen.</div>
+        </form></details></div>`;
   } else if (T === 'pravila'){
     body = rulesTab();
   } else if (T === 'dializa'){
@@ -838,4 +847,23 @@ function renderAuth(mode, msg=''){
       <p class="legalnote">Podatke o pacientih obravnavaj skladno z internimi pravili zdravstvenega doma. Vsaka prijava in ogled pacienta se beležita.</p>`;
     const fbb = $('#fbCheck'); if (fbb) fbb.onclick = () => { fbb.disabled = true; fbCheck().finally(() => { fbb.disabled = false; }); };
   }
+}
+
+/* uvoz zaposlenih: sprotni predogled (koliko bo dodanih, koliko že obstaja) */
+function stPreview(){
+  const ta = document.querySelector('[data-role=stlist]'); if (!ta) return null;
+  const r = parseStaffList(ta.value, S.staff.map(s => s.name)), pv = document.querySelector('[data-role=stprev]'), go = document.querySelector('[data-role=stgo]');
+  if (go){ go.disabled = !r.add.length; go.textContent = r.add.length ? `Dodaj ${r.add.length}` : 'Dodaj'; }
+  if (pv){
+    pv.textContent = !ta.value.trim() ? 'Seznam je prazen.' : (r.add.length ? `Dodal bom ${r.add.length}: ${r.add.join(', ')}.` : 'Ni novih imen za dodajanje.') + (r.dup.length ? ` Že na seznamu (preskočeno): ${r.dup.join(', ')}.` : '') + (r.bad.length ? ` Ni videti kot ime (preskočeno): ${r.bad.join(', ')}.` : '');
+  }
+  return r;
+}
+if (typeof document !== 'undefined' && document.addEventListener){
+  document.addEventListener('input', e => { if (e.target && e.target.dataset && e.target.dataset.role === 'stlist') stPreview(); });
+  document.addEventListener('change', async e => {
+    const t = e.target; if (!t || !t.dataset || t.dataset.role !== 'stfile') return;
+    const f = t.files && t.files[0]; t.value = ''; if (!f) return;
+    try { const txt = await f.text(), ta = document.querySelector('[data-role=stlist]'); if (ta){ ta.value = (ta.value ? ta.value.replace(/\s+$/, '') + '\n' : '') + txt; stPreview(); } } catch (err) { toast('Datoteke ni mogoče prebrati.'); }
+  });
 }
