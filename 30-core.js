@@ -9,6 +9,28 @@ const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').repla
 const clone = o => JSON.parse(JSON.stringify(o));
 const pad = n => String(n).padStart(2, '0');
 
+/* ---------- Seznam zaposlenih iz besedila ----------
+   En zaposleni na vrstico (ali ločeno z vejico, podpičjem, tabulatorjem). Sprejme »Ana K.«, »Ana K«, »AnaK« (zlepljeno, kot je napisano na papirnem seznamu)
+   in »Ana Kos«: zlepljeno ime se loči (»AnaK« → »Ana K.«), začetnica priimka dobi piko, VELIKE ali male črke se popravijo. Dvojniki (z obstoječimi in znotraj seznama) se preskočijo. */
+function parseStaffList(text, existing){
+  const seen = new Set((existing || []).map(norm)), add = [], dup = [], bad = [];
+  const cap = w => (w.length > 1 && (w === w.toLocaleUpperCase('sl') || w === w.toLocaleLowerCase('sl'))) ? w.charAt(0).toLocaleUpperCase('sl') + w.slice(1).toLocaleLowerCase('sl') : w;
+  String(text || '').split(/[\r\n;,\t]+/).forEach(raw => {
+    let t = raw.replace(/^\s*(?:\d+\s*[.)]\s+|[-•*]\s+)/, '').replace(/\s+/g, ' ').trim();
+    if (!t) return;
+    t = t.replace(/(\p{Ll})(\p{Lu})(?=\.|\s|$)/u, '$1 $2');
+    if (!/^\p{L}[\p{L} .'’\-]*$/u.test(t) || t.length > 60){ bad.push(raw.trim()); return; }
+    const parts = t.split(' ').filter(Boolean).map((w, i, a) => {
+      const ini = i === a.length - 1 && i > 0 && /^\p{L}\.?$/u.test(w);
+      return ini ? w.charAt(0).toLocaleUpperCase('sl') + '.' : cap(w);
+    });
+    const name = parts.join(' '), k = norm(name);
+    if (seen.has(k)){ dup.push(name); return; }
+    seen.add(k); add.push(name);
+  });
+  return { add, dup, bad };
+}
+
 /* ---------- Datumi ---------- */
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const parseYmd = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };

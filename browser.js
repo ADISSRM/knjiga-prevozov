@@ -716,6 +716,52 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   const mr = await page.evaluate(d => { const r = (S.rides[d] || [])[0] || {}; return { name:r.name, from:r.from, to:r.to, time:r.time, pid:!!r.patientId, chk:r.chk, n:(S.rides[d] || []).filter(isFilled).length }; }, manDay);
   ok('ročni vnos: prevoz je vpisan s polji, uro 08:30, bolnikom iz baze (po imenu) in brez oznake »preveri«', mr.name === 'Novak Janez' && mr.from === 'Dobova 25' && mr.to === 'OI LJ' && mr.time === '08:30' && mr.pid && !mr.chk && mr.n === 1, JSON.stringify(mr));
 
+  // ---------- skeniranje knjige: obrazec s karticami (izmišljeni podatki): okvirji, izrezi, prazne kartice, predlogi namesto napačnih vrednosti ----------
+  const { genCards } = require(SRC + '/tests/bookscan-gen.js');
+  const CARDS = [
+    { nr:1, name:'Novak Janez', from:'Dobova 25', to:'OI LJ', phone:'031 123 456', mode:'SEDE', time:'10:45', conf:{ name:85, from:80, to:80 } },
+    { nr:2, name:'Horvat Marlja', from:'Križe 3', to:'SB Brežice', phone:'', mode:'LEŽE', time:'830' },
+    { nr:3, name:'Zxqkw Vrtmn Plsn', from:'Rghtq Zlmnk', to:'Ptzkx', phone:'xx 7', mode:'ey IV', time:'27', conf:{ name:20, from:15, to:18, phone:25, mode:20, time:20 } },
+    { nr:4, name:'Kovač Franc', from:'Cesta svobode 14', to:'SB Novo mesto', phone:'040 111 222', mode:'UTILA', time:'1200', conf:{ phone:50, time:40 } },
+    { nr:5, blank:true }, { nr:6, blank:true } ];
+  const CSTUB = `self.Tesseract={createWorker:async function(lang,n,o){ if(o&&o.logger)o.logger({status:'recognizing text',progress:.5});
+    return{setParameters:async function(){},recognize:async function(b){return{data:{text:'',words:${JSON.stringify(genCards(CARDS, {}))}}}},terminate:async function(){}}}};`;
+  await ctx.route(/\/ocr\/vendor\/tess-card\.js$/, route => route.fulfill({ status:200, contentType:'text/javascript', body:CSTUB }));
+  /* fotografija: besedilo (črnilo) le na karticah 1–4, kartici 5 in 6 sta prazni */
+  const cpng = Buffer.from(await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1400; c.height = 1300; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 1400, 1300); g.fillStyle = '#000'; g.font = 'bold 30px sans-serif';
+    for (let k = 0; k < 4; k++){ const y3 = 420 + k * 130; g.fillText('Abcdef Ghijkl', 160, y3 - 70); g.fillText('Mnopqr Stuvw', 225, y3 - 32); g.fillText('Xyzabc Defgh', 695, y3 - 32); g.fillText('0311 2345 678', 220, y3 + 12); g.fillText('Ijklmn', 815, y3 + 10); }
+    return c.toDataURL('image/png').split(',')[1]; }), 'base64');
+  const cDay = await page.evaluate(([d, m]) => { let x = addDays(d, -3); while (isStandby(x) || x === m) x = addDays(x, -1); S.patients.find(p => p.name === 'Horvat Marija').addr = 'Križe 3'; S.patients.find(p => p.name === 'Horvat Marija').phone = '041 555 666'; return x; }, [bsDay, manDay]);
+  await openBs('ocr/vendor/tess-card.js');
+  await page.waitForSelector('[data-role=bswarm][data-st=ok]', { timeout: 15000 });
+  await page.setInputFiles('#bsFile', { name:'kartice.png', mimeType:'image/png', buffer:cpng });
+  await page.waitForSelector('.bs-row', { timeout: 40000 });
+  const cd1 = await page.evaluate(() => { const rows = [...document.querySelectorAll('.bs-row')]; return { n:rows.length, nrs:rows.map(r => r.querySelector('[data-bs=nr]').value).join(','), crops:rows.filter(r => r.querySelector('img.bs-crop[src^="data:image/jpeg"]')).length, banner:/poravnan izrez/.test(document.querySelector('.bscan').textContent), blank:document.querySelector('details.bs-blank') ? document.querySelectorAll('details.bs-blank .bs-blankrow').length : 0, blankTxt:document.querySelector('details.bs-blank summary') ? document.querySelector('details.bs-blank summary').textContent : '', pages:UI.modal.pages, card:UI.modal.cardMode }; });
+  ok('kartice: najdeni so 4 prevozi s sliko izreza (številke 1–4), prazni kartici 5 in 6 sta v zloženem razdelku (ne izgubljeni), pasica pove, da je pisava prebrana le deloma', cd1.n === 4 && cd1.nrs === '1,2,3,4' && cd1.crops === 4 && cd1.banner && cd1.blank === 2 && /2 kartici|2 kartic/.test(cd1.blankTxt) && /5, 6/.test(cd1.blankTxt) && cd1.card, JSON.stringify(cd1));
+  await page.screenshot({ path: OUT + '/9f-scan-kartice.png' });
+  const ck = n => page.evaluate(n2 => UI.modal.rows.find(r => r.nr === n2).key, n);
+  const kc1 = await ck(1), kc3 = await ck(3), kc4 = await ck(4);
+  const cv = await page.evaluate(([a, b, c]) => { const f = (k, x) => (document.querySelector(`#bs-${k}-${x}`) || {}).value; const lv = (k, x) => (document.querySelector(`[data-bsrow="${k}"] [data-bsf=${x}]`) || {}).dataset.lv; return { n1:f(a, 'name'), fr1:f(a, 'from'), to1:f(a, 'to'), t1:f(a, 'time'), m1:f(a, 'mode'), p1:f(a, 'phone'), p1lv:lv(a, 'phone'), n3:f(b, 'name'), fr3:f(b, 'from'), p3lv:lv(b, 'phone'), nlv3:lv(b, 'name'), t4:f(c, 'time'), p4:f(c, 'phone'), sugT:[...document.querySelectorAll(`[data-bsrow="${c}"] .bs-sug`)].map(e => e.textContent) }; }, [kc1, kc3, kc4]);
+  ok('kartice: jasna polja se vpišejo (ime iz baze, od, do, ura 10:45, sede), telefon iz rokopisa je rumen (preveri)', cv.n1 === 'Novak Janez' && cv.fr1 === 'Dobova 25' && cv.to1 === 'OI LJ' && cv.t1 === '10:45' && cv.m1 === 'sede' && cv.p1 === '031 123 456' && cv.p1lv === 'chk', JSON.stringify(cv));
+  ok('kartice: neberljiv rokopis ostane prazen in rdeč (nič izmišljenega), slabo prebrana ura in telefon sta samo predloga', cv.n3 === '' && cv.fr3 === '' && cv.nlv3 === 'bad' && cv.t4 === '' && cv.p4 === '' && cv.sugT.some(t => /12:00/.test(t)) && cv.sugT.some(t => /040 111 222/.test(t)), JSON.stringify(cv));
+  // izbira pacienta iz baze dopolni naslov in telefon (rumeno: primerjaj z izrezom)
+  await page.fill(`#bs-${kc3}-name`, 'Horvat Marija'); await page.press(`#bs-${kc3}-name`, 'Tab');
+  const pf2 = await page.evaluate(k => ({ fr:document.querySelector(`#bs-${k}-from`).value, ph:document.querySelector(`#bs-${k}-phone`).value, frlv:document.querySelector(`[data-bsrow="${k}"] [data-bsf=from]`).dataset.lv, pid:UI.modal.rows.find(r => r.key === k).f.pid }), kc3);
+  ok('kartice: izbrano ime iz baze dopolni prazna naslov in telefon iz kartoteke, označena rumeno za primerjavo z izrezom', pf2.fr === 'Križe 3' && pf2.ph === '041 555 666' && pf2.frlv === 'chk' && !!pf2.pid, JSON.stringify(pf2));
+  // predlog ure z enim klikom
+  await page.click(`[data-bsrow="${kc4}"] [data-bsf=time] .bs-sug`);
+  ok('kartice: klik na predlog ure (12:00) vpiše uro', (await page.inputValue(`#bs-${kc4}-time`)) === '12:00');
+  // prazna kartica, ki je vendarle izpolnjena
+  await page.evaluate(() => { document.querySelector('details.bs-blank').open = true; });
+  await page.click('details.bs-blank [data-act="bsUnblank"] >> nth=0');
+  const ub = await page.evaluate(() => ({ rows:document.querySelectorAll('.bs-row').length, blank:document.querySelectorAll('details.bs-blank .bs-blankrow').length, nrs:[...document.querySelectorAll('.bs-row [data-bs=nr]')].map(e => e.value).join(',') }));
+  ok('kartice: »Ni prazna: vnesi ta prevoz« prenese kartico med vrstice za vnos (številka 5), v razdelku ostane ena', ub.rows === 5 && ub.blank === 1 && ub.nrs === '1,2,3,4,5', JSON.stringify(ub));
+  await page.fill('#bs-date', cDay); await page.press('#bs-date', 'Tab');
+  await page.check(`[data-bsrow="${kc3}"] [data-bs=on]`); await page.check(`[data-bsrow="${kc4}"] [data-bs=on]`);
+  await page.click('[data-act="bsApply"]'); await page.waitForSelector('#modal .modal', { state:'detached', timeout: 10000 }).catch(() => {}); await page.waitForTimeout(300);
+  const cap = await page.evaluate(d => { const a = (S.rides[d] || []).filter(isFilled); const by = nr => a.find(r => r.name === nr) || {}; return { n:a.length, r1:by('Novak Janez'), r3:by('Horvat Marija'), r4:by('Kovač Franc') }; }, cDay);
+  ok('kartice: vpis ustvari prevoze s telefonom (031 123 456 iz rokopisa, 041 555 666 iz baze), uro 12:00 in načinom; neprebrana polja ostanejo prazna', cap.n >= 3 && cap.r1.phone === '031 123 456' && cap.r1.time === '10:45' && cap.r3.phone === '041 555 666' && cap.r3.from === 'Križe 3' && cap.r4.time === '12:00' && cap.r4.mode === 'utila', JSON.stringify({ n:cap.n, r1:[cap.r1.phone, cap.r1.time], r3:[cap.r3.phone, cap.r3.from], r4:[cap.r4.time, cap.r4.mode] }));
+
   // ---------- uvoz zaposlenih (izmišljena imena) ----------
   await page.click('[data-nav="nastavitve"]'); await page.click('[data-act="setTab"][data-k="zaposleni"]'); await page.waitForSelector('form[data-form="importStaff"]', { state:'attached' });
   const st0 = await page.evaluate(() => S.staff.length);

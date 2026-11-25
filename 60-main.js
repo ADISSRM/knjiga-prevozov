@@ -156,6 +156,7 @@ document.addEventListener('click', async e => {
     case 'bsAddRow': bsAddRow(); break;
     case 'bsZoom': bsZoom(); break;
     case 'bsConfirm': bsConfirm(el.dataset.key); break;
+    case 'bsUnblank': bsUnblank(el.dataset.key); break;
     case 'bsSug': bsSug(el); break;
     case 'chkOk': { const art = el.closest('[data-ride]'); const hit = art && rideById(art.dataset.date, art.dataset.ride); if (hit){ hit.r.chk = ''; save(); audit('knjiga.preverjeno', { dan:art.dataset.date, nr:hit.nr }); rerender(); toast(`Prevoz ${hit.nr} potrjen`); } break; }
     case 'bkPrint': bkPrint(); break;

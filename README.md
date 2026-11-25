@@ -9,6 +9,13 @@ Interna PWA za iPhone in Android: dispečer (knjiga, pacienti in nalogi, razpore
 
 **Pred prvim pravim pacientom** potrebuješ odobritev vodstva in pooblaščenca za varstvo podatkov (glej NAVODILA.md, razdelek 0.2). Do takrat uporabljaj samo izmišljene podatke.
 
+## Spremembe v2_11_1 (november 2026): skeniranje strani knjige po pravih fotografijah (kartice prevozov)
+- **Vzrok težave:** razpoznava je pričakovala tabelo (naš tisk), prava stran papirne knjige pa je sestavljena iz **kartic**: na prevoz ena kartica s tremi vrsticami (ime, »OD / DO«, »Tel / Način prevoza«), ura pa je ročno zapisana ob levem robu. Poleg tega je **ročna pisava za brezplačno razpoznavo v napravi večinoma neberljiva**.
+- **Zdaj:** aplikacija na fotografiji najde kartice po natisnjenih oznakah (»Način prevoza«, »OD«, »DO«, »Tel«), upošteva **nagib in ukrivljenost lista** (vsaka kartica ima svoj naklon), vsako kartico **poravna in izreže** in jo pokaže ob poljih za vnos. **Prazne kartice se prepoznajo** in so v zloženem razdelku (nikoli tiho izpuščene; **»Ni prazna: vnesi ta prevoz«** jih vrne).
+- **Nič izmišljenega:** v polje se vpiše samo **preverjena** vrednost (ime ali kraj iz baze, veljavna ura, telefon, besedi »sede«, »leže«, »utila«). Slabo prebrana ura ali telefon sta samo **predlog** (klik ga vpiše); neberljiva pisava ostane **prazna in rdeča**. Izbira bolnika iz baze izpolni naslov in telefon (rumeno, za primerjavo z izrezom). Dodano je polje **Telefon** in **Način prevoza**.
+- Za razpoznavo kartic je privzeto razpršen način členitve (`bookPsm: '11'`); za tabelo (naš tisk) se samodejno uporabi še prejšnji (`'4'`).
+- Preizkusi: 76 + 170 v brskalniku + 7 + 25. **Preizkušeno** na štirih pravih fotografijah (samo v mojem okolju, ne v paketu): iskanje kartic, poravnava, številčenje, izrezi in prepoznava praznih kartic (z angleškim modelom; slovenskega tu ni). **Ni preizkušeno:** branje rokopisa (ni zanesljivo), slovenski model, tiskalnik, iPhone Safari / Android.
+
 ## Spremembe v2_11 (november 2026): predogled knjige (tudi na telefonu), zanesljiv tisk, hitrejše skeniranje, uvoz zaposlenih
 - **Predogled knjige pred tiskom** (Knjiga → mesec → Natisni knjigo): vidiš **eno stran naenkrat, točno takšno, kot se bo natisnila** (A4, rob za vezavo sivo): puščici ◀ ▶, številka strani, **»Skoči na dan«**, povečava. Deluje na **računalniku in telefonu** (na telefonu so možnosti zložene, predogled pa je čez širino zaslona).
 - **Tisk, ki ne temelji več na glavnem oknu:** »Natisni knjigo« natisne samostojen dokument v skritem okvirju; **»Odpri za tisk / PDF«** odpre celo knjigo v novem zavihku (širina A4, pinch-zoom), od koder v meniju brskalnika (⋮ ali »Deli«) izbereš **Natisni** ali **Shrani kot PDF**. Na telefonu je to glavna pot.

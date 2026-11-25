@@ -1049,6 +1049,69 @@ test('uvoz zaposlenih: zlepljena imena, začetnice, velike črke, dvojniki, nesm
   assert.deepStrictEqual(pl('').add, []); assert.deepStrictEqual(pl('   \n\n').add, []);
 });
 
+/* ---- skeniranje knjige: postavitev »kartice« (obrazec OBR REŠ 08), nagnjen in ukrivljen list, izmišljeni podatki ---- */
+const { genCards } = require('./bookscan-gen.js');
+const CARDS = [
+  { nr:1, name:'Novak Janez', from:'Dobova 25', to:'OI LJ', phone:'031 123 456', mode:'SEDE', time:'10:45', conf:{ name:85, from:80, to:80 } },
+  { nr:2, name:'Horvat Marlja', from:'Križe 3', to:'SB Brežice', phone:'', mode:'LEŽE', time:'830' },
+  { nr:3, name:'Zxqkw Vrtmn Plsn', from:'Rghtq Zlmnk', to:'Ptzkx', phone:'xx 7', mode:'ey IV', time:'27', conf:{ name:20, from:15, to:18, phone:25, mode:20, time:20 } },
+  { nr:4, name:'Kovač Franc', from:'Cesta svobode 14', to:'SB Novo mesto', phone:'040 111 222', mode:'UTILA', time:'1200', conf:{ phone:50, time:40 } },
+  { nr:5, blank:true },
+  { nr:6, blank:true }
+];
+test('skeniranje knjige (kartice): okvirji po oznaki »Način prevoza«, nagnjen in ukrivljen list, polja in številke', () => {
+  const t = bsBoot();
+  for (const o of [{ tilt:0 }, { tilt:0.04, fan:0.05 }, { tilt:-0.06, fan:0.12 }, { tilt:0.09, fan:-0.04, datum:'05.11.2026' }]){
+    const r = t.parse(genCards(CARDS, o)), by = n => r.rows.find(x => x.nr === n);
+    assert.strictEqual(r.layout, 'card', JSON.stringify(o)); assert.strictEqual(r.cards, 6, 'najdenih kartic ' + r.cards + ' ' + JSON.stringify(o));
+    assert.deepStrictEqual(r.rows.map(x => x.nr), [1, 2, 3, 4, 5, 6], 'številke po vrsti (brez DATUM začnejo pri 11): ' + JSON.stringify(r.dbg));
+    assert.ok(r.rows.every(x => x.geo && x.layout === 'card'), 'vsaka kartica ima geometrijo za izrez');
+    assert.strictEqual(by(1).f.name, 'Novak Janez', JSON.stringify(o)); assert.ok(by(1).f.pid, 'ime iz baze → pacient'); assert.strictEqual(by(1).f.from, 'Dobova 25'); assert.strictEqual(by(1).f.to, 'OI LJ');
+    assert.strictEqual(by(1).f.time, '10:45'); assert.strictEqual(by(1).f.mode, 'sede'); assert.strictEqual(by(1).f.phone, '031 123 456'); assert.strictEqual(by(1).fl.phone.lvl, 'chk', 'telefon iz rokopisa vedno preveri');
+    assert.strictEqual(by(2).f.mode, 'leze'); assert.strictEqual(by(2).f.time, '08:30'); assert.strictEqual(by(2).f.name, 'Horvat Marija', 'napaka OCR se popravi po bazi');
+    assert.strictEqual(by(4).f.mode, 'utila'); assert.strictEqual(by(4).f.name, 'Kovač Franc');
+    /* vsako polje v svoji kartici: nič ne ušlo v sosednjo */
+    r.rows.filter(x => x.nr <= 4).forEach(x => { assert.ok(!/Dobova|Križe|Cesta/.test(JSON.stringify(by(3).f)), 'kartica 3 nima tujih polj'); });
+    assert.strictEqual(by(5).empty, true); assert.strictEqual(by(6).empty, true);
+  }
+});
+test('skeniranje knjige (kartice): neberljiv rokopis ostane prazen in rdeč, slabo prebrani telefon in ura so le predlog', () => {
+  const t = bsBoot(), r = t.parse(genCards(CARDS, { tilt:0.03, datum:'05.11.2026' })), by = n => r.rows.find(x => x.nr === n);
+  const c3 = by(3);
+  assert.strictEqual(c3.f.name, '', 'nesmiselno besedilo se ne vpiše'); assert.strictEqual(c3.fl.name.lvl, 'bad'); assert.ok(/ne razberem/.test(c3.fl.name.why.join(' ')));
+  assert.strictEqual(c3.f.from, ''); assert.strictEqual(c3.f.to, ''); assert.strictEqual(c3.f.phone, ''); assert.strictEqual(c3.fl.phone.lvl, 'bad');
+  assert.strictEqual(c3.fl.mode.lvl, 'chk', 'način prevoza ni prebran: privzeto sede, preveri'); assert.strictEqual(c3.lvl, 'bad'); assert.ok(!c3.empty);
+  const c4 = by(4);
+  assert.strictEqual(c4.f.phone, '', 'telefon s slabo razpoznavo se ne vpiše sam'); assert.ok(c4.fl.phone.sug.some(s => s.label === '040 111 222'), 'predlog telefona: ' + JSON.stringify(c4.fl.phone));
+  assert.strictEqual(c4.f.time, '', 'ura s slabo razpoznavo se ne vpiše sam'); assert.ok(c4.fl.time.sug.some(s => s.label === '12:00'), 'predlog ure: ' + JSON.stringify(c4.fl.time));
+  assert.strictEqual(c4.fl.time.lvl, 'bad');
+  assert.strictEqual(r.rows.find(x => x.nr === 1).fl.time.lvl, 'ok', 'jasna ura se vpiše');
+  assert.deepStrictEqual(r.stats.empty, 2);
+});
+test('skeniranje knjige (kartice): številke polj (po DATUM, po glasovanju), naslov in glava tabele nista oznaka, manjkajoča oznaka se izpelje', () => {
+  const t = bsBoot();
+  /* prva stran (DATUM) brez prebranih številk: od 1; druga stran brez DATUM: od 11 */
+  const noNr = CARDS.map(c => Object.assign({}, c, { noNr:true }));
+  const a = t.parse(genCards(noNr, { datum:'05.11.2026' })), b = t.parse(genCards(noNr, {}));
+  assert.deepStrictEqual(a.rows.map(x => x.nr), [1, 2, 3, 4, 5, 6]); assert.ok(a.notes.some(n => /številk polj/i.test(n)));
+  assert.deepStrictEqual(b.rows.map(x => x.nr), [11, 12, 13, 14, 15, 16]);
+  /* prebrane številke odločijo (npr. nadaljevalna stran 15–20) */
+  const c = t.parse(genCards(CARDS.map((x, i) => Object.assign({}, x, { nr:15 + i })), {}));
+  assert.deepStrictEqual(c.rows.map(x => x.nr), [15, 16, 17, 18, 19, 20]); assert.ok(!c.notes.some(n => /številk polj/i.test(n)));
+  /* manjkajoča oznaka »Način prevoza« v sredini: kartica se izpelje, polja ostanejo na svojem mestu */
+  const m = CARDS.map(x => Object.assign({}, x)); m[1].noLabel = true; m[3].noLabel = true;
+  const r = t.parse(genCards(m, { tilt:0.03 })), by = n => r.rows.find(x => x.nr === n);
+  assert.strictEqual(r.cards, 6); assert.strictEqual(by(2).f.name, 'Horvat Marija'); assert.strictEqual(by(4).f.name, 'Kovač Franc'); assert.strictEqual(by(4).f.to, 'SB Novo mesto');
+  /* naslov »PREVOZOV« in glava »PREVOZI« nista oznaki prevoza */
+  const extra = genCards(CARDS, {}).concat([{ text:'PREVOZI', confidence:90, bbox:{ x0:700, y0:1500, x1:800, y1:1522 } }, { text:'Prevozi', confidence:90, bbox:{ x0:700, y0:1700, x1:800, y1:1722 } }]);
+  assert.strictEqual(t.parse(extra).cards, 6);
+});
+test('skeniranje knjige (kartice): tabela (naš tisk) se še vedno bere kot tabela, kartice le z oznakami »Način prevoza«', () => {
+  const t = bsBoot(), r = t.parse(bgen(BS_ROWS, { date:'05.11.2026' }));
+  assert.strictEqual(r.layout, 'table'); assert.strictEqual(r.header, true); assert.strictEqual(r.rows.filter(x => !x.empty).length, 9);
+  assert.ok(r.rows.every(x => x.f.phone === ''), 'tabela nima telefona');
+});
+
 /* ------------------------------------------------------------------ zagon */
 (async () => {
   let pass = 0, fail = 0;

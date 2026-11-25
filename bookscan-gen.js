@@ -16,3 +16,30 @@ function gen(rows, o = {}){
   return words;
 }
 module.exports = { gen, COLS };
+
+/* ---- Postavitev »kartice« (obrazec OBR REŠ 08): vsak prevoz = 3 vrstice; list je lahko nagnjen in ukrivljen. Samo izmišljeni podatki. ----
+   card: { nr, name, from, to, phone, mode, time, conf:{ name, ... }, noNr, noLabel, blank }
+   o: { tilt (naklon vrstic, dy/dx), fan (sprememba naklona od vrha do dna), pitch, y3 (vrstica »Način prevoza« 1. kartice), title, datum } */
+function genCards(cards, o = {}){
+  const words = [], P = o.pitch || 130, y3 = o.y3 || 420, X = { num:60, od:150, col:640, cas:1010 }, CW = 13, H = 22;
+  const xa = X.col + 80, n = cards.length;
+  const w2 = (t, x, y, c) => ({ text:t, confidence:c, bbox:{ x0:x, y0:y - H / 2, x1:x + Math.max(10, t.length * CW), y1:y + H / 2 } });
+  const put = (text, x, y0, v, k, c, slope) => { let xx = x; String(text).split(' ').filter(Boolean).forEach(t => { const y = y0 + v * P + slope * (xx - xa); words.push(w2(t, xx, y, c)); xx += t.length * CW + 12; }); };
+  if (o.title !== false){ [['KNJIGA', 400], ['REŠEVALNIH', 500], ['PREVOZOV', 650]].forEach(([t, x]) => words.push(w2(t, x, 90, 92))); }
+  if (o.datum){ put('DATUM:', 100, 200, 0, 0, 90, 0); put(o.datum, 230, 200, 0, 0, 55, 0); }
+  cards.forEach((c, k) => {
+    const y0 = y3 + k * P + (o.skipGap && k >= o.skipGap ? 0 : 0), s = (o.tilt || 0) + (o.fan || 0) * (k - (n - 1) / 2) / Math.max(1, n - 1), cf = Object.assign({ name:60, from:60, to:60, phone:90, mode:80, time:80 }, c.conf || {});
+    put('Čas:', X.cas, y0, -0.62, k, 90, s); put('OD:', X.od, y0, -0.31, k, 90, s); put('DO:', X.col, y0, -0.31, k, 90, s); put('Tel:', X.od, y0, 0, k, 90, s);
+    if (!c.noLabel){ put('Način', X.col, y0, 0, k, 90, s); put('prevoza:', X.col + 75, y0, 0, k, 90, s); }
+    if (c.nr != null && !c.noNr) put(c.nr + '.', X.num, y0, -0.62, k, 80, s);
+    if (c.blank) return;
+    if (c.name) put(c.name, X.od + 10, y0, -0.62, k, cf.name, s);
+    if (c.from) put(c.from, X.od + 75, y0, -0.3, k, cf.from, s);
+    if (c.to) put(c.to, X.col + 55, y0, -0.3, k, cf.to, s);
+    if (c.phone) put(c.phone, X.od + 70, y0, 0.02, k, cf.phone, s);
+    if (c.mode) put(c.mode, X.col + 175, y0, 0, k, cf.mode, s);
+    if (c.time) put(c.time, X.cas + 75, y0, -0.66, k, cf.time, s);
+  });
+  return words;
+}
+module.exports.genCards = genCards;

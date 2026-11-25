@@ -298,8 +298,9 @@ details.warnbox summary{cursor:pointer;font-weight:600}
 .bs-cropwrap{overflow-x:auto;border:1px solid var(--line-2);border-radius:8px;background:#fff}
 .bs-crop{display:block;width:max(100%,680px);height:auto}
 .bs-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:8px 10px}
-.bs-c2{grid-column:span 2} .bs-c4{grid-column:span 4} .bs-c6{grid-column:span 6}
-@media (max-width:760px){.bs-c4,.bs-c6{grid-column:1 / -1} .bs-c2{grid-column:span 6}}
+.bs-c2{grid-column:span 2} .bs-c3{grid-column:span 3} .bs-c4{grid-column:span 4} .bs-c6{grid-column:span 6}
+@media (max-width:760px){.bs-c4,.bs-c6{grid-column:1 / -1} .bs-c2,.bs-c3{grid-column:span 6}}
+.bs-blank{border:1px dashed var(--line-2);border-radius:8px;padding:8px 10px} .bs-blank>summary{cursor:pointer;font-weight:600} .bs-blankrow{display:flex;flex-direction:column;gap:6px;margin-top:10px} .bs-blankrow .bs-crop{width:max(100%,680px)}
 .bs-f .bs-reason{font-size:12px;line-height:1.3;min-height:0;color:var(--ink-2)}
 .bs-f .bs-reason:empty{display:none}
 .bs-f[data-lv=chk] input{border-color:var(--warn);background:var(--warn-soft);box-shadow:0 0 0 2px var(--warn-soft)}
@@ -4445,7 +4446,7 @@ const BSCAN = (() => {
     if (h > 23 || m > 59) return { v:null, dia:'' };
     return { v:pad(h) + ':' + pad(m), dia:'' };
   }
-  const MODE_WORDS = [['leze', 'leze'], ['lezece', 'leze'], ['utila', 'utila'], ['utilo', 'utila'], ['vzorci', 'vzorci'], ['vzorec', 'vzorci'], ['vzorce', 'vzorci']];
+  const MODE_WORDS = [['sede', 'sede'], ['sedece', 'sede'], ['leze', 'leze'], ['lezece', 'leze'], ['utila', 'utila'], ['utilo', 'utila'], ['vzorci', 'vzorci'], ['vzorec', 'vzorci'], ['vzorce', 'vzorci']];
   function modeIn(text){
     let mode = '', rest = [];
     T_(text).split(/\s+/).filter(Boolean).forEach(tk => {
@@ -4476,9 +4477,18 @@ const BSCAN = (() => {
     const seen = new Set();
     return out.sort((a, b) => b.score - a.score).filter(o => !seen.has(o.label) && seen.add(o.label)).slice(0, max);
   }
+  /* Rokopis OCR pogosto prebere samo priimek ali samo del imena: poleg primerjave celega imena velja tudi ujemanje posamezne besede (najmanj 4 črke, podobnost ≥ 0,8);
+     tak predlog je vedno samo predlog (nikoli samodejno potrjen). */
   function patientSuggest(name, max = 3){
-    const out = [];
-    (S.patients || []).forEach(p => { const sc = simName(name, p.name); if (sc >= 0.68) out.push({ p, score:sc }); });
+    const out = [], tk = ocrNorm(name).split(' ').filter(t => t.length >= 4);
+    (S.patients || []).forEach(p => {
+      let sc = simName(name, p.name);
+      if (sc < 0.68 && tk.length){
+        let best = 0; ocrNorm(p.name).split(' ').filter(q => q.length >= 4).forEach(q => tk.forEach(t => { const v = sim(t, q); if (v > best) best = v; }));
+        if (best >= 0.8) sc = Math.max(sc, 0.68 + (best - 0.8) * 0.5);
+      }
+      if (sc >= 0.68) out.push({ p, score:sc });
+    });
     return out.sort((a, b) => b.score - a.score).slice(0, max);
   }
 
@@ -4495,8 +4505,8 @@ const BSCAN = (() => {
     if (top && top.score >= 0.88 && (!second || top.score - second.score >= 0.06)){ f.v = top.p.name; f.pid = top.p.id; f.why.push(`v bazi pacientov (${Math.round(top.score * 100)} %)`); if (cell.conf < 40) { f.lvl = 'chk'; f.why.push('slaba razpoznava, preveri ime'); } return f; }
     if (sg.length){ f.lvl = 'chk'; f.sug = sg.map(x => ({ label:x.p.name, pid:x.p.id, score:x.score })); f.why.push('podobno imenu v bazi: izberi ali popravi'); return f; }
     const toks = f.v.split(/\s+/).filter(t => /\p{L}{2,}/u.test(t));
-    if (cell.conf >= 65 && toks.length >= 2){ f.lvl = 'chk'; f.why.push('pacienta ni v bazi (nov pacient?): preveri črkovanje'); }
-    else { f.lvl = 'bad'; f.why.push(cell.conf < 65 ? `slabo berljivo (${cell.conf} %)` : 'ime ni popolno'); }
+    if (cell.conf >= 65 && toks.length >= 2 && !junkText(text)){ f.lvl = 'chk'; f.why.push('pacienta ni v bazi (nov pacient?): preveri črkovanje'); }
+    else { f.lvl = 'bad'; f.why.push(cell.conf < 65 ? `slabo berljivo (${cell.conf} %)` : 'ime ni popolno'); if (junkText(text) || cell.conf < 45){ f.v = ''; f.why = ['rokopisa ne razberem: vpiši s slike']; } }
     return f;
   }
   function judgePlace(cell, side, row){
@@ -4519,8 +4529,8 @@ const BSCAN = (() => {
       f.v = ps[0].label; f.why.push('prepoznano kot ' + ps[0].label); f.sug = []; return f;
     }
     if (f.sug.length){ f.lvl = 'chk'; f.why.push('ni znano; morda je mišljeno ponujeno'); }
-    else if (cell.conf >= 70){ f.lvl = 'chk'; f.why.push('kraja ali ustanove ne prepoznam (zunaj Občine Brežice?)'); }
-    else { f.lvl = 'bad'; f.why.push(`neberljivo (${cell.conf} %)`); }
+    else if (cell.conf >= 70 && !junkText(fx)){ f.lvl = 'chk'; f.why.push('kraja ali ustanove ne prepoznam (zunaj Občine Brežice?)'); }
+    else { f.lvl = 'bad'; f.why.push(`neberljivo (${cell.conf} %)`); if (junkText(fx) || cell.conf < 45){ f.v = ''; f.why = ['rokopisa ne razberem: vpiši s slike']; } }
     return f;
   }
   function judgeTime(cell, row){
@@ -4528,12 +4538,217 @@ const BSCAN = (() => {
     const t = parseTime(text);
     if (t.dia){ f.dia = t.dia; f.why.push('dializa ' + (t.dia === 'pop' ? 'popoldne' : 'dopoldne')); return f; }
     if (!text){ f.lvl = row.dia || row.mode === 'vzorci' ? 'ok' : 'chk'; if (f.lvl === 'chk') f.why.push('ure ni'); return f; }
-    if (t.v == null){ f.v = text; f.lvl = 'bad'; f.why.push('ure ne razberem'); return f; }
+    if (t.v == null){ f.v = row.layout === 'card' ? '' : text; f.lvl = 'bad'; f.why.push('ure ne razberem: vpiši s slike'); return f; }
+    /* rokopis: slabo prebrane ure ne vpišemo, ponudimo jih le kot predlog (napačna ura je napaka v prevozu) */
+    if (row.layout === 'card' && cell.conf < 60){ f.lvl = 'bad'; f.sug = [{ label:t.v, score:cell.conf / 100 }]; f.why.push(`ure ne preberem zanesljivo (${cell.conf} %): morda ${t.v}`); return f; }
     f.v = t.v; const h = +t.v.slice(0, 2), m = +t.v.slice(3);
     if (h < 5 || h > 21){ f.lvl = 'chk'; f.why.push('nenavadna ura'); }
     else if (cell.conf < 55){ f.lvl = 'chk'; f.why.push(`slaba razpoznava (${cell.conf} %)`); }
     else if (m % 5 !== 0){ f.lvl = 'chk'; f.why.push('nenavadne minute'); }
     return f;
+  }
+
+  /* ---------- Postavitev »kartice« (obrazec OBR REŠ 08) ----------
+     Vsak prevoz je okvir s tremi vrsticami:  1: št. · IME PRIIMEK … Čas:   2: OD: … DO: …   3: Tel: … Način prevoza: …
+     Tiskane oznake OCR bere bistveno bolje kot rokopis. Po oznaki »Način prevoza« (ena na prevoz) poiščemo okvirje (tudi na ukrivljeni in nagnjeni strani),
+     vsakemu izračunamo lokalni naklon, razporedimo besede v polja in pripravimo ravno izrezan posnetek prevoza. */
+  const labelOf = w => {
+    const n = ocrNorm(w.t).replace(/ /g, ''); if (!n || n.length > 9) return null;
+    if (n.length >= 5 && sim(n, 'prevoza') >= 0.7 && !/^prevoz(i|ov|ih|e)$/.test(n)) return 'prevoza';
+    if (n.length >= 4 && sim(n, 'nacin') >= 0.78) return 'nacin';
+    if (n.length <= 3){
+      if (sim(n, 'tel') >= 0.66) return 'tel';
+      if (sim(n, 'cas') >= 0.66) return 'cas';
+      if (n.length === 2 && sim(n, 'od') >= 0.8) return 'od';
+      if (n.length === 2 && sim(n, 'do') >= 0.8) return 'do';
+    }
+    return null;
+  };
+  const CARD_V = { top:-0.86, r2:-0.46, r3:-0.155, bot:0.14 };   // meje vrstic v enotah razmika med prevozi (0 = vrstica »Način prevoza«)
+  function findCardAnchors(ws, box){
+    const bw = box.x1 - box.x0, lab = [];
+    ws.forEach(w => { if (cx(w) < box.x0 + bw * 0.3) return; const k = labelOf(w); if (k === 'prevoza' || k === 'nacin') lab.push({ w, k }); });
+    if (lab.length < 3) return null;
+    lab.sort((a, b) => cy(a.w) - cy(b.w));
+    const lh = med(lab.map(l => l.w.y1 - l.w.y0)) || 20;
+    const inst = [];
+    lab.forEach(l => { const g = inst[inst.length - 1]; if (g && Math.abs(cy(l.w) - g.y) <= lh * 1.5){ g.items.push(l); g.y = g.items.reduce((s, i) => s + cy(i.w), 0) / g.items.length; } else inst.push({ y:cy(l.w), items:[l] }); });
+    inst.forEach(g => { g.x0 = Math.min(...g.items.map(i => i.w.x0)); g.x1 = Math.max(...g.items.map(i => i.w.x1)); g.hasN = g.items.some(i => i.k === 'nacin'); const p = g.items.find(i => i.k === 'prevoza'); g.pre = p ? p.w.x0 : null; });
+    if (inst.length < 3) return null;
+    const gs = inst.slice(1).map((g, i) => g.y - inst[i].y).sort((a, b) => a - b), g0 = gs[Math.floor((gs.length - 1) * 0.25)];
+    const P = med(gs.filter(g => g <= g0 * 1.35));
+    if (!(P > lh * 2.5)) return null;
+    /* osamelci na robu (npr. naslov »KNJIGA REŠEVALNIH PREVOZOV«) */
+    const odd = g => g > P * 2.3 || (g > P * 1.35 && g < P * 1.75);   // razmik, ki ni niti en niti dva razmika med okvirji
+    while (inst.length > 3 && odd(inst[1].y - inst[0].y)) inst.shift();
+    while (inst.length > 3 && odd(inst[inst.length - 1].y - inst[inst.length - 2].y)) inst.pop();
+    /* manjkajoče oznake: izpelji iz razmika */
+    const cards = [inst[0]];
+    for (let i = 1; i < inst.length; i++){
+      const a = inst[i - 1], b = inst[i], k = Math.round((b.y - a.y) / P);
+      if (k < 1) continue;
+      for (let j = 1; j < k && j <= 3; j++) cards.push({ y:a.y + (b.y - a.y) * j / k, x0:a.x0 + (b.x0 - a.x0) * j / k, x1:a.x1 + (b.x1 - a.x1) * j / k, derived:true, items:[], hasN:a.hasN, pre:a.pre });
+      cards.push(b);
+    }
+    if (cards.length < 3) return null;
+    return { cards, lh, P };
+  }
+  /* telefonska številka: samo številke, običajno 9 */
+  function judgePhone(cell){
+    const f = { v:'', lvl:'ok', why:[], sug:[] };
+    const raw = T_(cell.text).trim(); if (!raw) return f;
+    const d = fixNum(raw).replace(/[^\d]/g, '');
+    /* napačna številka je huda napaka (reševalec pokliče napačno osebo): predizpolnimo samo številko običajne oblike, ostalo pusti prazno */
+    if (!/^0[1-9]\d{6,7}$/.test(d)){ f.lvl = 'bad'; f.why.push('telefona ne razberem: vpiši s slike'); return f; }
+    const nice = d.length === 9 ? d.replace(/^(\d{3})(\d{3})(\d{3})$/, '$1 $2 $3') : d.replace(/^(\d{2})(\d{3})(\d{3})$/, '$1 $2 $3');
+    if (cell.conf < 75){ f.lvl = 'bad'; f.sug = [{ label:nice, score:cell.conf / 100 }]; f.why.push(`številke ne preberem zanesljivo (${cell.conf} %): morda ${nice}`); return f; }
+    f.v = nice; f.lvl = 'chk'; f.why.push('preveri številko s sliko');
+    return f;
+  }
+  const inFrame = (c, w) => { const dx = cx(w) - c.xa; return (cy(w) - c.y - c.s * dx) / c.P; };
+  function parseCards(ws, mh, box, W, H, out){
+    const A = findCardAnchors(ws, box); if (!A) return null;
+    const { cards, lh:L } = A, n = cards.length;
+    cards.forEach((c, i) => { c.xa = (c.x0 + c.x1) / 2; c.P = A.P; });
+    /* lokalni razmik (perspektiva): povprečje razmika do sosednjih okvirjev */
+    cards.forEach((c, i) => { const a = cards[i - 1], b = cards[i + 1]; c.P = a && b ? (b.y - a.y) / 2 : a ? c.y - a.y : b ? b.y - c.y : A.P; c.s = 0; });
+    const labs = ws.map(w => ({ w, k:labelOf(w) })).filter(x => x.k && x.k !== 'prevoza' && x.k !== 'nacin');
+    const colRaw = med(cards.map(c => c.hasN ? c.x0 - 0.6 * L : (c.pre != null ? c.pre - 3.2 * L : null)).filter(v => v != null));
+    const isLeft = x => x < colRaw - 2 * L;
+    const pick = (k, left, py, px, maxDy, sFn) => { let b = null; labs.forEach(({ w, k:kk }) => { if (kk !== k || isLeft(cx(w)) !== left) return; const dy = cy(w) - (py + (sFn ? sFn * (cx(w) - px) : 0)); if (Math.abs(dy) <= maxDy && (!b || Math.abs(dy) < Math.abs(b.dy))) b = { w, dy }; }); return b && b.w; };
+    /* naklon: tiskani oznaki v isti vrstici levo (Tel:) in desno (Način prevoza:); najprej po vsem listu, nato po okvirjih (list je lahko ukrivljen) */
+    const mT = cards.map(c => { const t = pick('tel', true, c.y, c.xa, 0.6 * c.P, 0); return t && c.xa - cx(t) > L * 8 ? { t, s:(c.y - cy(t)) / (c.xa - cx(t)) } : null; });
+    const sg = med(mT.filter(Boolean).map(m => m.s)) || 0;
+    const mO = cards.map(c => { const d = pick('do', false, c.y - 0.31 * c.P, c.xa, 0.3 * c.P, sg); if (!d) return null; const o = pick('od', true, cy(d), cx(d), 0.3 * c.P, sg); return o && cx(d) - cx(o) > L * 8 ? { d, o, s:(cy(d) - cy(o)) / (cx(d) - cx(o)) } : null; });
+    const meas = cards.map((c, i) => { const e = [mT[i], mO[i]].filter(Boolean).map(m => m.s); return e.length ? e.reduce((x, y) => x + y, 0) / e.length : null; });
+    /* naklon se po listu spreminja (ukrivljena stran, perspektiva): izmerjeno vrednost obdržimo, osamelce zavrnemo, vrzeli interpoliramo */
+    const have = meas.map((v, i) => v != null ? i : -1).filter(i => i >= 0), ok = meas.map((v, i) => {
+      if (v == null) return null;
+      const others = have.filter(j => j !== i).sort((x, y) => Math.abs(x - i) - Math.abs(y - i)).slice(0, 2).map(j => meas[j]);
+      return others.length >= 2 && Math.abs(v - med(others)) > 0.07 ? null : v; });
+    cards.forEach((c, i) => {
+      let v = ok[i];
+      if (v == null){ let lo = -1, hi = -1; for (let j = i - 1; j >= 0; j--) if (ok[j] != null){ lo = j; break; } for (let j = i + 1; j < n; j++) if (ok[j] != null){ hi = j; break; }
+        v = lo >= 0 && hi >= 0 ? ok[lo] + (ok[hi] - ok[lo]) * (i - lo) / (hi - lo) : lo >= 0 ? ok[lo] : hi >= 0 ? ok[hi] : sg; }
+      c.s = Math.max(-0.2, Math.min(0.2, v));
+    });
+    /* oznake po okvirjih (z lokalnim naklonom) */
+    const EXP = { tel:0, od:-0.31, do:-0.31, cas:-0.62 };
+    cards.forEach(c => {
+      c.lab = {};
+      ['tel', 'od', 'do', 'cas'].forEach(k => {
+        const left = k === 'tel' || k === 'od'; let best = null;
+        labs.forEach(({ w, k:kk }) => { if (kk !== k || isLeft(cx(w)) !== left) return; const v = inFrame(c, w), d = Math.abs(v - EXP[k]); if (d <= 0.22 && (!best || d < best.d)) best = { w, d }; });
+        if (best) c.lab[k] = best.w;
+      });
+    });
+    /* stolpci: začetek desnega stolpca (DO:), levi rob polj (OD:, Tel:), Čas: */
+    const col = cards.map(c => c.lab.do ? c.lab.do.x0 - 0.3 * L : colRaw), colM = med(col);
+    cards.forEach((c, i) => { c.col = Math.abs(col[i] - colM) <= 2.5 * L ? col[i] : colM; });
+    const leftX = [], casOff = [];
+    cards.forEach(c => { if (c.lab.od) leftX.push(c.lab.od.x0); if (c.lab.tel) leftX.push(c.lab.tel.x0); if (c.lab.cas) casOff.push(c.lab.cas.x0 - c.col); });
+    const odX = (leftX.length ? Math.min(med(leftX), ...leftX.filter(v => v <= med(leftX) + L)) : box.x0 + (colM - box.x0) * 0.3) - 0.3 * L;
+    const offC = casOff.length ? med(casOff) : 0.75 * (colM - odX + 4 * L);
+    cards.forEach(c => { c.cas = c.lab.cas ? c.lab.cas.x0 : c.col + offC; c.casEnd = c.lab.cas ? c.lab.cas.x1 : c.cas + 2.6 * L; c.right = Math.min(W, c.casEnd + 5 * L); });
+    const right = Math.min(W, Math.max(...cards.map(c => c.right)));
+    /* besede v okvirje */
+    const body = ws.filter(w => !(labelOf(w) === 'prevoza' || labelOf(w) === 'nacin') || true);
+    const cw = cards.map(() => []), upper = [];
+    body.forEach(w => {
+      let k = -1;
+      for (let i = 0; i < n; i++){ const v = inFrame(cards[i], w); if (v >= CARD_V.top && v < CARD_V.bot){ k = i; break; } }
+      if (k < 0){ if (inFrame(cards[0], w) < CARD_V.top) upper.push(w); return; }
+      cw[k].push({ w, v:inFrame(cards[k], w) });
+    });
+    /* številke polj: levo od oznak, v 1. vrstici */
+    const numTok = cards.map((c, i) => cw[i].filter(({ w, v }) => v < CARD_V.r2 && cx(w) < odX + 0.2 * L && isNumTok(w.t) && numVal(w.t) >= 1 && numVal(w.t) <= 60).sort((a, b) => b.w.c - a.w.c)[0] || null);
+    const votes = {}; numTok.forEach((t, i) => { if (t){ const d = numVal(t.w.t) - i; votes[d] = (votes[d] || 0) + 1; } });
+    let d0 = null, vb = 0; Object.entries(votes).forEach(([d, v]) => { if (v > vb){ vb = v; d0 = +d; } });
+    const hasDatum = upper.some(w => sim(ocrNorm(w.t), 'datum') >= 0.7);
+    let nrGuess = false;
+    if (d0 == null || (vb < 2 && n >= 5)){ d0 = hasDatum ? 1 : 11; nrGuess = true; }
+    else if (d0 + 0 < 1 - 0) { d0 = 1; nrGuess = true; }
+    out.layout = 'card'; out.header = false;
+    out.cards = n; out.dbg = { y:cards.map(c => Math.round(c.y) + (c.derived ? 'd' : '')), s:cards.map(c => +c.s.toFixed(3)), sg:+sg.toFixed(3), m:meas.map(v => v == null ? null : +v.toFixed(3)), mT:mT.map(m => m ? +m.s.toFixed(3) : null), mO:mO.map(m => m ? +m.s.toFixed(3) : null), nums:numTok.map(t => t ? t.w.t : null), votes, d0, L:Math.round(L), col:Math.round(colM), odX:Math.round(odX) };
+    if (nrGuess) out.notes.push(`Številk polj na strani ni mogoče prebrati: prevozi so oštevilčeni od ${d0} naprej. Preveri številke.`);
+    /* polja */
+    const rows = cards.map((c, i) => {
+      const cell = { name:[], from:[], to:[], phone:[], mode:[], time:[], margin:[] };
+      const colL = c.col - 0.5 * L;
+      const sorted = cw[i].slice().sort((a, b) => a.w.x0 - b.w.x0);
+      const drop = {};   // prva oznaka v polju je tiskana oznaka, ne rokopis
+      sorted.forEach(({ w, v }) => {
+        const x = cx(w), kind = labelOf(w), left = x < colL;
+        const row = v < CARD_V.r2 ? 1 : v < CARD_V.r3 ? 2 : 3;
+        if (x < odX + 0.2 * L){ if (row === 1 && !(isNumTok(w.t))) { /* kljukica ali pobrana ura v robu: ne gre v polja */ } cell.margin.push(w); return; }
+        if (row === 1){
+          if (x >= c.cas - 0.5 * L){ if (kind === 'cas' && !drop.cas){ drop.cas = 1; return; } const t = fixNum(w.t); if (/\d/.test(t) || /^(dop|pop)\.?$/i.test(w.t)) cell.time.push(w); return; }
+          if (isNumTok(w.t) && x < odX + 3 * L) return;   // številka polja ali kljukica ob njej
+          cell.name.push(w); return;
+        }
+        if (row === 2){
+          if (left){ if (kind === 'od' && !drop.od && x < odX + 4 * L){ drop.od = 1; return; } cell.from.push(w); }
+          else { if (kind === 'do' && !drop.do && x < c.col + 4 * L){ drop.do = 1; return; } cell.to.push(w); }
+          return;
+        }
+        if (left){ if (kind === 'tel' && !drop.tel && x < odX + 4 * L){ drop.tel = 1; return; } cell.phone.push(w); }
+        else { if ((kind === 'nacin' || kind === 'prevoza') && x < c.x1 + 0.5 * L) return; cell.mode.push(w); }
+      });
+      return cell;
+    });
+    /* datum: besede nad prvim okvirjem */
+    try {
+      const up = upper.slice().sort((a, b) => cy(a) - cy(b) || a.x0 - b.x0), txt = up.map(w => w.t).join(' '), dd = NSCAN.dates(NSCAN.fixDigits(txt)).find(x => x.y >= 2000 && x.y <= 2100);
+      if (dd) out.date = { iso:dd.iso, conf:Math.round(med(up.map(w => w.c))) };
+    } catch (e) { /* brez datuma */ }
+    const res = [];
+    cards.forEach((c, i) => {
+      const cl = rows[i], co = k => cl[k].length ? cellOf(cl[k]) : { text:'', conf:0, min:0, n:0, ws:[] };
+      const cc = { name:co('name'), from:co('from'), to:co('to'), time:co('time'), phone:co('phone'), note:co('mode'), pick:co('margin') };
+      const nr = d0 + i, rd = numTok[i] && numVal(numTok[i].w.t) === nr;
+      const geo = { xa:c.xa, y:c.y, s:c.s, P:c.P, col:c.col, odX, cas:c.cas, casEnd:c.casEnd, x0:Math.max(0, odX - 5 * L), x1:right, L, pre:c.x1, derived:!!c.derived };
+      const row = { nr, derived:false, y0:c.y - 0.9 * c.P, y1:c.y + 0.14 * c.P, geo, layout:'card', ctext:cellOf(cl.margin.concat(cl.name, cl.from, cl.to, cl.phone, cl.mode, cl.time)).text };
+      res.push({ row, cc, nrLvl:nrGuess ? (hasDatum || i > 0 ? 'ok' : 'chk') : 'ok', words:cw[i].length, hw:['name', 'from', 'to', 'phone', 'mode', 'time'].reduce((a, k) => a + cl[k].length, 0) });
+    });
+    out.tbl = { x0:Math.max(0, odX - 5 * L), x1:right, y0:cards[0].y - 0.9 * cards[0].P, y1:cards[n - 1].y + 0.14 * cards[n - 1].P };
+    out.cols = [];
+    return res;
+  }
+
+  /* ---------- Ocena celotne vrstice (skupno za tabelo in kartice) ---------- */
+  const EMPTYC = { text:'', conf:0, min:0, n:0, ws:[] };
+  const junkText = t => { const s = T_(t).replace(/\s+/g, ''); if (!s) return false; const l = (s.match(/\p{L}/gu) || []).length; return l < 3 || l / s.length < 0.6; };
+  const ROW_KEYS = ['name', 'from', 'to', 'time', 'note', 'phone', 'mode'];
+  function judgeRow(row, c, out, card){
+    c.phone = c.phone || EMPTYC;
+    /* v stolpcu ure je lahko še kaj (npr. »10.30 leže« pri redkem stolpcu opomb): ura ostane, ostalo gre v opombo */
+    if (!card && c.time.n > 1){
+      const ti = c.time.ws.findIndex(w => timeLike(w.t));
+      if (ti >= 0){ const rest2 = c.time.ws.filter((_, i) => i !== ti); c.time = cellOf([c.time.ws[ti]]); c.note = cellOf([...(c.note.ws || []), ...rest2]); }
+    }
+    /* način prevoza (leže, utila, vzorci) kjerkoli v vrstici (pri karticah: samo v polju »Način prevoza«) */
+    let mode = '';
+    (card ? ['note'] : ['name', 'from', 'to', 'note']).forEach(k => { const m = modeIn(c[k].text); if (m.mode && !mode){ mode = m.mode; if (k === 'note' || k === 'to') c[k] = Object.assign({}, c[k], { text:m.rest }); } });
+    row.mode = mode; row.dia = '';
+    if (/dializ/i.test(c.to.text + ' ' + c.note.text)) row.dia = row.dia || 'pop';   // dializa: ure ni nujno, izbira dop/pop ostane dispečerju
+    const tj = judgeTime(c.time, row); row.dia = tj.dia || '';
+    if (/dializ/i.test(c.to.text + ' ' + c.note.text) && !tj.v && !tj.dia) { tj.lvl = 'ok'; tj.why = ['dializa: ura po urniku skupine']; }
+    const nj = judgeName(c.name, row), fj = judgePlace(c.from, 'from', row), dj = judgePlace(c.to, 'to', row), pj = judgePhone(c.phone);
+    let noteTxt = c.note.text;
+    const notej = { v:noteTxt, lvl:'ok', why:[], sug:[] };
+    if (card && noteTxt && junkText(noteTxt)){ noteTxt = ''; notej.v = ''; }
+    if (noteTxt && (card || c.note.conf < 45)){ notej.lvl = 'chk'; notej.why.push(card ? 'opomba ob načinu prevoza: preveri s sliko' : `opomba slabo berljiva (${c.note.conf} %)`); }
+    const mj = { v:mode, lvl:'ok', why:[], sug:[] };
+    if (card && !mode){ mj.lvl = 'chk'; mj.why.push(c.note.text && !junkText(c.note.text) ? 'načina prevoza ne prepoznam (sede, leže, utila): preveri' : 'načina prevoza ni mogoče prebrati: privzeto sede, preveri'); }
+    row.f = { name:nj.v, from:fj.v, to:dj.v, time:tj.v, mode, dia:tj.dia, note:noteTxt, pid:nj.pid, phone:pj.v };
+    row.fl = { name:nj, from:fj, to:dj, time:tj, note:notej, phone:pj, mode:mj };
+    row.raw = { name:c.name.text, from:c.from.text, to:c.to.text, time:c.time.text, note:c.note.text, phone:c.phone.text };
+    row.conf = { name:c.name.conf, from:c.from.conf, to:c.to.conf, time:c.time.conf, note:c.note.conf, phone:c.phone.conf };
+    let lvl = 'ok'; ROW_KEYS.forEach(k => { lvl = worst(lvl, row.fl[k].lvl); }); lvl = worst(lvl, row.nrLvl === 'bad' ? 'chk' : 'ok');
+    row.lvl = lvl;
+    /* razlog vrstice za pregled */
+    row.todo = ROW_KEYS.filter(k => row.fl[k].lvl !== 'ok');
+    return row;
   }
 
   /* ---------- Glavni razčlenjevalec ---------- */
@@ -4543,6 +4758,17 @@ const BSCAN = (() => {
     if (ws.length < 4){ out.notes.push('Na sliki skoraj ni prebranega besedila.'); return out; }
     const mh = Math.max(6, med(ws.map(w => w.y1 - w.y0)));
     const box = { x0:Math.min(...ws.map(w => w.x0)), y0:Math.min(...ws.map(w => w.y0)), x1:Math.max(...ws.map(w => w.x1)), y1:Math.max(...ws.map(w => w.y1)) };
+    out.layout = 'table'; out.cols = out.cols || [];
+    const cardRes = parseCards(ws, mh, box, W, H, out);
+    if (cardRes){
+      cardRes.forEach(({ row, cc, nrLvl, words, hw }) => {
+        Object.assign(row, { text:row.ctext, raw:{}, f:{}, fl:{}, lvl:'ok', empty:false, nrLvl, words, touched:{} });
+        judgeRow(row, cc, out, true);
+        if (!hw){ row.empty = true; out.stats.empty++; } else out.stats[row.lvl]++;
+        out.rows.push(row);
+      });
+      return out;
+    }
     const head = findHeader(ws, mh); out.header = !!head;
     let rows = findRows(ws, mh, head, box), numbered = rows.length >= 2;
     if (numbered) rows = fillRows(rows);
@@ -4613,7 +4839,7 @@ const BSCAN = (() => {
       const cells = {}; let rest = [];
       if (cols){ r.ws.forEach(w => { const c = cols[colOf(w)]; (cells[c.key] = cells[c.key] || []).push(w); }); }
       else rest = r.ws;
-      const row = { nr:r.nr, derived:r.derived, y0:r.y0, y1:r.y1, text:cellOf(r.ws).text, raw:{}, f:{ name:'', from:'', to:'', time:'', mode:'', dia:'', note:'', pid:'' }, fl:{}, lvl:'ok', empty:false };
+      const row = { nr:r.nr, derived:r.derived, y0:r.y0, y1:r.y1, text:cellOf(r.ws).text, raw:{}, f:{ name:'', from:'', to:'', time:'', mode:'', dia:'', note:'', pid:'', phone:'' }, fl:{}, lvl:'ok', empty:false };
       /* številka polja */
       const nrCells = cells.nr ? cellOf(cells.nr) : { text:'', conf:0 };
       if (r.nr == null){ const v = numVal(nrCells.text); row.nr = v && v < 61 ? v : null; }
@@ -4622,34 +4848,9 @@ const BSCAN = (() => {
       const c = {}; ['name', 'from', 'to', 'time', 'note', 'pick', 'veh'].forEach(k => { c[k] = cells[k] ? cellOf(cells[k]) : { text:'', conf:0, min:0, n:0, ws:[] }; });
       Object.keys(cells).forEach(k => { if (/^c\d+$/.test(k)) c.note = cellOf([...(cells.note || []), ...cells[k]]); });
       if (!cols){ c.name = cellOf(rest); }
-      /* v stolpcu ure je lahko še kaj (npr. »10.30 leže« pri redkem stolpcu opomb): ura ostane, ostalo gre v opombo */
-      if (c.time.n > 1){
-        const ti = c.time.ws.findIndex(w => timeLike(w.t));
-        if (ti >= 0){ const rest2 = c.time.ws.filter((_, i) => i !== ti); c.time = cellOf([c.time.ws[ti]]); c.note = cellOf([...(c.note.ws || []), ...rest2]); }
-      }
-      /* način prevoza (leže, utila, vzorci) kjerkoli v vrstici */
-      let mode = '';
-      ['name', 'from', 'to', 'note'].forEach(k => { const m = modeIn(c[k].text); if (m.mode && !mode){ mode = m.mode; if (k === 'note' || k === 'to') c[k] = Object.assign({}, c[k], { text:m.rest }); } });
-      row.mode = mode; row.dia = '';
-      if (/dializ/i.test(c.to.text + ' ' + c.note.text)) row.dia = row.dia || 'pop';   // dializa: ure ni nujno, izbira dop/pop ostane dispečerju
-      const tj = judgeTime(c.time, row); row.dia = tj.dia || '';
-      if (/dializ/i.test(c.to.text + ' ' + c.note.text) && !tj.v && !tj.dia) { tj.lvl = 'ok'; tj.why = ['dializa: ura po urniku skupine']; }
-      const nj = judgeName(c.name, row), fj = judgePlace(c.from, 'from', row), dj = judgePlace(c.to, 'to', row);
-      const noteTxt = c.note.text;
-      const notej = { v:noteTxt, lvl:'ok', why:[], sug:[] };
-      if (noteTxt && c.note.conf < 45){ notej.lvl = 'chk'; notej.why.push(`opomba slabo berljiva (${c.note.conf} %)`); }
-      row.f = { name:nj.v, from:fj.v, to:dj.v, time:tj.v, mode, dia:tj.dia, note:noteTxt, pid:nj.pid };
-      row.fl = { name:nj, from:fj, to:dj, time:tj, note:notej };
-      row.raw = { name:c.name.text, from:c.from.text, to:c.to.text, time:c.time.text, note:c.note.text };
-      row.conf = { name:c.name.conf, from:c.from.conf, to:c.to.conf, time:c.time.conf, note:c.note.conf };
-      /* številka polja */
       row.nrLvl = r.derived ? 'chk' : (nrCells.conf && nrCells.conf < 50 ? 'chk' : 'ok');
       if (row.nr == null) row.nrLvl = 'bad';
-      let lvl = 'ok'; ['name', 'from', 'to', 'time', 'note'].forEach(k => { lvl = worst(lvl, row.fl[k].lvl); }); lvl = worst(lvl, row.nrLvl === 'bad' ? 'chk' : 'ok');
-      row.lvl = lvl;
-      /* razlog vrstice za pregled */
-      row.todo = ['name', 'from', 'to', 'time', 'note'].filter(k => row.fl[k].lvl !== 'ok');
-      out.stats[lvl]++; out.rows.push(row);
+      judgeRow(row, c, out, false); out.stats[row.lvl]++; out.rows.push(row);
     });
     /* podvojene številke */
     const cnt = {}; out.rows.forEach(r => { if (r.nr != null && !r.empty) cnt[r.nr] = (cnt[r.nr] || 0) + 1; });
@@ -4667,7 +4868,7 @@ const BSCAN = (() => {
   const fromOcr = r => (r && r.words && r.words.length) ? r.words : tsvWords(r && r.tsv);
 
   /* ---------- Priprava fotografije (samo v brskalniku): zasuk, kontrast, izrezi ---------- */
-  const MAX_SIDE = 2200, MAX_PAGES = 6;   /* 2200 px zadošča za tiskano mrežo in rokopis; večja slika razpoznavo samo upočasni */
+  const MAX_SIDE = 2200, MAX_PAGES = 6, INK_BLANK = 0.03, INK_MAYBE = 0.10, BLANK_WORDS = 9;   /* 2200 px zadošča za tiskano mrežo in rokopis; večja slika razpoznavo samo upočasni */
   const tick = () => new Promise(r => setTimeout(r, 0));   /* umik zaslonu: telefon med težko obdelavo ne sme zamrzniti prikaza */
   const cv2 = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; };
   /* naklon vrstic v stopinjah (+ = vrstice se spuščajo proti desni): največja ostrina projekcije temnih točk na navpično os */
@@ -4685,7 +4886,7 @@ const BSCAN = (() => {
       let sc = 0; for (let j = 1; j < bins.length; j++){ const df = bins[j] - bins[j - 1]; sc += df * df; } return sc;
     };
     let best = 0, bs = -1;
-    for (let a = -6; a <= 6.001; a += 0.5){ const sc = score(a); if (sc > bs){ bs = sc; best = a; } }
+    for (let a = -10; a <= 10.001; a += 0.5){ const sc = score(a); if (sc > bs){ bs = sc; best = a; } }
     const c0 = best; for (let a = c0 - 0.5; a <= c0 + 0.501; a += 0.1){ const sc = score(a); if (sc > bs){ bs = sc; best = a; } }
     return Math.round(best * 10) / 10;
   }
@@ -4730,7 +4931,7 @@ const BSCAN = (() => {
     await tick(); const angle = skewAngle(cv);
     await tick(); const color = rotated(cv, angle);
     await tick(); const bw = binarize(color);
-    await tick(); return { color, angle, png:await NSCAN.toBlob(bw) };
+    await tick(); return { color, angle, bw, png:await NSCAN.toBlob(bw) };
   }
   /* izrez vrstice iz fotografije (za primerjavo prebranega z originalom) */
   function cropRow(color, row, tbl, pitch){
@@ -4738,6 +4939,40 @@ const BSCAN = (() => {
     const w = x1 - x0, h = y1 - y0; if (w < 10 || h < 6) return '';
     const k = Math.min(1, 1000 / w), c = cv2(w * k, h * k); c.getContext('2d').drawImage(color, x0, y0, w, h, 0, 0, c.width, c.height);
     try { return c.toDataURL('image/jpeg', 0.72); } catch (e) { return ''; }
+  }
+  /* izrez prevoza (kartice): zasukan po lokalnem naklonu okvirja, da so vrstice vodoravne */
+  function cropCard(color, g){
+    const top = -1.0, bot = 0.3, w = g.x1 - g.x0, h = (bot - top) * g.P;
+    if (!(w > 20 && h > 10)) return '';
+    const k = Math.min(1, 1000 / w), th = Math.atan(g.s), co = Math.cos(th), si = Math.sin(th);
+    const ox = g.x0 - si * top * g.P, oy = g.y + g.s * (g.x0 - g.xa) + co * top * g.P;
+    const c = cv2(w * k, h * k), x = c.getContext('2d');
+    x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+    x.setTransform(k * co, -k * si, k * si, k * co, -k * (co * ox + si * oy), k * (si * ox - co * oy));
+    x.drawImage(color, 0, 0);
+    try { return c.toDataURL('image/jpeg', 0.75); } catch (e) { return ''; }
+  }
+  /* gostota črnila (črne točke) v poljih za rokopis: prazna kartica ima skoraj nič; ločuje prazen okvir od nerazločnega rokopisa */
+  function inkOf(bw, g){
+    const w = bw.width, h = bw.height; if (!bw._d) bw._d = bw.getContext('2d', { willReadFrequently:true }).getImageData(0, 0, w, h).data;
+    const d = bw._d, L = g.L;
+    const Z = [[g.odX + 0.5 * L, g.cas - 0.5 * L, -0.84, -0.5], [g.odX + 2.6 * L, g.col - 0.4 * L, -0.44, -0.19], [g.col + 2.8 * L, g.x1 - 0.5 * L, -0.44, -0.19], [g.odX + 2.8 * L, g.col - 0.4 * L, -0.135, 0.1], [g.pre + 0.6 * L, g.x1 - 0.5 * L, -0.135, 0.1]];
+    let best = 0;
+    Z.forEach(([u0, u1, v0, v1]) => {
+      let dark = 0, tot = 0;
+      for (let u = u0; u < u1; u += 2){ const base = g.y + g.s * (u - g.xa), xi = Math.round(u); if (xi < 0 || xi >= w) continue;
+        for (let v = v0; v < v1; v += 2 / g.P){ const yi = Math.round(base + v * g.P); if (yi < 0 || yi >= h) continue; tot++; if (d[(yi * w + xi) * 4] < 128) dark++; } }
+      if (tot > 50) best = Math.max(best, dark / tot);
+    });
+    return best;
+  }
+  /* kartica brez rokopisa je prazna; nejasna kartica se nikoli ne preskoči tiho: prazne se v pregledu pokažejo na koncu (z izrezom) in jih je mogoče vnesti */
+  function markCard(row, prep){
+    row.ink = inkOf(prep.bw, row.geo);
+    const blank = row.ink < INK_BLANK || ((row.words || 0) <= BLANK_WORDS && row.ink < INK_MAYBE);
+    if (!blank && row.empty){ row.empty = false; row.fl.name = Object.assign({}, row.fl.name, { lvl:'bad', why:['rokopis je na sliki, a ga ne razberem: vpiši s slike'] }); row.lvl = worst(row.lvl, 'bad'); row.todo = ROW_KEYS.filter(k => row.fl[k].lvl !== 'ok'); }
+    if (blank){ row.empty = true; row.blank = true; }
+    row.crop = cropCard(prep.color, row.geo);
   }
   /* pomanjšana fotografija strani (JPEG): ostane na voljo tudi, če razpoznava odpove, da lahko prevoze vneseš ročno ob sliki */
   function photoUrl(cv){
@@ -4763,12 +4998,19 @@ const BSCAN = (() => {
       const tag = pages.length > 1 ? `Stran ${i + 1}/${pages.length}: ` : '';
       chk(); say('prep', i, pages.length, 0);
       const prep = await preparePage(pages[i]); chk();
-      let r; try { r = await NSCAN.ocr(prep.png, p => { say(p.stage, i, pages.length, p.pct); }, cfg, { words:true, psm:cfg.bookPsm || '4' }); } catch (e) { if (ctlr.cancelled) throw canceledErr(); throw e; }
-      chk(); say('prep', i, pages.length, 1); await tick();
-      const words = fromOcr(r), ps = parse(words, prep.color.width, prep.color.height);
+      const ocrPsm = async psm => { try { return await NSCAN.ocr(prep.png, p => { say(p.stage, i, pages.length, p.pct); }, cfg, { words:true, psm }); } catch (e) { if (ctlr.cancelled) throw canceledErr(); throw e; } };
+      /* redko besedilo (psm 11) najde kartice tudi na ukrivljeni in nagnjeni strani; če stran ni v obliki kartic (tabela), se prebere še enkrat s členitvijo po stolpcih (psm 4). config.js → ocr.bookPsm vse to preglasi. */
+      let r = await ocrPsm(cfg.bookPsm || '11'); chk();
+      let words = fromOcr(r), ps = parse(words, prep.color.width, prep.color.height);
+      if (!cfg.bookPsm && ps.layout !== 'card'){ r = await ocrPsm('4'); chk(); words = fromOcr(r); ps = parse(words, prep.color.width, prep.color.height); }
+      say('prep', i, pages.length, 1); await tick();
       const pitch = ps.rows.length > 1 ? med(ps.rows.slice(1).map((x, j) => (x.y0 + x.y1) / 2 - (ps.rows[j].y0 + ps.rows[j].y1) / 2)) : 60;
-      ps.rows.forEach(row => { row.page = i + 1; if (!row.empty) row.crop = cropRow(prep.color, row, ps.tbl, Math.abs(pitch)); });
-      res.pages.push({ w:prep.color.width, h:prep.color.height, angle:prep.angle, header:ps.header, notes:ps.notes, words:ps.words });
+      ps.rows.forEach(row => {
+        row.page = i + 1;
+        if (row.geo) markCard(row, prep);
+        else if (!row.empty) row.crop = cropRow(prep.color, row, ps.tbl, Math.abs(pitch));
+      });
+      res.pages.push({ w:prep.color.width, h:prep.color.height, angle:prep.angle, header:ps.header, layout:ps.layout, cards:ps.cards || 0, notes:ps.notes, words:ps.words });
       ps.notes.forEach(t => res.notes.push(tag + t)); res.words += ps.words;
       if (!res.date && ps.date) res.date = ps.date;
       ps.rows.forEach(row => res.rows.push(row));
@@ -4782,10 +5024,10 @@ const BSCAN = (() => {
   }
 
   /* ---------- Iz vrstice v prevoz ---------- */
-  const FIELD_LABEL = { name:'ime', from:'od', to:'do', time:'ura', note:'opomba' };
+  const FIELD_LABEL = { name:'ime', from:'od', to:'do', time:'ura', note:'opomba', phone:'tel', mode:'način' };
   const chkText = row => (row.todo || []).map(k => FIELD_LABEL[k]).join(', ');
 
-  return { parse, cleanWords, cellOf, ed, sim, simNS, simName, ocrNorm, parseTime, placeSuggest, patientSuggest, vocab, chkText, FIELD_LABEL, LV, headKey, tsvWords, fromOcr, skewAngle, rotated, binarize, loadPages, preparePage, cropRow, run, warm, cancel, hooks, photoUrl, MAX_SIDE };
+  return { parse, cleanWords, cellOf, ed, sim, simNS, simName, ocrNorm, parseTime, placeSuggest, patientSuggest, vocab, chkText, FIELD_LABEL, LV, headKey, tsvWords, fromOcr, skewAngle, rotated, binarize, loadPages, preparePage, cropRow, cropCard, inkOf, markCard, run, warm, cancel, hooks, photoUrl, MAX_SIDE };
 })();
 /* =====================================================================
    ZASLONI
@@ -7137,7 +7379,8 @@ if (typeof document !== 'undefined' && document.addEventListener){
    ki ostane vidna v dnevu, v opozorilih in v natisnjeni knjigi, dokler dispečer ne pritisne »Preverjeno«. Slika in besedilo se ne shranita. */
 const BS_LABEL = { ok:'prebrano', chk:'preveri', bad:'popravi' };
 const BS_SYM = { ok:'✔', chk:'⚠', bad:'✖' };
-const BS_FIELDS = [['name', 'Ime in priimek', 'text', 'bs-c4'], ['from', 'Od', 'text', 'bs-c4'], ['to', 'Do', 'text', 'bs-c4'], ['time', 'Ura', 'text', 'bs-c2']];
+const BS_FIELDS = [['name', 'Ime in priimek', 'text', 'bs-c4'], ['from', 'Od', 'text', 'bs-c4'], ['to', 'Do', 'text', 'bs-c4']];
+const BS_KEYS = ['name', 'from', 'to', 'time', 'note', 'phone', 'mode'];
 const bsWorst = (a, b) => (BSCAN.LV[b] > BSCAN.LV[a] ? b : a);
 const bsNr = row => { const n = parseInt(String(row.nrEdit == null ? '' : row.nrEdit).trim(), 10); return n >= 1 && n <= 60 ? n : null; };
 const bsDateOk = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && !isNaN(new Date(d + 'T12:00:00'));
@@ -7152,7 +7395,7 @@ function bsLvl(row, k){
   if (!row.touched[k]) return fl.lvl;
   const v = String(row.f[k] || '').trim();
   if (k === 'time') return v ? (BSCAN.parseTime(v).v ? 'ok' : 'bad') : ((row.f.dia || row.f.mode === 'vzorci') ? 'ok' : 'chk');
-  if (k === 'note') return 'ok';
+  if (k === 'note' || k === 'phone' || k === 'mode') return 'ok';   // dispečer je polje pregledal (lahko je prazno)
   if (k === 'from' && row.f.mode === 'vzorci') return 'ok';
   return v ? 'ok' : 'bad';
 }
@@ -7164,12 +7407,12 @@ function bsNrLvl(m, row){
 }
 const bsFilled = row => !!(String(row.f.name || '').trim() || String(row.f.from || '').trim() || String(row.f.to || '').trim());
 function bsRowLvl(m, row){
-  let l = 'ok'; ['name', 'from', 'to', 'time', 'note'].forEach(k => { l = bsWorst(l, bsLvl(row, k)); });
+  let l = 'ok'; BS_KEYS.forEach(k => { l = bsWorst(l, bsLvl(row, k)); });
   const nl = bsNrLvl(m, row); if (nl !== 'ok') l = bsWorst(l, 'chk');
   return l;
 }
 function bsTodo(m, row){
-  const t = ['name', 'from', 'to', 'time', 'note'].filter(k => bsLvl(row, k) !== 'ok').map(k => BSCAN.FIELD_LABEL[k]);
+  const t = BS_KEYS.filter(k => bsLvl(row, k) !== 'ok').map(k => BSCAN.FIELD_LABEL[k]);
   if (bsNrLvl(m, row) !== 'ok') t.push('št. polja');
   return t.join(', ');
 }
@@ -7189,21 +7432,21 @@ function bsFieldHTML(m, row, k, label, cls){
   const id = `bs-${row.key}-${k}`, l = bsLvl(row, k), why = bsReason(row, k), sug = ((row.fl[k] || {}).sug || []).slice(0, 3);
   const chips = (l !== 'ok' && !row.touched[k]) ? sug.map((s, i) => `<button type="button" class="chip toggle bs-sug" data-act="bsSug" data-k="${row.key}|${k}|${i}">${esc(s.label)}</button>`).join('') : '';
   return `<div class="field bs-f ${cls || ''}" data-lv="${l}" data-bsf="${k}"><label for="${id}">${esc(label)}</label>
-    <input id="${id}" type="text" data-bs="f" data-key="${row.key}" data-k="${k}" value="${esc(row.f[k] || '')}" autocomplete="off" ${k === 'time' ? 'inputmode="numeric" maxlength="8" placeholder="08:00"' : ''} ${k === 'name' ? 'list="bsPat"' : ''} ${l === 'bad' ? 'aria-invalid="true"' : ''} aria-describedby="${id}-w">
+    <input id="${id}" type="text" data-bs="f" data-key="${row.key}" data-k="${k}" value="${esc(row.f[k] || '')}" autocomplete="off" ${k === 'time' ? 'inputmode="numeric" maxlength="8" placeholder="08:00"' : k === 'phone' ? 'inputmode="tel" maxlength="24" placeholder="031 123 456"' : ''} ${k === 'name' ? 'list="bsPat"' : ''} ${l === 'bad' ? 'aria-invalid="true"' : ''} aria-describedby="${id}-w">
     <div class="bs-reason" id="${id}-w" role="note">${esc(why)}</div><div class="bs-sugs">${chips}</div></div>`;
 }
 function bsRowHTML(m, row){
-  const l = bsRowLvl(m, row), todo = bsTodo(m, row);
-  const modeSel = `<div class="field bs-f bs-c2" data-lv="ok"><label for="bs-${row.key}-mode">Način</label><select id="bs-${row.key}-mode" data-bs="f" data-key="${row.key}" data-k="mode">${Object.entries(MODES).map(([v, t]) => `<option value="${v}" ${(row.f.mode || 'sede') === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
+  const l = bsRowLvl(m, row), todo = bsTodo(m, row), ml = bsLvl(row, 'mode');
+  const modeSel = `<div class="field bs-f bs-c2" data-lv="${ml}" data-bsf="mode"><label for="bs-${row.key}-mode">Način</label><select id="bs-${row.key}-mode" data-bs="f" data-key="${row.key}" data-k="mode">${Object.entries(MODES).map(([v, t]) => `<option value="${v}" ${(row.f.mode || 'sede') === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select><div class="bs-reason">${esc(bsReason(row, 'mode'))}</div></div>`;
   const diaSel = `<div class="field bs-f bs-c2" data-lv="ok"><label for="bs-${row.key}-dia">Dializa</label><select id="bs-${row.key}-dia" data-bs="f" data-key="${row.key}" data-k="dia"><option value="" ${!row.f.dia ? 'selected' : ''}>ne</option><option value="dop" ${row.f.dia === 'dop' ? 'selected' : ''}>dopoldne</option><option value="pop" ${row.f.dia === 'pop' ? 'selected' : ''}>popoldne</option></select></div>`;
   return `<article class="bs-row" data-bsrow="${row.key}" data-lv="${l}" ${m.only && l === 'ok' ? 'hidden' : ''}>
     <div class="bs-head"><label class="check bs-on"><input type="checkbox" data-bs="on" data-key="${row.key}" ${row.on ? 'checked' : ''}> Vpiši</label>
       <label class="bs-nr" for="bs-${row.key}-nr">Polje <input id="bs-${row.key}-nr" type="number" min="1" max="60" inputmode="numeric" data-bs="nr" data-key="${row.key}" value="${esc(row.nrEdit)}" data-lv="${bsNrLvl(m, row)}"></label>
       <span class="bs-lv" data-role="bslv" ${row.manual && l === 'ok' ? 'hidden' : ''}><span aria-hidden="true">${BS_SYM[l]}</span> ${BS_LABEL[l]}</span><span class="bs-todo" data-role="bstodo">${todo ? '· ' + esc(todo) : ''}</span><span class="sp"></span>
       <button type="button" class="btn sm" data-act="bsConfirm" data-key="${row.key}" data-role="bsconf" ${l === 'ok' ? 'hidden' : ''} title="Primerjal sem s sliko: vse je prav">Vse je prav</button></div>
-    ${row.crop ? `<div class="bs-cropwrap"><img class="bs-crop" src="${row.crop}" alt="Izrez vrstice ${esc(row.nrEdit || '')} s fotografije"></div>` : ''}
-    <div class="bs-grid">${BS_FIELDS.map(([k, lb, , c]) => bsFieldHTML(m, row, k, lb, c)).join('')}${modeSel}${diaSel}
-      <div class="field bs-f bs-c6" data-lv="${bsLvl(row, 'note')}" data-bsf="note"><label for="bs-${row.key}-note">Opomba</label><input id="bs-${row.key}-note" type="text" data-bs="f" data-key="${row.key}" data-k="note" value="${esc(row.f.note || '')}" autocomplete="off"><div class="bs-reason">${esc(bsReason(row, 'note'))}</div></div></div></article>`;
+    ${row.crop ? `<div class="bs-cropwrap"><img class="bs-crop" src="${row.crop}" alt="Izrez prevoza ${esc(row.nrEdit || '')} s fotografije"></div>` : ''}
+    <div class="bs-grid">${BS_FIELDS.map(([k, lb, , c]) => bsFieldHTML(m, row, k, lb, c)).join('')}${bsFieldHTML(m, row, 'phone', 'Telefon', 'bs-c3')}${bsFieldHTML(m, row, 'time', 'Ura', 'bs-c2')}${modeSel}${diaSel}
+      <div class="field bs-f bs-c3" data-lv="${bsLvl(row, 'note')}" data-bsf="note"><label for="bs-${row.key}-note">Opomba</label><input id="bs-${row.key}-note" type="text" data-bs="f" data-key="${row.key}" data-k="note" value="${esc(row.f.note || '')}" autocomplete="off"><div class="bs-reason">${esc(bsReason(row, 'note'))}</div></div></div></article>`;
 }
 function bsSumHTML(m){
   const s = bsStats(m), bad = s.chk + s.bad;
@@ -7212,6 +7455,11 @@ function bsSumHTML(m){
     : `<span class="bs-cnt" data-lv="ok">✔ Vseh ${s.ok} vrstic je prebranih zanesljivo.</span>`;
   return `${head}<span class="sp"></span>${bad ? `<button type="button" class="btn sm primary" data-act="bsJump">Skoči na naslednje nejasno</button>` : ''}
     <label class="check"><input type="checkbox" data-bs="only" ${m.only ? 'checked' : ''}> Samo nejasno</label>`;
+}
+function bsBlankHTML(m){
+  const b = m.blank || []; if (!b.length) return '';
+  return `<details class="bs-blank" data-role="bsblank"><summary>${b.length} ${b.length === 1 ? 'kartica je videti prazna' : 'kartic je videti praznih'} (št. ${b.map(r => esc(r.nrEdit)).join(', ')}): preglej</summary>
+    ${b.map(r => `<div class="bs-blankrow"><div class="bs-cropwrap"><img class="bs-crop" src="${r.crop}" alt="Izrez kartice ${esc(r.nrEdit)}"></div><button type="button" class="btn sm" data-act="bsUnblank" data-key="${r.key}">Ni prazna: vnesi ta prevoz</button></div>`).join('')}</details>`;
 }
 function bsApplyLabel(m){
   const s = bsStats(m);
@@ -7234,9 +7482,11 @@ function renderBScan(host, m){
       ${m.notes.length ? `<div class="banner" style="background:var(--warn-soft);color:var(--warn)"><span>${IC.alert}</span><div>${m.notes.map(n => esc(n)).join('<br>')}</div></div>` : ''}
       <div class="row" style="gap:16px;align-items:flex-start;flex-wrap:wrap">${bsDateHTML(m)}
         <label class="check" style="margin-top:22px" title="Prevozi s te strani so že narejeni (knjiga za nazaj): označijo se kot opravljeni"><input type="checkbox" data-bs="done" ${m.done ? 'checked' : ''}> Prevozi so že opravljeni</label></div>
+      ${m.cardMode ? `<div class="banner"><span>${IC.info}</span><div>Pisavo s fotografije računalnik prebere samo deloma. Zato ima vsak prevoz svoj <b>poravnan izrez</b> in polja za vnos: prepiši ime, naslov, telefon in uro. <b>Ime izberi s seznama pacientov</b>: naslov in telefon se dopolnita iz baze. Rdeča polja niso prebrana, rumeni gumbi so predlogi.</div></div>` : ''}
       ${bsPhotosHTML(m)}
       <p class="hint" style="margin:0">${m.manual ? 'Ročni vnos ob fotografiji: vpiši ime, od, do in uro za vsak prevoz; prazne vrstice se preskočijo. Ime lahko izbereš s seznama bolnikov. Ročno vpisane vrstice niso označene z ⚠.' : 'Primerjaj vsako vrstico s sliko izreza. Rumena in rdeča polja so tista, ki jih nisem razumel: izberi predlog, popravi ali pritisni »Vse je prav«. Rdeče vrstice niso izbrane za vpis. Karkoli ostane nepotrjeno, se vpiše z oznako <b>⚠ preveri</b>, ki ostane vidna v dnevu in v natisnjeni knjigi, dokler je ne potrdiš.'}${m.empties ? ` · Prazne vrstice: ${m.empties}.` : ''}</p>
       <div class="bs-list" data-role="bslist">${list || '<div class="empty-state">Na strani ni vpisanih vrstic.</div>'}</div>
+      ${bsBlankHTML(m)}
       <div class="row"><button type="button" class="btn sm" data-act="bsAddRow">+ Dodaj vrstico</button></div>
       <datalist id="bsPat">${S.patients.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), 'sl')).map(p => `<option value="${esc(p.name)}"></option>`).join('')}</datalist>
       ${m.err ? `<div class="banner bad"><span>${IC.alert}</span><div>${esc(m.err)}</div></div>` : ''}
@@ -7311,7 +7561,7 @@ function bsRetry(){ const m = UI.modal; if (!m || m.type !== 'bscan' || m.busy |
 /* če razpoznava ne uspe: prevoze vneseš sam, ob celi fotografiji (prazne vrstice 1–12, po potrebi še dodaš) */
 function bsBlankRow(m){
   const n = m.rows.length + 1, key = 'm' + (++m.seq);
-  return { key, page:1, nr:n, nrEdit:String(n), nrLvl:'ok', lvl:'ok', todo:[], manual:true, on:true, touched:{}, fl:{}, crop:'', f:{ name:'', from:'', to:'', time:'', mode:'sede', dia:'', note:'', pid:'' } };
+  return { key, page:1, nr:n, nrEdit:String(n), nrLvl:'ok', lvl:'ok', todo:[], manual:true, on:true, touched:{}, fl:{}, crop:'', f:{ name:'', from:'', to:'', time:'', mode:'sede', dia:'', note:'', pid:'', phone:'' } };
 }
 function bsManual(){
   const m = UI.modal; if (!m || m.type !== 'bscan' || m.busy) return;
@@ -7331,14 +7581,36 @@ function bsPhotosHTML(m){
     <div class="bs-photo ${m.zoom ? 'zoom' : ''}" data-role="bsphoto">${m.photos.map((u, i) => u ? `<img src="${u}" alt="Fotografija strani ${i + 1}">` : '').join('')}</div>
     <div class="row"><button type="button" class="btn sm" data-act="bsZoom">Povečaj / pomanjšaj</button></div></details>`;
 }
+const bsMk = r => Object.assign({}, r, { f:Object.assign({ phone:'' }, r.f), touched:{}, on:r.lvl !== 'bad', nrEdit:r.nr == null ? '' : String(r.nr) });
 function bsLoad(m, res){
-  const rows = res.rows.filter(r => !r.empty);
-  m.rows = rows.map(r => Object.assign({}, r, { f:Object.assign({}, r.f), touched:{}, on:r.lvl !== 'bad', nrEdit:r.nr == null ? '' : String(r.nr) }));
+  let rows = res.rows.filter(r => !r.empty), blank = res.rows.filter(r => r.empty && r.blank && r.crop);
+  /* če so vse kartice videti prazne, je verjetneje težava s fotografijo kot s stranjo: pokaži jih kot običajne vrstice */
+  if (!rows.length && blank.length){ rows = blank.map(r => Object.assign(r, { empty:false, lvl:'bad' })); blank = []; }
+  m.rows = rows.map(bsMk); m.blank = blank.map(r => Object.assign(bsMk(r), { on:true }));
+  m.cardMode = res.pages.some(p => p.layout === 'card');
   m.empties = res.rows.length - rows.length; m.notes = res.notes || []; m.pages = res.pages.length; m.words = res.words;
   if (res.date && res.date.iso){ m.date = res.date.iso; m.dateSrc = 'ocr'; m.dateTouched = false; }
   if (!rows.length){ m.step = 'in'; m.err = 'Na sliki nisem našel nobene vpisane vrstice. Poskusi znova: stran naj bo ravna, v celoti v kadru in dobro osvetljena.'; return; }
   if (!m.doneTouched) m.done = bsDateOk(m.date) && m.date < todayStr();
   m.step = 'review'; m.err = ''; m.jumpKey = '';
+}
+/* prazna kartica, ki je vendarle izpolnjena: preselimo jo med vrstice za vnos */
+function bsUnblank(key){
+  const m = UI.modal; if (!m || m.type !== 'bscan' || !m.blank) return; const i = m.blank.findIndex(r => r.key === key); if (i < 0) return;
+  const r = m.blank.splice(i, 1)[0]; r.lvl = 'bad'; r.empty = false; r.on = true; r.fl.name = Object.assign({}, r.fl.name, { lvl:'bad', why:['kartica je bila videti prazna: vpiši s slike'] });
+  m.rows.push(r); m.rows.sort((a, b) => (bsNr(a) ?? 999) - (bsNr(b) ?? 999)); m.jumpKey = r.key; renderModal();
+  const el = document.querySelector(`[data-bsrow="${key}"] input[data-k=name]`); if (el){ try { el.scrollIntoView({ block:'center' }); el.focus({ preventScroll:true }); } catch (e) { /* */ } }
+}
+/* ime izbrano iz baze pacientov: naslov in telefon se dopolnita, če sta prazna (rumeno: primerjaj z izrezom) */
+function bsFromPatient(m, row){
+  const pt = (S.patients || []).find(x => x.id === row.f.pid); if (!pt) return;
+  const put = (k, v, why) => {
+    if (!v || String(row.f[k] || '').trim()) return;
+    row.f[k] = v; if (!row.manual){ row.fl[k] = { v, lvl:'chk', why:[why], sug:[] }; row.touched[k] = false; }
+    const inp = document.getElementById(`bs-${row.key}-${k}`); if (inp) inp.value = v;
+  };
+  put('from', pt.addr, 'naslov iz baze pacientov: primerjaj z izrezom');
+  put('phone', pt.phone, 'telefon iz baze pacientov: primerjaj z izrezom');
 }
 /* osvežitev prikaza brez ponovnega izrisa (ohrani fokus in drsenje) */
 function bsPaintRow(m, row){
@@ -7371,7 +7643,7 @@ function bsPaintDate(m){
 function bsRow(m, key){ return m.rows.find(r => r.key === key); }
 function bsConfirm(key){
   const m = UI.modal; if (!m || m.type !== 'bscan') return; const row = bsRow(m, key); if (!row) return;
-  ['name', 'from', 'to', 'time', 'note', 'nr'].forEach(k => { row.touched[k] = true; });
+  [...BS_KEYS, 'nr'].forEach(k => { row.touched[k] = true; });
   row.on = true; const cb = document.querySelector(`[data-bsrow="${key}"] [data-bs=on]`); if (cb) cb.checked = true;
   bsPaintAll(m);
 }
@@ -7412,9 +7684,9 @@ function bsApply(){
     if (nr){ while (a.length < nr) a.push(blankRide()); if (!isFilled(a[nr - 1])) i = nr - 1; }
     if (i < 0){ i = a.findIndex(x => !isFilled(x)); if (i < 0){ a.push(blankRide()); i = a.length - 1; } if (nr) moved++; }
     const t = a[i], tm = f.time ? (BSCAN.parseTime(f.time).v || '') : '';
-    Object.assign(t, blankRide(), { id:t.id, name:nm, from:fr, to, time:tm, mode:f.mode || 'sede', dia:f.dia || '', note:f.note || '' });
+    Object.assign(t, blankRide(), { id:t.id, name:nm, from:fr, to, time:tm, mode:f.mode || 'sede', dia:f.dia || '', note:f.note || '', phone:String(f.phone || '').trim() });
     if (t.mode === 'vzorci' && !t.name) t.name = 'Vzorci';
-    if (f.pid){ applyPatientToRide(date, t.id, f.pid, { keepMode:!!f.mode }); t.from = fr || t.from; t.to = to || t.to; t.note = f.note || ''; }
+    if (f.pid){ const ph = t.phone; applyPatientToRide(date, t.id, f.pid, { keepMode:!!f.mode }); t.from = fr || t.from; t.to = to || t.to; t.note = f.note || ''; if (ph) t.phone = ph; }
     if (m.done){ t.done = true; t.doneAt = ''; }
     t.chk = bsTodo(m, row); if (t.chk) flagged++;
     put.push({ t, ok:!t.chk }); n++;
@@ -7441,7 +7713,8 @@ if (typeof document !== 'undefined' && document.addEventListener){
       const row = bsRow(m, t.dataset.key), k = t.dataset.k; if (!row) return;
       row.f[k] = t.value; if (k === 'name'){ const pt = t.value.trim() ? S.patients.find(x => norm(x.name) === norm(t.value)) : null; row.f.pid = pt ? pt.id : ''; }
       if (k === 'time'){ const p = BSCAN.parseTime(t.value); if (p.v){ row.f.time = p.v; t.value = p.v; } else if (p.dia){ row.f.dia = p.dia; row.f.time = ''; t.value = ''; } }
-      if (['name', 'from', 'to', 'time'].includes(k)) row.touched[k] = true;
+      if (['name', 'from', 'to', 'time', 'phone', 'mode'].includes(k)) row.touched[k] = true;
+      if (k === 'name' && row.f.pid) bsFromPatient(m, row);
       if (k === 'mode' && t.value === 'vzorci') row.touched.from = true;
       bsPaintAll(m);
     } else if (b === 'nr'){ const row = bsRow(m, t.dataset.key); if (row){ row.nrEdit = t.value; row.touched.nr = true; bsPaintAll(m); } }
@@ -7609,6 +7882,7 @@ document.addEventListener('click', async e => {
     case 'bsAddRow': bsAddRow(); break;
     case 'bsZoom': bsZoom(); break;
     case 'bsConfirm': bsConfirm(el.dataset.key); break;
+    case 'bsUnblank': bsUnblank(el.dataset.key); break;
     case 'bsSug': bsSug(el); break;
     case 'chkOk': { const art = el.closest('[data-ride]'); const hit = art && rideById(art.dataset.date, art.dataset.ride); if (hit){ hit.r.chk = ''; save(); audit('knjiga.preverjeno', { dan:art.dataset.date, nr:hit.nr }); rerender(); toast(`Prevoz ${hit.nr} potrjen`); } break; }
     case 'bkPrint': bkPrint(); break;

@@ -146,7 +146,8 @@ if (typeof document !== 'undefined' && document.addEventListener){
    ki ostane vidna v dnevu, v opozorilih in v natisnjeni knjigi, dokler dispečer ne pritisne »Preverjeno«. Slika in besedilo se ne shranita. */
 const BS_LABEL = { ok:'prebrano', chk:'preveri', bad:'popravi' };
 const BS_SYM = { ok:'✔', chk:'⚠', bad:'✖' };
-const BS_FIELDS = [['name', 'Ime in priimek', 'text', 'bs-c4'], ['from', 'Od', 'text', 'bs-c4'], ['to', 'Do', 'text', 'bs-c4'], ['time', 'Ura', 'text', 'bs-c2']];
+const BS_FIELDS = [['name', 'Ime in priimek', 'text', 'bs-c4'], ['from', 'Od', 'text', 'bs-c4'], ['to', 'Do', 'text', 'bs-c4']];
+const BS_KEYS = ['name', 'from', 'to', 'time', 'note', 'phone', 'mode'];
 const bsWorst = (a, b) => (BSCAN.LV[b] > BSCAN.LV[a] ? b : a);
 const bsNr = row => { const n = parseInt(String(row.nrEdit == null ? '' : row.nrEdit).trim(), 10); return n >= 1 && n <= 60 ? n : null; };
 const bsDateOk = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && !isNaN(new Date(d + 'T12:00:00'));
@@ -161,7 +162,7 @@ function bsLvl(row, k){
   if (!row.touched[k]) return fl.lvl;
   const v = String(row.f[k] || '').trim();
   if (k === 'time') return v ? (BSCAN.parseTime(v).v ? 'ok' : 'bad') : ((row.f.dia || row.f.mode === 'vzorci') ? 'ok' : 'chk');
-  if (k === 'note') return 'ok';
+  if (k === 'note' || k === 'phone' || k === 'mode') return 'ok';   // dispečer je polje pregledal (lahko je prazno)
   if (k === 'from' && row.f.mode === 'vzorci') return 'ok';
   return v ? 'ok' : 'bad';
 }
@@ -173,12 +174,12 @@ function bsNrLvl(m, row){
 }
 const bsFilled = row => !!(String(row.f.name || '').trim() || String(row.f.from || '').trim() || String(row.f.to || '').trim());
 function bsRowLvl(m, row){
-  let l = 'ok'; ['name', 'from', 'to', 'time', 'note'].forEach(k => { l = bsWorst(l, bsLvl(row, k)); });
+  let l = 'ok'; BS_KEYS.forEach(k => { l = bsWorst(l, bsLvl(row, k)); });
   const nl = bsNrLvl(m, row); if (nl !== 'ok') l = bsWorst(l, 'chk');
   return l;
 }
 function bsTodo(m, row){
-  const t = ['name', 'from', 'to', 'time', 'note'].filter(k => bsLvl(row, k) !== 'ok').map(k => BSCAN.FIELD_LABEL[k]);
+  const t = BS_KEYS.filter(k => bsLvl(row, k) !== 'ok').map(k => BSCAN.FIELD_LABEL[k]);
   if (bsNrLvl(m, row) !== 'ok') t.push('št. polja');
   return t.join(', ');
 }
@@ -198,21 +199,21 @@ function bsFieldHTML(m, row, k, label, cls){
   const id = `bs-${row.key}-${k}`, l = bsLvl(row, k), why = bsReason(row, k), sug = ((row.fl[k] || {}).sug || []).slice(0, 3);
   const chips = (l !== 'ok' && !row.touched[k]) ? sug.map((s, i) => `<button type="button" class="chip toggle bs-sug" data-act="bsSug" data-k="${row.key}|${k}|${i}">${esc(s.label)}</button>`).join('') : '';
   return `<div class="field bs-f ${cls || ''}" data-lv="${l}" data-bsf="${k}"><label for="${id}">${esc(label)}</label>
-    <input id="${id}" type="text" data-bs="f" data-key="${row.key}" data-k="${k}" value="${esc(row.f[k] || '')}" autocomplete="off" ${k === 'time' ? 'inputmode="numeric" maxlength="8" placeholder="08:00"' : ''} ${k === 'name' ? 'list="bsPat"' : ''} ${l === 'bad' ? 'aria-invalid="true"' : ''} aria-describedby="${id}-w">
+    <input id="${id}" type="text" data-bs="f" data-key="${row.key}" data-k="${k}" value="${esc(row.f[k] || '')}" autocomplete="off" ${k === 'time' ? 'inputmode="numeric" maxlength="8" placeholder="08:00"' : k === 'phone' ? 'inputmode="tel" maxlength="24" placeholder="031 123 456"' : ''} ${k === 'name' ? 'list="bsPat"' : ''} ${l === 'bad' ? 'aria-invalid="true"' : ''} aria-describedby="${id}-w">
     <div class="bs-reason" id="${id}-w" role="note">${esc(why)}</div><div class="bs-sugs">${chips}</div></div>`;
 }
 function bsRowHTML(m, row){
-  const l = bsRowLvl(m, row), todo = bsTodo(m, row);
-  const modeSel = `<div class="field bs-f bs-c2" data-lv="ok"><label for="bs-${row.key}-mode">Način</label><select id="bs-${row.key}-mode" data-bs="f" data-key="${row.key}" data-k="mode">${Object.entries(MODES).map(([v, t]) => `<option value="${v}" ${(row.f.mode || 'sede') === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
+  const l = bsRowLvl(m, row), todo = bsTodo(m, row), ml = bsLvl(row, 'mode');
+  const modeSel = `<div class="field bs-f bs-c2" data-lv="${ml}" data-bsf="mode"><label for="bs-${row.key}-mode">Način</label><select id="bs-${row.key}-mode" data-bs="f" data-key="${row.key}" data-k="mode">${Object.entries(MODES).map(([v, t]) => `<option value="${v}" ${(row.f.mode || 'sede') === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select><div class="bs-reason">${esc(bsReason(row, 'mode'))}</div></div>`;
   const diaSel = `<div class="field bs-f bs-c2" data-lv="ok"><label for="bs-${row.key}-dia">Dializa</label><select id="bs-${row.key}-dia" data-bs="f" data-key="${row.key}" data-k="dia"><option value="" ${!row.f.dia ? 'selected' : ''}>ne</option><option value="dop" ${row.f.dia === 'dop' ? 'selected' : ''}>dopoldne</option><option value="pop" ${row.f.dia === 'pop' ? 'selected' : ''}>popoldne</option></select></div>`;
   return `<article class="bs-row" data-bsrow="${row.key}" data-lv="${l}" ${m.only && l === 'ok' ? 'hidden' : ''}>
     <div class="bs-head"><label class="check bs-on"><input type="checkbox" data-bs="on" data-key="${row.key}" ${row.on ? 'checked' : ''}> Vpiši</label>
       <label class="bs-nr" for="bs-${row.key}-nr">Polje <input id="bs-${row.key}-nr" type="number" min="1" max="60" inputmode="numeric" data-bs="nr" data-key="${row.key}" value="${esc(row.nrEdit)}" data-lv="${bsNrLvl(m, row)}"></label>
       <span class="bs-lv" data-role="bslv" ${row.manual && l === 'ok' ? 'hidden' : ''}><span aria-hidden="true">${BS_SYM[l]}</span> ${BS_LABEL[l]}</span><span class="bs-todo" data-role="bstodo">${todo ? '· ' + esc(todo) : ''}</span><span class="sp"></span>
       <button type="button" class="btn sm" data-act="bsConfirm" data-key="${row.key}" data-role="bsconf" ${l === 'ok' ? 'hidden' : ''} title="Primerjal sem s sliko: vse je prav">Vse je prav</button></div>
-    ${row.crop ? `<div class="bs-cropwrap"><img class="bs-crop" src="${row.crop}" alt="Izrez vrstice ${esc(row.nrEdit || '')} s fotografije"></div>` : ''}
-    <div class="bs-grid">${BS_FIELDS.map(([k, lb, , c]) => bsFieldHTML(m, row, k, lb, c)).join('')}${modeSel}${diaSel}
-      <div class="field bs-f bs-c6" data-lv="${bsLvl(row, 'note')}" data-bsf="note"><label for="bs-${row.key}-note">Opomba</label><input id="bs-${row.key}-note" type="text" data-bs="f" data-key="${row.key}" data-k="note" value="${esc(row.f.note || '')}" autocomplete="off"><div class="bs-reason">${esc(bsReason(row, 'note'))}</div></div></div></article>`;
+    ${row.crop ? `<div class="bs-cropwrap"><img class="bs-crop" src="${row.crop}" alt="Izrez prevoza ${esc(row.nrEdit || '')} s fotografije"></div>` : ''}
+    <div class="bs-grid">${BS_FIELDS.map(([k, lb, , c]) => bsFieldHTML(m, row, k, lb, c)).join('')}${bsFieldHTML(m, row, 'phone', 'Telefon', 'bs-c3')}${bsFieldHTML(m, row, 'time', 'Ura', 'bs-c2')}${modeSel}${diaSel}
+      <div class="field bs-f bs-c3" data-lv="${bsLvl(row, 'note')}" data-bsf="note"><label for="bs-${row.key}-note">Opomba</label><input id="bs-${row.key}-note" type="text" data-bs="f" data-key="${row.key}" data-k="note" value="${esc(row.f.note || '')}" autocomplete="off"><div class="bs-reason">${esc(bsReason(row, 'note'))}</div></div></div></article>`;
 }
 function bsSumHTML(m){
   const s = bsStats(m), bad = s.chk + s.bad;
@@ -221,6 +222,11 @@ function bsSumHTML(m){
     : `<span class="bs-cnt" data-lv="ok">✔ Vseh ${s.ok} vrstic je prebranih zanesljivo.</span>`;
   return `${head}<span class="sp"></span>${bad ? `<button type="button" class="btn sm primary" data-act="bsJump">Skoči na naslednje nejasno</button>` : ''}
     <label class="check"><input type="checkbox" data-bs="only" ${m.only ? 'checked' : ''}> Samo nejasno</label>`;
+}
+function bsBlankHTML(m){
+  const b = m.blank || []; if (!b.length) return '';
+  return `<details class="bs-blank" data-role="bsblank"><summary>${b.length} ${b.length === 1 ? 'kartica je videti prazna' : 'kartic je videti praznih'} (št. ${b.map(r => esc(r.nrEdit)).join(', ')}): preglej</summary>
+    ${b.map(r => `<div class="bs-blankrow"><div class="bs-cropwrap"><img class="bs-crop" src="${r.crop}" alt="Izrez kartice ${esc(r.nrEdit)}"></div><button type="button" class="btn sm" data-act="bsUnblank" data-key="${r.key}">Ni prazna: vnesi ta prevoz</button></div>`).join('')}</details>`;
 }
 function bsApplyLabel(m){
   const s = bsStats(m);
@@ -243,9 +249,11 @@ function renderBScan(host, m){
       ${m.notes.length ? `<div class="banner" style="background:var(--warn-soft);color:var(--warn)"><span>${IC.alert}</span><div>${m.notes.map(n => esc(n)).join('<br>')}</div></div>` : ''}
       <div class="row" style="gap:16px;align-items:flex-start;flex-wrap:wrap">${bsDateHTML(m)}
         <label class="check" style="margin-top:22px" title="Prevozi s te strani so že narejeni (knjiga za nazaj): označijo se kot opravljeni"><input type="checkbox" data-bs="done" ${m.done ? 'checked' : ''}> Prevozi so že opravljeni</label></div>
+      ${m.cardMode ? `<div class="banner"><span>${IC.info}</span><div>Pisavo s fotografije računalnik prebere samo deloma. Zato ima vsak prevoz svoj <b>poravnan izrez</b> in polja za vnos: prepiši ime, naslov, telefon in uro. <b>Ime izberi s seznama pacientov</b>: naslov in telefon se dopolnita iz baze. Rdeča polja niso prebrana, rumeni gumbi so predlogi.</div></div>` : ''}
       ${bsPhotosHTML(m)}
       <p class="hint" style="margin:0">${m.manual ? 'Ročni vnos ob fotografiji: vpiši ime, od, do in uro za vsak prevoz; prazne vrstice se preskočijo. Ime lahko izbereš s seznama bolnikov. Ročno vpisane vrstice niso označene z ⚠.' : 'Primerjaj vsako vrstico s sliko izreza. Rumena in rdeča polja so tista, ki jih nisem razumel: izberi predlog, popravi ali pritisni »Vse je prav«. Rdeče vrstice niso izbrane za vpis. Karkoli ostane nepotrjeno, se vpiše z oznako <b>⚠ preveri</b>, ki ostane vidna v dnevu in v natisnjeni knjigi, dokler je ne potrdiš.'}${m.empties ? ` · Prazne vrstice: ${m.empties}.` : ''}</p>
       <div class="bs-list" data-role="bslist">${list || '<div class="empty-state">Na strani ni vpisanih vrstic.</div>'}</div>
+      ${bsBlankHTML(m)}
       <div class="row"><button type="button" class="btn sm" data-act="bsAddRow">+ Dodaj vrstico</button></div>
       <datalist id="bsPat">${S.patients.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), 'sl')).map(p => `<option value="${esc(p.name)}"></option>`).join('')}</datalist>
       ${m.err ? `<div class="banner bad"><span>${IC.alert}</span><div>${esc(m.err)}</div></div>` : ''}
@@ -320,7 +328,7 @@ function bsRetry(){ const m = UI.modal; if (!m || m.type !== 'bscan' || m.busy |
 /* če razpoznava ne uspe: prevoze vneseš sam, ob celi fotografiji (prazne vrstice 1–12, po potrebi še dodaš) */
 function bsBlankRow(m){
   const n = m.rows.length + 1, key = 'm' + (++m.seq);
-  return { key, page:1, nr:n, nrEdit:String(n), nrLvl:'ok', lvl:'ok', todo:[], manual:true, on:true, touched:{}, fl:{}, crop:'', f:{ name:'', from:'', to:'', time:'', mode:'sede', dia:'', note:'', pid:'' } };
+  return { key, page:1, nr:n, nrEdit:String(n), nrLvl:'ok', lvl:'ok', todo:[], manual:true, on:true, touched:{}, fl:{}, crop:'', f:{ name:'', from:'', to:'', time:'', mode:'sede', dia:'', note:'', pid:'', phone:'' } };
 }
 function bsManual(){
   const m = UI.modal; if (!m || m.type !== 'bscan' || m.busy) return;
@@ -340,14 +348,36 @@ function bsPhotosHTML(m){
     <div class="bs-photo ${m.zoom ? 'zoom' : ''}" data-role="bsphoto">${m.photos.map((u, i) => u ? `<img src="${u}" alt="Fotografija strani ${i + 1}">` : '').join('')}</div>
     <div class="row"><button type="button" class="btn sm" data-act="bsZoom">Povečaj / pomanjšaj</button></div></details>`;
 }
+const bsMk = r => Object.assign({}, r, { f:Object.assign({ phone:'' }, r.f), touched:{}, on:r.lvl !== 'bad', nrEdit:r.nr == null ? '' : String(r.nr) });
 function bsLoad(m, res){
-  const rows = res.rows.filter(r => !r.empty);
-  m.rows = rows.map(r => Object.assign({}, r, { f:Object.assign({}, r.f), touched:{}, on:r.lvl !== 'bad', nrEdit:r.nr == null ? '' : String(r.nr) }));
+  let rows = res.rows.filter(r => !r.empty), blank = res.rows.filter(r => r.empty && r.blank && r.crop);
+  /* če so vse kartice videti prazne, je verjetneje težava s fotografijo kot s stranjo: pokaži jih kot običajne vrstice */
+  if (!rows.length && blank.length){ rows = blank.map(r => Object.assign(r, { empty:false, lvl:'bad' })); blank = []; }
+  m.rows = rows.map(bsMk); m.blank = blank.map(r => Object.assign(bsMk(r), { on:true }));
+  m.cardMode = res.pages.some(p => p.layout === 'card');
   m.empties = res.rows.length - rows.length; m.notes = res.notes || []; m.pages = res.pages.length; m.words = res.words;
   if (res.date && res.date.iso){ m.date = res.date.iso; m.dateSrc = 'ocr'; m.dateTouched = false; }
   if (!rows.length){ m.step = 'in'; m.err = 'Na sliki nisem našel nobene vpisane vrstice. Poskusi znova: stran naj bo ravna, v celoti v kadru in dobro osvetljena.'; return; }
   if (!m.doneTouched) m.done = bsDateOk(m.date) && m.date < todayStr();
   m.step = 'review'; m.err = ''; m.jumpKey = '';
+}
+/* prazna kartica, ki je vendarle izpolnjena: preselimo jo med vrstice za vnos */
+function bsUnblank(key){
+  const m = UI.modal; if (!m || m.type !== 'bscan' || !m.blank) return; const i = m.blank.findIndex(r => r.key === key); if (i < 0) return;
+  const r = m.blank.splice(i, 1)[0]; r.lvl = 'bad'; r.empty = false; r.on = true; r.fl.name = Object.assign({}, r.fl.name, { lvl:'bad', why:['kartica je bila videti prazna: vpiši s slike'] });
+  m.rows.push(r); m.rows.sort((a, b) => (bsNr(a) ?? 999) - (bsNr(b) ?? 999)); m.jumpKey = r.key; renderModal();
+  const el = document.querySelector(`[data-bsrow="${key}"] input[data-k=name]`); if (el){ try { el.scrollIntoView({ block:'center' }); el.focus({ preventScroll:true }); } catch (e) { /* */ } }
+}
+/* ime izbrano iz baze pacientov: naslov in telefon se dopolnita, če sta prazna (rumeno: primerjaj z izrezom) */
+function bsFromPatient(m, row){
+  const pt = (S.patients || []).find(x => x.id === row.f.pid); if (!pt) return;
+  const put = (k, v, why) => {
+    if (!v || String(row.f[k] || '').trim()) return;
+    row.f[k] = v; if (!row.manual){ row.fl[k] = { v, lvl:'chk', why:[why], sug:[] }; row.touched[k] = false; }
+    const inp = document.getElementById(`bs-${row.key}-${k}`); if (inp) inp.value = v;
+  };
+  put('from', pt.addr, 'naslov iz baze pacientov: primerjaj z izrezom');
+  put('phone', pt.phone, 'telefon iz baze pacientov: primerjaj z izrezom');
 }
 /* osvežitev prikaza brez ponovnega izrisa (ohrani fokus in drsenje) */
 function bsPaintRow(m, row){
@@ -380,7 +410,7 @@ function bsPaintDate(m){
 function bsRow(m, key){ return m.rows.find(r => r.key === key); }
 function bsConfirm(key){
   const m = UI.modal; if (!m || m.type !== 'bscan') return; const row = bsRow(m, key); if (!row) return;
-  ['name', 'from', 'to', 'time', 'note', 'nr'].forEach(k => { row.touched[k] = true; });
+  [...BS_KEYS, 'nr'].forEach(k => { row.touched[k] = true; });
   row.on = true; const cb = document.querySelector(`[data-bsrow="${key}"] [data-bs=on]`); if (cb) cb.checked = true;
   bsPaintAll(m);
 }
@@ -421,9 +451,9 @@ function bsApply(){
     if (nr){ while (a.length < nr) a.push(blankRide()); if (!isFilled(a[nr - 1])) i = nr - 1; }
     if (i < 0){ i = a.findIndex(x => !isFilled(x)); if (i < 0){ a.push(blankRide()); i = a.length - 1; } if (nr) moved++; }
     const t = a[i], tm = f.time ? (BSCAN.parseTime(f.time).v || '') : '';
-    Object.assign(t, blankRide(), { id:t.id, name:nm, from:fr, to, time:tm, mode:f.mode || 'sede', dia:f.dia || '', note:f.note || '' });
+    Object.assign(t, blankRide(), { id:t.id, name:nm, from:fr, to, time:tm, mode:f.mode || 'sede', dia:f.dia || '', note:f.note || '', phone:String(f.phone || '').trim() });
     if (t.mode === 'vzorci' && !t.name) t.name = 'Vzorci';
-    if (f.pid){ applyPatientToRide(date, t.id, f.pid, { keepMode:!!f.mode }); t.from = fr || t.from; t.to = to || t.to; t.note = f.note || ''; }
+    if (f.pid){ const ph = t.phone; applyPatientToRide(date, t.id, f.pid, { keepMode:!!f.mode }); t.from = fr || t.from; t.to = to || t.to; t.note = f.note || ''; if (ph) t.phone = ph; }
     if (m.done){ t.done = true; t.doneAt = ''; }
     t.chk = bsTodo(m, row); if (t.chk) flagged++;
     put.push({ t, ok:!t.chk }); n++;
@@ -450,7 +480,8 @@ if (typeof document !== 'undefined' && document.addEventListener){
       const row = bsRow(m, t.dataset.key), k = t.dataset.k; if (!row) return;
       row.f[k] = t.value; if (k === 'name'){ const pt = t.value.trim() ? S.patients.find(x => norm(x.name) === norm(t.value)) : null; row.f.pid = pt ? pt.id : ''; }
       if (k === 'time'){ const p = BSCAN.parseTime(t.value); if (p.v){ row.f.time = p.v; t.value = p.v; } else if (p.dia){ row.f.dia = p.dia; row.f.time = ''; t.value = ''; } }
-      if (['name', 'from', 'to', 'time'].includes(k)) row.touched[k] = true;
+      if (['name', 'from', 'to', 'time', 'phone', 'mode'].includes(k)) row.touched[k] = true;
+      if (k === 'name' && row.f.pid) bsFromPatient(m, row);
       if (k === 'mode' && t.value === 'vzorci') row.touched.from = true;
       bsPaintAll(m);
     } else if (b === 'nr'){ const row = bsRow(m, t.dataset.key); if (row){ row.nrEdit = t.value; row.touched.nr = true; bsPaintAll(m); } }
