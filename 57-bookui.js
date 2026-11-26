@@ -249,7 +249,7 @@ function renderBScan(host, m){
       ${m.notes.length ? `<div class="banner" style="background:var(--warn-soft);color:var(--warn)"><span>${IC.alert}</span><div>${m.notes.map(n => esc(n)).join('<br>')}</div></div>` : ''}
       <div class="row" style="gap:16px;align-items:flex-start;flex-wrap:wrap">${bsDateHTML(m)}
         <label class="check" style="margin-top:22px" title="Prevozi s te strani so že narejeni (knjiga za nazaj): označijo se kot opravljeni"><input type="checkbox" data-bs="done" ${m.done ? 'checked' : ''}> Prevozi so že opravljeni</label></div>
-      ${m.cardMode ? `<div class="banner"><span>${IC.info}</span><div>Pisavo s fotografije računalnik prebere samo deloma. Zato ima vsak prevoz svoj <b>poravnan izrez</b> in polja za vnos: prepiši ime, naslov, telefon in uro. <b>Ime izberi s seznama pacientov</b>: naslov in telefon se dopolnita iz baze. Rdeča polja niso prebrana, rumeni gumbi so predlogi.</div></div>` : ''}
+      ${m.cardMode ? `<div class="banner"><span>${IC.info}</span><div>${NSCAN.cloudOn() ? 'Pisavo je prebral Google. Vsak prevoz ima svoj <b>poravnan izrez</b>: <b>primerjaj</b> ime, naslov, telefon in uro z njim. Rumena in rdeča polja niso zanesljiva, rumeni gumbi so predlogi.' : 'Pisavo s fotografije računalnik prebere samo deloma. Zato ima vsak prevoz svoj <b>poravnan izrez</b> in polja za vnos: prepiši ime, naslov, telefon in uro. <b>Ime izberi s seznama pacientov</b>: naslov in telefon se dopolnita iz baze. Rdeča polja niso prebrana, rumeni gumbi so predlogi.'}</div></div>` : ''}
       ${bsPhotosHTML(m)}
       <p class="hint" style="margin:0">${m.manual ? 'Ročni vnos ob fotografiji: vpiši ime, od, do in uro za vsak prevoz; prazne vrstice se preskočijo. Ime lahko izbereš s seznama bolnikov. Ročno vpisane vrstice niso označene z ⚠.' : 'Primerjaj vsako vrstico s sliko izreza. Rumena in rdeča polja so tista, ki jih nisem razumel: izberi predlog, popravi ali pritisni »Vse je prav«. Rdeče vrstice niso izbrane za vpis. Karkoli ostane nepotrjeno, se vpiše z oznako <b>⚠ preveri</b>, ki ostane vidna v dnevu in v natisnjeni knjigi, dokler je ne potrdiš.'}${m.empties ? ` · Prazne vrstice: ${m.empties}.` : ''}</p>
       <div class="bs-list" data-role="bslist">${list || '<div class="empty-state">Na strani ni vpisanih vrstic.</div>'}</div>
@@ -260,7 +260,12 @@ function renderBScan(host, m){
       <div class="row bs-foot" style="justify-content:space-between;flex-wrap:wrap"><button type="button" class="btn" data-act="bsBack">Nazaj (nova fotografija)</button>
         <span class="row"><button type="button" class="btn" data-act="closeModal">Prekliči</button><button type="button" class="btn primary" data-act="bsApply" data-role="bsapply">${esc(bsApplyLabel(m))}</button></span></div>`;
   } else {
-    body = `<div class="banner"><span>${IC.info}</span><div>Fotografiraj stran papirne knjige (ali izberi PDF-sken). Aplikacija prebere številke polj, imena, naslove in ure ter jih postavi v dan. <b>Fotografija se ne pošlje nikamor in se ne shrani</b>; branje poteka v tej napravi. Program za branje se ob odprtju okna enkrat prenese (približno 7 MB) in nato velja za vse strani.</div></div>
+    const cloud = NSCAN.cloudOn();
+    body = cloud
+      ? `<div class="banner" style="background:var(--warn-soft);color:var(--warn)"><span>${IC.alert}</span><div><b>Branje v oblaku je vključeno</b> (config.js → ocr.cloud): fotografija strani se pošlje <b>Googlu (Cloud Vision)</b>, da prebere tudi rokopis. Na strani so imena, naslovi in telefoni pacientov: uporabi to samo, če je to odobril pooblaščenec za varstvo podatkov (NAVODILA 0.2 in 11.10). Vsako polje primerjaj s sliko izreza.
+          <div class="row" style="gap:8px;margin-top:6px;flex-wrap:wrap"><button type="button" class="btn sm" data-act="bsCloudTest">Preveri povezavo z oblakom</button><span class="hint" data-role="bscloudtest" role="status">${esc(m.cloudTest || '')}</span></div></div></div>`
+      : `<div class="banner"><span>${IC.info}</span><div>Fotografiraj stran papirne knjige (ali izberi PDF-sken). Aplikacija na fotografiji poišče <b>kartice prevozov</b>, vsako poravna in izreže ter prebere <b>natisnjeno</b> besedilo. <b>Rokopisa (imena, naslovi, telefoni) računalnik v telefonu ne prebere</b>: ob vsakem izrezu ga vpišeš ti, ime izbereš s seznama pacientov (naslov in telefon se dopolnita iz baze). <b>Fotografija se ne pošlje nikamor in se ne shrani</b>; branje poteka v tej napravi. Program za branje se ob odprtju okna enkrat prenese (približno 7 MB).</div></div>`;
+    body += `
       ${ocrOn ? `<div class="bs-warm" data-role="bswarm" data-st="${esc(m.warm)}" role="status">${esc(bsWarmText(m))}</div>` : ''}
       <div class="stack" style="gap:8px"><div class="row" style="gap:8px;flex-wrap:wrap"><label class="btn primary" for="bsFile" style="cursor:pointer">${ocrOn ? 'Izberi fotografije ali PDF' : 'Razpoznava izklopljena'}</label>
         <label class="btn" for="bsCam" style="cursor:pointer">Fotografiraj</label></div>
@@ -272,7 +277,7 @@ function renderBScan(host, m){
       <ul class="hint bs-tips" style="margin:0;padding-left:18px">
         <li>Knjigo položi ravno, v celoti v kader, brez sence in bliska; telefon drži vzporedno z listom.</li>
         <li>Ena fotografija = ena stran. Za dan z več stranmi izberi več fotografij naenkrat (isti dan).</li>
-        <li><b>Tiskano ali lepo berljivo pisavo</b> aplikacija prebere dobro. <b>Hitro ročno pisavo pogosto napačno</b>: takšna polja dobijo oznako ⚠ ali ✖ in jih preveriš s sliko vrstice. Nič se ne vpiše neopazno.</li>
+        <li>${cloud ? '<b>Rokopis prebere Google.</b> Polja z nizko zanesljivostjo dobijo oznako ⚠ ali ✖: preveri jih s sliko izreza. Nič se ne vpiše neopazno.' : '<b>Natisnjeno besedilo</b> aplikacija prebere, <b>rokopisa ne</b>: takšna polja ostanejo prazna in rdeča, ob njih je slika izreza. Nič se ne vpiše neopazno.'}</li>
       </ul>
       ${m.err ? `<div class="banner bad"><span>${IC.alert}</span><div>${esc(m.err)}</div></div>` : ''}
       ${m.err && !m.busy && m.photos.some(Boolean) ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn primary" data-act="bsManual">Vnesi ročno ob fotografiji</button>${m.lastFiles ? '<button type="button" class="btn" data-act="bsRetry">Poskusi znova</button>' : ''}</div>` : ''}
@@ -322,6 +327,19 @@ async function bsFiles(list){
   finally { clearInterval(timer); BSCAN.hooks.onPhoto = null; }
   m.busy = '';
   if (UI.modal === m) renderModal();
+}
+/* preizkus povezave z oblakom: natisnjen izmišljen napis (brez podatkov pacientov) → ali Google vrne besedilo */
+async function bsCloudTest(){
+  const m = UI.modal; if (!m || m.type !== 'bscan' || !NSCAN.cloudOn()) return;
+  const put = t => { m.cloudTest = t; const el = document.querySelector('[data-role=bscloudtest]'); if (el) el.textContent = t; };   // besedilo ostane tudi, če se okno vmes ponovno nariše
+  put('preizkušam …');
+  try {
+    const c = document.createElement('canvas'); c.width = 900; c.height = 160; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 900, 160); g.fillStyle = '#111'; g.font = 'bold 64px sans-serif'; g.fillText('PREIZKUS 031 123 456', 30, 100);
+    const blob = await new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('Slike ni mogoče pripraviti.')), 'image/jpeg', 0.9));
+    const r = await NSCAN.ocr(blob, null, NSCAN.ocrCfg(), { words:true, cloud:true });
+    const t = (r.words || []).map(w => w.text).join(' ');
+    put(/123/.test(t) ? '✔ Povezava deluje (Google je prebral: »' + t + '«).' : '⚠ Povezava deluje, a branje je nepričakovano: »' + t + '«.');
+  } catch (e) { put('✖ ' + String(e && e.message || e)); }
 }
 function bsCancel(){ const m = UI.modal; if (!m || m.type !== 'bscan' || !m.busy) return; m.busy = 'prekinjam …'; const el = document.querySelector('[data-role=bsbusy]'); if (el) el.textContent = m.busy; BSCAN.cancel(m.ctl); }
 function bsRetry(){ const m = UI.modal; if (!m || m.type !== 'bscan' || m.busy || !m.lastFiles) return; bsFiles(m.lastFiles); }

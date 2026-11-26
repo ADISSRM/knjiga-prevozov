@@ -24,6 +24,7 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   const browser = await chromium.launch();
   const mock = createMock({});
   let routeMode = 'ok';   // ok | down
+  let expect403 = false;   // preizkus napake Googla (403) sme pustiti vrstico v konzoli
   const ctx = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1280, height: 1000 }, deviceScaleFactor: 1 });
   const seen = [];
   await ctx.route(/^https:\/\/(router\.project-osrm\.org|routing\.openstreetmap\.de)\//, async route => {
@@ -57,7 +58,7 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   const page = await ctx.newPage();
   const errors = [], csp = [];
   const notFound = []; page.on('response', r => { if (r.status() === 404) notFound.push(r.url().replace(/^http:\/\/127\.0\.0\.1:\d+/, '')); });
-  page.on('console', m => { if (m.type() === 'error' && !/status of 404/.test(m.text()) && !(routeMode === 'down' && /ERR_FAILED/.test(m.text()))) errors.push(m.text()); });
+  page.on('console', m => { if (m.type() === 'error' && !/status of 404/.test(m.text()) && !(expect403 && /status of 403/.test(m.text())) && !(routeMode === 'down' && /ERR_FAILED/.test(m.text()))) errors.push(m.text()); });
   page.on('pageerror', e => { if (/serviceWorker.*sandboxed/.test(e.message)) return; errors.push('pageerror: ' + e.message); });   // artefakt Playwrighta (serviceWorkers:'block') v sandbox okvirju OCR; v pravem brskalniku te napake ni
   page.on('console', m => { if (/Content Security Policy/i.test(m.text())) csp.push(m.text()); });
 
@@ -618,7 +619,7 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   await page.evaluate(() => { UI.view = 'knjiga'; rerender(); }); await page.waitForSelector('[data-act="bsOpen"]');
   const fBefore = await page.evaluate(() => window.__ifr.filter(x => /ocr\.html/.test(x)).length);
   await page.click('[data-act="bsOpen"]'); await page.waitForSelector('#bsFile');
-  ok('skeniranje knjige: okno ponuja izbiro fotografij, kamero in jasna navodila (ročna pisava = pogosto ⚠)', !!(await page.$('#bsCam')) && /ročno pisavo pogosto napačno/.test(await page.textContent('.bscan')));
+  ok('skeniranje knjige: okno ponuja izbiro fotografij, kamero in iskreno navodilo (rokopisa računalnik v telefonu ne prebere, ime vpišeš ob izrezu)', !!(await page.$('#bsCam')) && /računalnik v telefonu ne prebere/.test(await page.textContent('.bscan')) && /ime izbereš s seznama pacientov/.test(await page.textContent('.bscan')));
   await page.waitForSelector('[data-role=bswarm][data-st=ok]', { timeout: 15000 });
   ok('skeniranje knjige: razpoznava se pripravi vnaprej ob odprtju okna (»pripravljena«), še preden je izbrana fotografija; knjižnica se naloži enkrat', bookSeen.length === 1 && /pripravljena/.test(await page.textContent('[data-role=bswarm]')), String(bookSeen.length));
   await page.setInputFiles('#bsFile', { name:'stran.png', mimeType:'image/png', buffer:bpng });
@@ -761,6 +762,65 @@ const results = []; const ok = (name, pass, d = '') => { results.push({ name, pa
   await page.click('[data-act="bsApply"]'); await page.waitForSelector('#modal .modal', { state:'detached', timeout: 10000 }).catch(() => {}); await page.waitForTimeout(300);
   const cap = await page.evaluate(d => { const a = (S.rides[d] || []).filter(isFilled); const by = nr => a.find(r => r.name === nr) || {}; return { n:a.length, r1:by('Novak Janez'), r3:by('Horvat Marija'), r4:by('Kovač Franc') }; }, cDay);
   ok('kartice: vpis ustvari prevoze s telefonom (031 123 456 iz rokopisa, 041 555 666 iz baze), uro 12:00 in načinom; neprebrana polja ostanejo prazna', cap.n >= 3 && cap.r1.phone === '031 123 456' && cap.r1.time === '10:45' && cap.r3.phone === '041 555 666' && cap.r3.from === 'Križe 3' && cap.r4.time === '12:00' && cap.r4.mode === 'utila', JSON.stringify({ n:cap.n, r1:[cap.r1.phone, cap.r1.time], r3:[cap.r3.phone, cap.r3.from], r4:[cap.r4.time, cap.r4.mode] }));
+
+  // ---------- branje v oblaku (NEOBVEZNO, privzeto izklopljeno): Google Cloud Vision, posnetek strežnika, izmišljeni podatki ----------
+  const visionSeen = []; let visionMode = 'cards', neverSeen = 0;
+  const toVision = ws => ({ responses:[{ fullTextAnnotation:{ text:ws.map(w => w.text).join(' '), pages:[{ blocks:[{ paragraphs:[{ words:ws.map(w => ({ confidence:w.confidence / 100,
+    boundingBox:{ vertices:[{ x:w.bbox.x0, y:w.bbox.y0 }, { x:w.bbox.x1, y:w.bbox.y0 }, { x:w.bbox.x1, y:w.bbox.y1 }, { x:w.bbox.x0, y:w.bbox.y1 }] }, symbols:[...w.text].map(ch => ({ text:ch })) })) }] }] }] } }] });
+  const HI = { name:92, from:90, to:90, phone:93, mode:90, time:91 };
+  const VCARDS = [
+    { nr:1, name:'Novak Janez', from:'Dobova 25', to:'OI LJ', phone:'031 123 456', mode:'SEDE', time:'10:45', conf:HI },
+    { nr:2, name:'Zupan Vida', from:'Artiče 21', to:'ZD Krško', phone:'041 777 888', mode:'LEŽE', time:'8:30', conf:HI },
+    { nr:3, name:'Kovač Franc', from:'Cesta svobode 14', to:'SB Novo mesto', phone:'040 111 222', mode:'UTILA', time:'12:00', conf:HI },
+    { nr:4, name:'Horvat Marija', from:'Križe 3', to:'SB Brežice', phone:'', mode:'SEDE', time:'9:15', conf:HI },
+    { nr:5, blank:true }, { nr:6, blank:true } ];
+  const VWORDS = genCards(VCARDS, {});
+  await ctx.route(/^https:\/\/eu-vision\.googleapis\.com\//, route => {
+    const rq = route.request(), cors = { 'access-control-allow-origin':'*', 'access-control-allow-headers':'content-type', 'access-control-allow-methods':'POST' };
+    if (rq.method() === 'OPTIONS') return route.fulfill({ status:204, headers:cors });
+    let body = {}; try { body = JSON.parse(rq.postData() || '{}'); } catch (e) { /* nič */ }
+    visionSeen.push({ url:rq.url(), headers:rq.headers(), body });
+    if (visionMode === '403') return route.fulfill({ status:403, contentType:'application/json', headers:cors, body:JSON.stringify({ error:{ code:403, message:'Cloud Vision API has not been used in project 1 before or it is disabled.', status:'PERMISSION_DENIED' } }) });
+    const ws = visionMode === 'test' ? [['PREIZKUS', 30], ['031', 330], ['123', 420], ['456', 510]].map(([t, x]) => ({ text:t, confidence:95, bbox:{ x0:x, y0:40, x1:x + 80, y1:100 } })) : VWORDS;
+    route.fulfill({ status:200, contentType:'application/json', headers:cors, body:JSON.stringify(toVision(ws)) });
+  });
+  await ctx.route(/\/ocr\/vendor\/tess-never\.js$/, route => { neverSeen++; route.fulfill({ status:200, contentType:'text/javascript', body:`self.Tesseract={createWorker:async function(){return{setParameters:async function(){},recognize:async function(){return{data:{text:'tess',words:[]}}},terminate:async function(){}}}};` }); });
+  const ocrKeep = await page.evaluate(() => window.KP_CONFIG.ocr);
+  ok('oblak: privzeto je izklopljen: v vseh dosedanjih preizkusih ni bilo nobenega klica proti Google Vision', visionSeen.length === 0 && !(await page.evaluate(() => NSCAN.cloudOn())));
+  await page.evaluate(() => { window.KP_CONFIG.ocr = { on:true, lib:'ocr/vendor/tess-never.js', lang:'slv', cloud:{ key:'TESTKEY123', endpoint:'https://eu-vision.googleapis.com', lang:'sl' } }; UI.modal = null; UI.view = 'knjiga'; rerender(); });
+  await page.waitForSelector('[data-act="bsOpen"]'); await page.click('[data-act="bsOpen"]'); await page.waitForSelector('#bsFile');
+  await page.waitForSelector('[data-role=bswarm][data-st=ok]', { timeout: 15000 });
+  const cl0 = await page.evaluate(() => ({ warn:/Branje v oblaku je vključeno/.test(document.querySelector('.bscan').textContent), g:/Googlu/.test(document.querySelector('.bscan').textContent), btn:!!document.querySelector('[data-act=bsCloudTest]'), noLocal:!/ne pošlje nikamor/.test(document.querySelector('.bscan').textContent) }));
+  ok('oblak: ko je vključen, okno jasno opozori, da se fotografija pošlje Googlu (ne trdi »ne pošlje se nikamor«), ponudi preizkus povezave in ne prenaša programa Tesseract', cl0.warn && cl0.g && cl0.btn && cl0.noLocal && neverSeen === 0, JSON.stringify({ cl0, neverSeen }));
+  visionMode = 'test'; await page.click('[data-act=bsCloudTest]'); await page.waitForFunction(() => /Povezava deluje|✖/.test(document.querySelector('[data-role=bscloudtest]').textContent), null, { timeout:15000 });
+  const tq = visionSeen[0] || { url:'', body:{}, headers:{} }, tr = ((tq.body.requests || [])[0]) || {};
+  ok('oblak: preizkus povezave pošlje en zahtevek (naslov EU, ključ v zahtevku, DOCUMENT_TEXT_DETECTION, jezik sl, JPEG) in pokaže, kaj je Google prebral', /^https:\/\/eu-vision\.googleapis\.com\/v1\/images:annotate\?key=TESTKEY123$/.test(tq.url) && tr.features && tr.features[0].type === 'DOCUMENT_TEXT_DETECTION' && (tr.imageContext.languageHints || []).includes('sl') && /^\/9j\//.test((tr.image || {}).content || '') && /Povezava deluje/.test(await page.textContent('[data-role=bscloudtest]')), JSON.stringify({ url:tq.url, n:visionSeen.length, t:await page.textContent('[data-role=bscloudtest]') }));
+  visionMode = 'cards';
+  await page.setInputFiles('#bsFile', { name:'kartice.png', mimeType:'image/png', buffer:cpng });
+  await page.waitForSelector('.bs-row', { timeout: 40000 });
+  const vq = visionSeen[1] || { headers:{}, body:{} };
+  const vr = await page.evaluate(() => { const rows = [...document.querySelectorAll('.bs-row')]; return { n:rows.length, blank:document.querySelectorAll('details.bs-blank .bs-blankrow').length, banner:/Pisavo je prebral Google/.test(document.querySelector('.bscan').textContent) }; });
+  ok('oblak: stran gre na Google samo enkrat (barvna JPEG slika, ne črno-bela), Tesseract se ne naloži, najdene so 4 kartice, prazni sta v zloženem razdelku, pasica pove, da je pisavo prebral Google', visionSeen.length === 2 && /^\/9j\//.test(((vq.body.requests || [])[0].image || {}).content || '') && neverSeen === 0 && vr.n === 4 && vr.blank === 2 && vr.banner, JSON.stringify({ n:visionSeen.length, vr, neverSeen }));
+  ok('oblak: zahtevek nosi samo izvor strani kot Referer (da deluje omejitev ključa na naslov), brez poti, piškotkov in prijave', /^http:\/\/127\.0\.0\.1:\d+\/$/.test(vq.headers.referer || '') && !vq.headers.cookie && !vq.headers.authorization, JSON.stringify({ ref:vq.headers.referer }));
+  const vk = await page.evaluate(() => Object.fromEntries([1, 2, 3, 4].map(n => [n, UI.modal.rows.find(r => r.nr === n).key])));
+  const vv = await page.evaluate(k => { const f = (key, x) => (document.querySelector(`#bs-${key}-${x}`) || {}).value; const lv = (key, x) => (document.querySelector(`[data-bsrow="${key}"] [data-bsf=${x}]`) || {}).dataset.lv; const o = {}; [1, 2, 3, 4].forEach(n => { const key = k[n]; o[n] = { name:f(key, 'name'), from:f(key, 'from'), to:f(key, 'to'), time:f(key, 'time'), mode:f(key, 'mode'), phone:f(key, 'phone'), nlv:lv(key, 'name'), plv:lv(key, 'phone') }; }); return o; }, vk);
+  ok('oblak: prebrano se vpiše v polja (znan pacient iz baze, telefon, ura, način, naslovi), nov pacient ostane rumen »preveri«, telefon je vedno rumen (primerjaj s sliko)',
+     vv[1].name === 'Novak Janez' && vv[1].nlv === 'ok' && vv[1].phone === '031 123 456' && vv[1].plv === 'chk' && vv[1].time === '10:45' && vv[1].mode === 'sede' && vv[1].from === 'Dobova 25' && vv[1].to === 'OI LJ'
+     && vv[2].name === 'Zupan Vida' && vv[2].nlv === 'chk' && vv[2].time === '08:30' && vv[2].mode === 'leze' && vv[2].phone === '041 777 888'
+     && vv[3].name === 'Kovač Franc' && vv[3].time === '12:00' && vv[3].mode === 'utila' && vv[3].phone === '040 111 222' && vv[4].name === 'Horvat Marija' && vv[4].time === '09:15', JSON.stringify(vv));
+  await page.screenshot({ path: OUT + '/9g-scan-oblak.png' });
+  // napaka Googla (403): jasna razlaga, fotografija ostane, ponujen je ročni vnos
+  await page.click('[data-act=bsBack]'); await page.waitForSelector('#bsFile');
+  visionMode = '403'; expect403 = true; await page.setInputFiles('#bsFile', { name:'kartice.png', mimeType:'image/png', buffer:cpng });
+  await page.waitForSelector('.bscan .banner.bad', { timeout: 20000 });
+  const v403 = await page.evaluate(() => ({ err:document.querySelector('.bscan .banner.bad').textContent, man:!!document.querySelector('[data-act=bsManual]'), retry:!!document.querySelector('[data-act=bsRetry]') }));
+  ok('oblak: napaka 403 pove razlog in ukrep (Cloud Vision API, obračunski račun, omejitev ključa); fotografija ostane in ponujena sta ročni vnos in ponovitev', /zavrnil dostop \(403\)/.test(v403.err) && /Cloud Vision API/.test(v403.err) && v403.man && v403.retry, JSON.stringify(v403));
+  // naloge se nikoli ne berejo v oblaku: klic brez zastavice cloud gre še vedno v lokalni Tesseract
+  visionMode = 'cards'; expect403 = false; const vBefore = visionSeen.length;
+  const loc = await page.evaluate(async () => { const b = await new Promise(r => { const c = document.createElement('canvas'); c.width = 50; c.height = 50; c.toBlob(r, 'image/png'); }); try { return await NSCAN.ocr(b, null, NSCAN.ocrCfg()); } catch (e) { return 'ERR ' + e.message; } });
+  ok('oblak: branje naloga (brez zastavice) ostane lokalno: Tesseract se naloži, Google ni poklican', loc === 'tess' && neverSeen === 1 && visionSeen.length === vBefore, JSON.stringify({ loc, neverSeen, n:visionSeen.length }));
+  await page.evaluate(k => { window.KP_CONFIG.ocr = k; UI.modal = null; renderModal(); rerender(); }, ocrKeep);
+  ok('oblak: po izklopu (brez ključa) je spet vse lokalno', !(await page.evaluate(() => NSCAN.cloudOn())));
 
   // ---------- uvoz zaposlenih (izmišljena imena) ----------
   await page.click('[data-nav="nastavitve"]'); await page.click('[data-act="setTab"][data-k="zaposleni"]'); await page.waitForSelector('form[data-form="importStaff"]', { state:'attached' });

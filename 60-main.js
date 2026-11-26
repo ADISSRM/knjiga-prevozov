@@ -152,6 +152,7 @@ document.addEventListener('click', async e => {
     case 'bsBack': bsBack(); break;
     case 'bsCancel': bsCancel(); break;
     case 'bsRetry': bsRetry(); break;
+    case 'bsCloudTest': bsCloudTest(); break;
     case 'bsManual': bsManual(); break;
     case 'bsAddRow': bsAddRow(); break;
     case 'bsZoom': bsZoom(); break;

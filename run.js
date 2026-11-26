@@ -1102,6 +1102,13 @@ test('skeniranje knjige (kartice): številke polj (po DATUM, po glasovanju), nas
   const m = CARDS.map(x => Object.assign({}, x)); m[1].noLabel = true; m[3].noLabel = true;
   const r = t.parse(genCards(m, { tilt:0.03 })), by = n => r.rows.find(x => x.nr === n);
   assert.strictEqual(r.cards, 6); assert.strictEqual(by(2).f.name, 'Horvat Marija'); assert.strictEqual(by(4).f.name, 'Kovač Franc'); assert.strictEqual(by(4).f.to, 'SB Novo mesto');
+  /* zadnje tri oznake »Način prevoza« niso prebrane: z opcijo trail se kartice na koncu lista izpeljejo (brez nje ne); prebrano ostane na svojem mestu */
+  const tl = CARDS.map(x => Object.assign({}, x)); tl[3].noLabel = true; tl[4].noLabel = true; tl[5].noLabel = true;
+  assert.strictEqual(t.parse(genCards(tl, {})).cards, 3, 'brez trail se razmik ne nadaljuje');
+  const rt = t.js(`BSCAN.parse(${JSON.stringify(genCards(tl, {}))}, 1500, 1400, { trail:true })`);
+  assert.strictEqual(rt.cards, 6, 'izpeljane zadnje kartice: ' + rt.cards);
+  assert.ok(rt.rows.slice(3).every(x => x.geo.trailing && x.geo.derived), 'izpeljane so označene');
+  assert.strictEqual(rt.rows.find(x => x.nr === 4).f.name, 'Kovač Franc'); assert.strictEqual(rt.rows.find(x => x.nr === 4).f.to, 'SB Novo mesto');
   /* naslov »PREVOZOV« in glava »PREVOZI« nista oznaki prevoza */
   const extra = genCards(CARDS, {}).concat([{ text:'PREVOZI', confidence:90, bbox:{ x0:700, y0:1500, x1:800, y1:1522 } }, { text:'Prevozi', confidence:90, bbox:{ x0:700, y0:1700, x1:800, y1:1722 } }]);
   assert.strictEqual(t.parse(extra).cards, 6);

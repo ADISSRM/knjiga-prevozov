@@ -3740,8 +3740,15 @@ const NSCAN = (() => {
       else for (let i = 0, n = w * h; i < n; i++){ d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = s[i]; d[i * 4 + 3] = 255; }
       ctx.putImageData(im, 0, 0);
     } else {
-      const bmp = await createImageBitmap(src.kind === 'jpeg' ? new Blob([src.bytes], { type:'image/jpeg' }) : src.blob);
-      w = bmp.width; h = bmp.height; cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(bmp, 0, 0); if (bmp.close) bmp.close();
+      let bmp; try { bmp = await createImageBitmap(src.kind === 'jpeg' ? new Blob([src.bytes], { type:'image/jpeg' }) : src.blob); }
+      catch (e) { throw new Error('Slike ni mogoče odpreti' + (src.blob && /hei[cf]/i.test((src.blob.type || '') + (src.blob.name || '')) ? ' (format HEIC: na iPhonu izberi Nastavitve → Kamera → Formati → »Najbolj združljivo« ali fotografiraj kar v aplikaciji)' : ' (poškodovana ali nepodprta datoteka)') + '.'); }
+      w = bmp.width; h = bmp.height;
+      /* velika fotografija (iPhone 12–48 MP) se pomanjša že pri risanju: cela slika v polni velikosti bi na telefonu lahko presegla omejitev pomnilnika platna */
+      const k0 = Math.min(1, max / Math.max(w, h));
+      cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(w * k0)); cv.height = Math.max(1, Math.round(h * k0));
+      const g0 = cv.getContext('2d'); if (!g0) throw new Error('Slike ni mogoče pripraviti (premalo pomnilnika). Poskusi z manjšo fotografijo.');
+      g0.imageSmoothingQuality = 'high'; g0.drawImage(bmp, 0, 0, cv.width, cv.height); if (bmp.close) bmp.close();
+      return cv;
     }
     const k = Math.min(1, max / Math.max(w, h));
     if (k < 1){ const c2 = document.createElement('canvas'); c2.width = Math.round(w * k); c2.height = Math.round(h * k); const x = c2.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(cv, 0, 0, c2.width, c2.height); cv = c2; }
@@ -3779,7 +3786,7 @@ const NSCAN = (() => {
      ne more hraniti prenesenih datotek: prenos jedra (~5 MB) in modela (~2 MB) se zato naredi ENKRAT na sejo (v ozadju, ob odprtju okna), ne za vsako sliko znova.
      Nadzor: če okvir 75 s ne pošlje nobenega napredka, se seja prekine z jasno napako; celotna omejitev 10 minut. Seja se po 6 minutah mirovanja sprosti (pomnilnik telefona). */
   const OCR_T = { silence:75000, hard:600000, idle:360000 };   // spremenljivo samo zaradi preizkusov
-  const STAGE_LABEL = { lib:'nalagam program za razpoznavo', 'loading tesseract core':'prenašam jedro razpoznave (samo prvič v seji)', 'initializing tesseract':'zaganjam razpoznavo', 'loading language traineddata':'prenašam slovenski jezikovni model (samo prvič v seji)', 'initializing api':'zaganjam razpoznavo', 'recognizing text':'berem besedilo', prep:'pripravljam sliko' };
+  const STAGE_LABEL = { lib:'nalagam program za razpoznavo', 'loading tesseract core':'prenašam jedro razpoznave (samo prvič v seji)', 'initializing tesseract':'zaganjam razpoznavo', 'loading language traineddata':'prenašam slovenski jezikovni model (samo prvič v seji)', 'initializing api':'zaganjam razpoznavo', 'recognizing text':'berem besedilo', cloud:'berem v oblaku (Google Vision)', prep:'pripravljam sliko' };
   const stageLabel = st => STAGE_LABEL[st] || String(st || 'delam');
   let SES = null;
   function makeSession(cfg){
@@ -3840,11 +3847,58 @@ const NSCAN = (() => {
   }
   const ocrClose = () => { if (SES) SES.close(); };
   /* prekinitev uporabnika: seja se ustavi samo, če ravno bere; drugače ostane pripravljena za naslednjo sliko */
-  const ocrAbort = () => { if (SES && SES.busy) SES.close(); };
-  function ocr(png, onProgress, cfg = ocrCfg(), extra){ return ocrSession(cfg).run(png, onProgress, extra); }
-  const ocrEnabled = (cfg = ocrCfg()) => cfg.on !== false && !!cfg.lib;
+  const ocrAbort = () => { if (SES && SES.busy) SES.close(); if (CLOUD_AC) CLOUD_AC.abort(); };
+  /* ---- NEOBVEZNO (privzeto izklopljeno): branje rokopisa v oblaku, Google Cloud Vision (config.js → ocr.cloud) ----
+     Klic je iz glavne strani, NE iz izoliranega okvirja: okvir nima izvora in ne pošlje Referer, zato omejitev ključa na naslov strani ne bi delovala.
+     Pošlje se samo slika strani; brez piškotkov in prijave; ključ je omejen na »Cloud Vision API« in na naslov te strani. */
+  let CLOUD_AC = null;
+  const b64 = buf => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+  function visionWords(j){
+    const out = [], r = j && j.responses && j.responses[0], pages = (r && r.fullTextAnnotation && r.fullTextAnnotation.pages) || [];
+    pages.forEach(pg => (pg.blocks || []).forEach(b => (b.paragraphs || []).forEach(p => (p.words || []).forEach(w => {
+      const t = (w.symbols || []).map(s => s.text || '').join(''), v = (w.boundingBox && w.boundingBox.vertices) || [];
+      if (!t || !v.length) return;
+      const xs = v.map(q => q.x || 0), ys = v.map(q => q.y || 0);
+      out.push({ text:t, confidence:Math.round((w.confidence == null ? 0.5 : +w.confidence) * 100), bbox:{ x0:Math.min(...xs), y0:Math.min(...ys), x1:Math.max(...xs), y1:Math.max(...ys) } });
+    }))));
+    return out;
+  }
+  function cloudMsg(status, err){
+    const m = String((err && err.message) || '').replace(/\s+/g, ' ').slice(0, 220), c = (err && err.code) || status;
+    if (c === 403 || c === 401) return `Google Vision je zavrnil dostop (${c}): preveri, da je vključen »Cloud Vision API«, da je projektu dodan obračunski račun (brezplačna kvota ostane) in da je ključ omejen na naslov te strani (HTTP referrer), ne na kak drug naslov. ${m}`;
+    if (c === 429) return `Google Vision: presežena kvota (429). Počakaj ali preveri kvoto v Google Cloud konzoli. ${m}`;
+    if (c === 400) return `Google Vision je zavrnil zahtevo (400): ${m} Preveri ključ v config.js (ocr.cloud.key).`;
+    return `Google Vision ni uspel (${c}). ${m}`;
+  }
+  async function cloudRead(png, onProgress, cfg, extra){
+    const c = cfg.cloud || {}, ep = String(c.endpoint || 'https://eu-vision.googleapis.com').replace(/\/+$/, '');
+    if (!c.key) throw new Error('Branje v oblaku ni nastavljeno (config.js → ocr.cloud.key).');
+    const tell = pct => { if (onProgress) { try { onProgress({ stage:'cloud', pct }); } catch (e) { /* prikaz ne sme ustaviti branja */ } } };
+    const ac = CLOUD_AC = new AbortController(); let timedOut = false; const to = setTimeout(() => { timedOut = true; ac.abort(); }, 90000);
+    tell(0);
+    try {
+      const body = JSON.stringify({ requests:[{ image:{ content:b64(await png.arrayBuffer()) }, features:[{ type:'DOCUMENT_TEXT_DETECTION' }], imageContext:{ languageHints:[c.lang || 'sl'] } }] });
+      let r, j = {};
+      try { r = await fetch(`${ep}/v1/images:annotate?key=${encodeURIComponent(c.key)}`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body, credentials:'omit', cache:'no-store', referrerPolicy:'strict-origin-when-cross-origin', signal:ac.signal }); }
+      catch (e) {
+        if (timedOut) throw new Error('Branje v oblaku je trajalo predolgo (90 s). Poskusi znova ali na Wi-Fi.');
+        if (ac.signal.aborted) throw new Error('Razpoznava je bila prekinjena.');
+        throw new Error('Povezava z Google Vision ni uspela: preveri internet, vsebinski blokator ali naslov (ocr.cloud.endpoint).');
+      }
+      try { j = await r.json(); } catch (e) { j = {}; }
+      const err = (j && j.error) || (j && j.responses && j.responses[0] && j.responses[0].error);
+      if (!r.ok || err) throw new Error(cloudMsg(r.status, err));
+      tell(1);
+      const full = (j.responses && j.responses[0] && j.responses[0].fullTextAnnotation) || {};
+      return extra && extra.words ? { text:S_(full.text), words:visionWords(j), tsv:'' } : S_(full.text);
+    } finally { clearTimeout(to); if (CLOUD_AC === ac) CLOUD_AC = null; }
+  }
+  function ocr(png, onProgress, cfg = ocrCfg(), extra){ return extra && extra.cloud && cloudOn(cfg) ? cloudRead(png, onProgress, cfg, extra) : ocrSession(cfg).run(png, onProgress, extra); }
+  /* neobvezno branje v oblaku (config.js → ocr.cloud.key; privzeto izklopljeno): samo za strani knjige, ne za naloge */
+  const cloudOn = (cfg = ocrCfg()) => cfg.on !== false && !!(cfg.cloud && cfg.cloud.key);
+  const ocrEnabled = (cfg = ocrCfg()) => cfg.on !== false && (!!cfg.lib || cloudOn(cfg));
 
-  return { parse, matchPatient, apply, pdfImages, prepare, ocr, ocrSession, ocrClose, ocrAbort, ocrLimits:OCR_T, stageLabel, ocrEnabled, ocrCfg, lines, zzzsIn, dates, title, fixDigits, toCanvas, enhance, toBlob };
+  return { parse, matchPatient, apply, pdfImages, prepare, ocr, ocrSession, ocrClose, ocrAbort, ocrLimits:OCR_T, stageLabel, ocrEnabled, cloudOn, ocrCfg, lines, zzzsIn, dates, title, fixDigits, toCanvas, enhance, toBlob };
 })();
 /* =====================================================================
    TISK DOPOLNIL NA OBRAZEC »NALOG ZA PREVOZ« (Obr. NLG/05)
@@ -4606,9 +4660,23 @@ const BSCAN = (() => {
     return f;
   }
   const inFrame = (c, w) => { const dx = cx(w) - c.xa; return (cy(w) - c.y - c.s * dx) / c.P; };
-  function parseCards(ws, mh, box, W, H, out){
+  function parseCards(ws, mh, box, W, H, out, opt = {}){
     const A = findCardAnchors(ws, box); if (!A) return null;
-    const { cards, lh:L } = A, n = cards.length;
+    const { cards, lh:L } = A;
+    /* zadnje kartice, katerih oznake »Način prevoza« OCR ni prebral (pogosto ob spodnjem robu): nadaljuj z enakim razmikom, a samo če sta na tem mestu
+       prebrani vsaj dve drugi tiskani oznaki kartice (Čas, OD, DO, Tel). Tako se ne izpeljejo kartice na zadnji tabeli (VOZILO / VOZNIK) ali zunaj lista.
+       Kartica brez črnila se po branju tiho zavrže (glej run). */
+    if (opt.trail){
+      const lb = ws.map(w => ({ w, k:labelOf(w) })).filter(x => x.k === 'od' || x.k === 'do' || x.k === 'tel' || x.k === 'cas');
+      const last = cards[cards.length - 1], prev = cards[cards.length - 2], dl = last.y - prev.y, Pl = dl > A.P * 0.8 && dl < A.P * 1.2 ? dl : A.P;
+      for (let k = 1; k <= 3; k++){
+        const y = last.y + k * Pl; if (y + CARD_V.bot * Pl > H * 0.995) break;
+        const hits = new Set(lb.filter(x => cy(x.w) > y - 0.75 * Pl && cy(x.w) < y + 0.2 * Pl && cx(x.w) > box.x0).map(x => x.k));
+        if (hits.size < 2) break;
+        cards.push({ y, x0:last.x0, x1:last.x1, derived:true, trailing:true, items:[], hasN:last.hasN, pre:last.pre });
+      }
+    }
+    const n = cards.length;
     cards.forEach((c, i) => { c.xa = (c.x0 + c.x1) / 2; c.P = A.P; });
     /* lokalni razmik (perspektiva): povprečje razmika do sosednjih okvirjev */
     cards.forEach((c, i) => { const a = cards[i - 1], b = cards[i + 1]; c.P = a && b ? (b.y - a.y) / 2 : a ? c.y - a.y : b ? b.y - c.y : A.P; c.s = 0; });
@@ -4706,7 +4774,7 @@ const BSCAN = (() => {
       const cl = rows[i], co = k => cl[k].length ? cellOf(cl[k]) : { text:'', conf:0, min:0, n:0, ws:[] };
       const cc = { name:co('name'), from:co('from'), to:co('to'), time:co('time'), phone:co('phone'), note:co('mode'), pick:co('margin') };
       const nr = d0 + i, rd = numTok[i] && numVal(numTok[i].w.t) === nr;
-      const geo = { xa:c.xa, y:c.y, s:c.s, P:c.P, col:c.col, odX, cas:c.cas, casEnd:c.casEnd, x0:Math.max(0, odX - 5 * L), x1:right, L, pre:c.x1, derived:!!c.derived };
+      const geo = { xa:c.xa, y:c.y, s:c.s, P:c.P, col:c.col, odX, cas:c.cas, casEnd:c.casEnd, x0:Math.max(0, odX - 5 * L), x1:right, L, pre:c.x1, derived:!!c.derived, trailing:!!c.trailing };
       const row = { nr, derived:false, y0:c.y - 0.9 * c.P, y1:c.y + 0.14 * c.P, geo, layout:'card', ctext:cellOf(cl.margin.concat(cl.name, cl.from, cl.to, cl.phone, cl.mode, cl.time)).text };
       res.push({ row, cc, nrLvl:nrGuess ? (hasDatum || i > 0 ? 'ok' : 'chk') : 'ok', words:cw[i].length, hw:['name', 'from', 'to', 'phone', 'mode', 'time'].reduce((a, k) => a + cl[k].length, 0) });
     });
@@ -4759,7 +4827,7 @@ const BSCAN = (() => {
     const mh = Math.max(6, med(ws.map(w => w.y1 - w.y0)));
     const box = { x0:Math.min(...ws.map(w => w.x0)), y0:Math.min(...ws.map(w => w.y0)), x1:Math.max(...ws.map(w => w.x1)), y1:Math.max(...ws.map(w => w.y1)) };
     out.layout = 'table'; out.cols = out.cols || [];
-    const cardRes = parseCards(ws, mh, box, W, H, out);
+    const cardRes = parseCards(ws, mh, box, W, H, out, opt);
     if (cardRes){
       cardRes.forEach(({ row, cc, nrLvl, words, hw }) => {
         Object.assign(row, { text:row.ctext, raw:{}, f:{}, fl:{}, lvl:'ok', empty:false, nrLvl, words, touched:{} });
@@ -4927,6 +4995,7 @@ const BSCAN = (() => {
     if (!imgs.length) throw new Error('V tem PDF ni slike strani. Naredi fotografijo strani knjige ali izvozi stran kot sliko.');
     const out = []; for (const im of imgs.slice(0, MAX_PAGES)) out.push(await NSCAN.toCanvas(im, MAX_SIDE)); return out;
   }
+  const jpegBlob = (cv, q = 0.9) => new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('Slike ni mogoče pripraviti.')), 'image/jpeg', q));
   async function preparePage(cv){
     await tick(); const angle = skewAngle(cv);
     await tick(); const color = rotated(cv, angle);
@@ -4982,7 +5051,7 @@ const BSCAN = (() => {
   const hooks = { onPhoto:null };
   const canceledErr = () => { const e = new Error('Razpoznava je bila prekinjena.'); e.canceled = true; return e; };
   /* vnaprejšnji zagon razpoznave (prenos jedra in modela) med tem, ko uporabnik izbira fotografijo */
-  const warm = onProgress => NSCAN.ocrEnabled() ? NSCAN.ocrSession().warm(onProgress) : Promise.resolve();
+  const warm = onProgress => NSCAN.ocrEnabled() && !NSCAN.cloudOn() ? NSCAN.ocrSession().warm(onProgress) : Promise.resolve();   // v oblaku ni česa prenašati vnaprej
   const cancel = ctl => { if (ctl) ctl.cancelled = true; NSCAN.ocrAbort(); };
   /* cel postopek za eno ali več slik/PDF: vrne vrstice vseh strani (slika se ne shrani nikamor). ctl = { cancelled } omogoča prekinitev. */
   async function run(files, onProgress, ctl){
@@ -4998,11 +5067,13 @@ const BSCAN = (() => {
       const tag = pages.length > 1 ? `Stran ${i + 1}/${pages.length}: ` : '';
       chk(); say('prep', i, pages.length, 0);
       const prep = await preparePage(pages[i]); chk();
-      const ocrPsm = async psm => { try { return await NSCAN.ocr(prep.png, p => { say(p.stage, i, pages.length, p.pct); }, cfg, { words:true, psm }); } catch (e) { if (ctlr.cancelled) throw canceledErr(); throw e; } };
-      /* redko besedilo (psm 11) najde kartice tudi na ukrivljeni in nagnjeni strani; če stran ni v obliki kartic (tabela), se prebere še enkrat s členitvijo po stolpcih (psm 4). config.js → ocr.bookPsm vse to preglasi. */
+      const cloud = NSCAN.cloudOn(cfg);
+      const img = cloud ? await jpegBlob(prep.color) : prep.png;   // oblak dobi barvno sliko (modro pisalo se pri črno-beli pretvorbi izgubi), Tesseract črno-belo
+      const ocrPsm = async psm => { try { return await NSCAN.ocr(img, p => { say(p.stage, i, pages.length, p.pct); }, cfg, { words:true, psm, cloud }); } catch (e) { if (ctlr.cancelled) throw canceledErr(); throw e; } };
+      /* redko besedilo (psm 11) najde kartice tudi na ukrivljeni in nagnjeni strani; če stran ni v obliki kartic (tabela), se prebere še enkrat s členitvijo po stolpcih (psm 4). config.js → ocr.bookPsm vse to preglasi. V oblaku je en prehod. */
       let r = await ocrPsm(cfg.bookPsm || '11'); chk();
-      let words = fromOcr(r), ps = parse(words, prep.color.width, prep.color.height);
-      if (!cfg.bookPsm && ps.layout !== 'card'){ r = await ocrPsm('4'); chk(); words = fromOcr(r); ps = parse(words, prep.color.width, prep.color.height); }
+      let words = fromOcr(r), ps = parse(words, prep.color.width, prep.color.height, { trail:true });
+      if (!cloud && !cfg.bookPsm && ps.layout !== 'card'){ r = await ocrPsm('4'); chk(); words = fromOcr(r); ps = parse(words, prep.color.width, prep.color.height, { trail:true }); }
       say('prep', i, pages.length, 1); await tick();
       const pitch = ps.rows.length > 1 ? med(ps.rows.slice(1).map((x, j) => (x.y0 + x.y1) / 2 - (ps.rows[j].y0 + ps.rows[j].y1) / 2)) : 60;
       ps.rows.forEach(row => {
@@ -5010,6 +5081,7 @@ const BSCAN = (() => {
         if (row.geo) markCard(row, prep);
         else if (!row.empty) row.crop = cropRow(prep.color, row, ps.tbl, Math.abs(pitch));
       });
+      ps.rows = ps.rows.filter(row => !(row.geo && row.geo.trailing && row.ink < INK_BLANK));   // domnevna kartica ob spodnjem robu brez črnila: tam ni kartice
       res.pages.push({ w:prep.color.width, h:prep.color.height, angle:prep.angle, header:ps.header, layout:ps.layout, cards:ps.cards || 0, notes:ps.notes, words:ps.words });
       ps.notes.forEach(t => res.notes.push(tag + t)); res.words += ps.words;
       if (!res.date && ps.date) res.date = ps.date;
@@ -7482,7 +7554,7 @@ function renderBScan(host, m){
       ${m.notes.length ? `<div class="banner" style="background:var(--warn-soft);color:var(--warn)"><span>${IC.alert}</span><div>${m.notes.map(n => esc(n)).join('<br>')}</div></div>` : ''}
       <div class="row" style="gap:16px;align-items:flex-start;flex-wrap:wrap">${bsDateHTML(m)}
         <label class="check" style="margin-top:22px" title="Prevozi s te strani so že narejeni (knjiga za nazaj): označijo se kot opravljeni"><input type="checkbox" data-bs="done" ${m.done ? 'checked' : ''}> Prevozi so že opravljeni</label></div>
-      ${m.cardMode ? `<div class="banner"><span>${IC.info}</span><div>Pisavo s fotografije računalnik prebere samo deloma. Zato ima vsak prevoz svoj <b>poravnan izrez</b> in polja za vnos: prepiši ime, naslov, telefon in uro. <b>Ime izberi s seznama pacientov</b>: naslov in telefon se dopolnita iz baze. Rdeča polja niso prebrana, rumeni gumbi so predlogi.</div></div>` : ''}
+      ${m.cardMode ? `<div class="banner"><span>${IC.info}</span><div>${NSCAN.cloudOn() ? 'Pisavo je prebral Google. Vsak prevoz ima svoj <b>poravnan izrez</b>: <b>primerjaj</b> ime, naslov, telefon in uro z njim. Rumena in rdeča polja niso zanesljiva, rumeni gumbi so predlogi.' : 'Pisavo s fotografije računalnik prebere samo deloma. Zato ima vsak prevoz svoj <b>poravnan izrez</b> in polja za vnos: prepiši ime, naslov, telefon in uro. <b>Ime izberi s seznama pacientov</b>: naslov in telefon se dopolnita iz baze. Rdeča polja niso prebrana, rumeni gumbi so predlogi.'}</div></div>` : ''}
       ${bsPhotosHTML(m)}
       <p class="hint" style="margin:0">${m.manual ? 'Ročni vnos ob fotografiji: vpiši ime, od, do in uro za vsak prevoz; prazne vrstice se preskočijo. Ime lahko izbereš s seznama bolnikov. Ročno vpisane vrstice niso označene z ⚠.' : 'Primerjaj vsako vrstico s sliko izreza. Rumena in rdeča polja so tista, ki jih nisem razumel: izberi predlog, popravi ali pritisni »Vse je prav«. Rdeče vrstice niso izbrane za vpis. Karkoli ostane nepotrjeno, se vpiše z oznako <b>⚠ preveri</b>, ki ostane vidna v dnevu in v natisnjeni knjigi, dokler je ne potrdiš.'}${m.empties ? ` · Prazne vrstice: ${m.empties}.` : ''}</p>
       <div class="bs-list" data-role="bslist">${list || '<div class="empty-state">Na strani ni vpisanih vrstic.</div>'}</div>
@@ -7493,7 +7565,12 @@ function renderBScan(host, m){
       <div class="row bs-foot" style="justify-content:space-between;flex-wrap:wrap"><button type="button" class="btn" data-act="bsBack">Nazaj (nova fotografija)</button>
         <span class="row"><button type="button" class="btn" data-act="closeModal">Prekliči</button><button type="button" class="btn primary" data-act="bsApply" data-role="bsapply">${esc(bsApplyLabel(m))}</button></span></div>`;
   } else {
-    body = `<div class="banner"><span>${IC.info}</span><div>Fotografiraj stran papirne knjige (ali izberi PDF-sken). Aplikacija prebere številke polj, imena, naslove in ure ter jih postavi v dan. <b>Fotografija se ne pošlje nikamor in se ne shrani</b>; branje poteka v tej napravi. Program za branje se ob odprtju okna enkrat prenese (približno 7 MB) in nato velja za vse strani.</div></div>
+    const cloud = NSCAN.cloudOn();
+    body = cloud
+      ? `<div class="banner" style="background:var(--warn-soft);color:var(--warn)"><span>${IC.alert}</span><div><b>Branje v oblaku je vključeno</b> (config.js → ocr.cloud): fotografija strani se pošlje <b>Googlu (Cloud Vision)</b>, da prebere tudi rokopis. Na strani so imena, naslovi in telefoni pacientov: uporabi to samo, če je to odobril pooblaščenec za varstvo podatkov (NAVODILA 0.2 in 11.10). Vsako polje primerjaj s sliko izreza.
+          <div class="row" style="gap:8px;margin-top:6px;flex-wrap:wrap"><button type="button" class="btn sm" data-act="bsCloudTest">Preveri povezavo z oblakom</button><span class="hint" data-role="bscloudtest" role="status">${esc(m.cloudTest || '')}</span></div></div></div>`
+      : `<div class="banner"><span>${IC.info}</span><div>Fotografiraj stran papirne knjige (ali izberi PDF-sken). Aplikacija na fotografiji poišče <b>kartice prevozov</b>, vsako poravna in izreže ter prebere <b>natisnjeno</b> besedilo. <b>Rokopisa (imena, naslovi, telefoni) računalnik v telefonu ne prebere</b>: ob vsakem izrezu ga vpišeš ti, ime izbereš s seznama pacientov (naslov in telefon se dopolnita iz baze). <b>Fotografija se ne pošlje nikamor in se ne shrani</b>; branje poteka v tej napravi. Program za branje se ob odprtju okna enkrat prenese (približno 7 MB).</div></div>`;
+    body += `
       ${ocrOn ? `<div class="bs-warm" data-role="bswarm" data-st="${esc(m.warm)}" role="status">${esc(bsWarmText(m))}</div>` : ''}
       <div class="stack" style="gap:8px"><div class="row" style="gap:8px;flex-wrap:wrap"><label class="btn primary" for="bsFile" style="cursor:pointer">${ocrOn ? 'Izberi fotografije ali PDF' : 'Razpoznava izklopljena'}</label>
         <label class="btn" for="bsCam" style="cursor:pointer">Fotografiraj</label></div>
@@ -7505,7 +7582,7 @@ function renderBScan(host, m){
       <ul class="hint bs-tips" style="margin:0;padding-left:18px">
         <li>Knjigo položi ravno, v celoti v kader, brez sence in bliska; telefon drži vzporedno z listom.</li>
         <li>Ena fotografija = ena stran. Za dan z več stranmi izberi več fotografij naenkrat (isti dan).</li>
-        <li><b>Tiskano ali lepo berljivo pisavo</b> aplikacija prebere dobro. <b>Hitro ročno pisavo pogosto napačno</b>: takšna polja dobijo oznako ⚠ ali ✖ in jih preveriš s sliko vrstice. Nič se ne vpiše neopazno.</li>
+        <li>${cloud ? '<b>Rokopis prebere Google.</b> Polja z nizko zanesljivostjo dobijo oznako ⚠ ali ✖: preveri jih s sliko izreza. Nič se ne vpiše neopazno.' : '<b>Natisnjeno besedilo</b> aplikacija prebere, <b>rokopisa ne</b>: takšna polja ostanejo prazna in rdeča, ob njih je slika izreza. Nič se ne vpiše neopazno.'}</li>
       </ul>
       ${m.err ? `<div class="banner bad"><span>${IC.alert}</span><div>${esc(m.err)}</div></div>` : ''}
       ${m.err && !m.busy && m.photos.some(Boolean) ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn primary" data-act="bsManual">Vnesi ročno ob fotografiji</button>${m.lastFiles ? '<button type="button" class="btn" data-act="bsRetry">Poskusi znova</button>' : ''}</div>` : ''}
@@ -7555,6 +7632,19 @@ async function bsFiles(list){
   finally { clearInterval(timer); BSCAN.hooks.onPhoto = null; }
   m.busy = '';
   if (UI.modal === m) renderModal();
+}
+/* preizkus povezave z oblakom: natisnjen izmišljen napis (brez podatkov pacientov) → ali Google vrne besedilo */
+async function bsCloudTest(){
+  const m = UI.modal; if (!m || m.type !== 'bscan' || !NSCAN.cloudOn()) return;
+  const put = t => { m.cloudTest = t; const el = document.querySelector('[data-role=bscloudtest]'); if (el) el.textContent = t; };   // besedilo ostane tudi, če se okno vmes ponovno nariše
+  put('preizkušam …');
+  try {
+    const c = document.createElement('canvas'); c.width = 900; c.height = 160; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 900, 160); g.fillStyle = '#111'; g.font = 'bold 64px sans-serif'; g.fillText('PREIZKUS 031 123 456', 30, 100);
+    const blob = await new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('Slike ni mogoče pripraviti.')), 'image/jpeg', 0.9));
+    const r = await NSCAN.ocr(blob, null, NSCAN.ocrCfg(), { words:true, cloud:true });
+    const t = (r.words || []).map(w => w.text).join(' ');
+    put(/123/.test(t) ? '✔ Povezava deluje (Google je prebral: »' + t + '«).' : '⚠ Povezava deluje, a branje je nepričakovano: »' + t + '«.');
+  } catch (e) { put('✖ ' + String(e && e.message || e)); }
 }
 function bsCancel(){ const m = UI.modal; if (!m || m.type !== 'bscan' || !m.busy) return; m.busy = 'prekinjam …'; const el = document.querySelector('[data-role=bsbusy]'); if (el) el.textContent = m.busy; BSCAN.cancel(m.ctl); }
 function bsRetry(){ const m = UI.modal; if (!m || m.type !== 'bscan' || m.busy || !m.lastFiles) return; bsFiles(m.lastFiles); }
@@ -7878,6 +7968,7 @@ document.addEventListener('click', async e => {
     case 'bsBack': bsBack(); break;
     case 'bsCancel': bsCancel(); break;
     case 'bsRetry': bsRetry(); break;
+    case 'bsCloudTest': bsCloudTest(); break;
     case 'bsManual': bsManual(); break;
     case 'bsAddRow': bsAddRow(); break;
     case 'bsZoom': bsZoom(); break;

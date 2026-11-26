@@ -9,6 +9,13 @@ Interna PWA za iPhone in Android: dispečer (knjiga, pacienti in nalogi, razpore
 
 **Pred prvim pravim pacientom** potrebuješ odobritev vodstva in pooblaščenca za varstvo podatkov (glej NAVODILA.md, razdelek 0.2). Do takrat uporabljaj samo izmišljene podatke.
 
+## Spremembe v2_11_2 (november 2026): nalaganje fotografij strani knjige, neobvezno branje rokopisa v oblaku
+- **Iskreno okno:** pred nalaganjem fotografije okno zdaj pove, da računalnik v telefonu **rokopisa ne prebere** (v poskusu tudi vrstico za vrstico na poravnanih izrezih ne): prepoznajo se kartice, natisnjeno besedilo in prazne kartice, ime izbereš ob izrezu s seznama pacientov. Prej je okno obljubljalo branje.
+- **NEOBVEZNO, PRIVZETO IZKLOPLJENO: branje rokopisa v oblaku (Google Cloud Vision, EU naslov).** Vklopi se samo z ključem v `config.js` → `ocr.cloud.key`. **Fotografija strani gre Googlu** (imena, naslovi, telefoni pacientov), zato je to odločitev za vodstvo in DPO (**NAVODILA 0.2 točka 8**, postopek 11.11). Gumb **»Preveri povezavo z oblakom«**, jasne napake (403/400/429), omejitev ključa na naslov strani. Preizkušeno **samo proti posnetku strežnika**; s pravim Googlom ni preizkušeno.
+- **Velike fotografije (iPhone 12–48 MP, EXIF zasuk):** pomanjšanje že pri risanju, jasno sporočilo za HEIC.
+- **Manjkajoče kartice na koncu lista:** če OCR ne prebere zadnjih oznak »Način prevoza«, se kartice nadaljujejo, a samo ob drugih prebranih tiskanih oznakah in črnilu (nobenih lažnih kartic na zadnji tabeli).
+- Preizkusi: 76 + 179 v brskalniku + 7 + 25.
+
 ## Spremembe v2_11_1 (november 2026): skeniranje strani knjige po pravih fotografijah (kartice prevozov)
 - **Vzrok težave:** razpoznava je pričakovala tabelo (naš tisk), prava stran papirne knjige pa je sestavljena iz **kartic**: na prevoz ena kartica s tremi vrsticami (ime, »OD / DO«, »Tel / Način prevoza«), ura pa je ročno zapisana ob levem robu. Poleg tega je **ročna pisava za brezplačno razpoznavo v napravi večinoma neberljiva**.
 - **Zdaj:** aplikacija na fotografiji najde kartice po natisnjenih oznakah (»Način prevoza«, »OD«, »DO«, »Tel«), upošteva **nagib in ukrivljenost lista** (vsaka kartica ima svoj naklon), vsako kartico **poravna in izreže** in jo pokaže ob poljih za vnos. **Prazne kartice se prepoznajo** in so v zloženem razdelku (nikoli tiho izpuščene; **»Ni prazna: vnesi ta prevoz«** jih vrne).

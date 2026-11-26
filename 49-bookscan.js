@@ -316,9 +316,23 @@ const BSCAN = (() => {
     return f;
   }
   const inFrame = (c, w) => { const dx = cx(w) - c.xa; return (cy(w) - c.y - c.s * dx) / c.P; };
-  function parseCards(ws, mh, box, W, H, out){
+  function parseCards(ws, mh, box, W, H, out, opt = {}){
     const A = findCardAnchors(ws, box); if (!A) return null;
-    const { cards, lh:L } = A, n = cards.length;
+    const { cards, lh:L } = A;
+    /* zadnje kartice, katerih oznake »Način prevoza« OCR ni prebral (pogosto ob spodnjem robu): nadaljuj z enakim razmikom, a samo če sta na tem mestu
+       prebrani vsaj dve drugi tiskani oznaki kartice (Čas, OD, DO, Tel). Tako se ne izpeljejo kartice na zadnji tabeli (VOZILO / VOZNIK) ali zunaj lista.
+       Kartica brez črnila se po branju tiho zavrže (glej run). */
+    if (opt.trail){
+      const lb = ws.map(w => ({ w, k:labelOf(w) })).filter(x => x.k === 'od' || x.k === 'do' || x.k === 'tel' || x.k === 'cas');
+      const last = cards[cards.length - 1], prev = cards[cards.length - 2], dl = last.y - prev.y, Pl = dl > A.P * 0.8 && dl < A.P * 1.2 ? dl : A.P;
+      for (let k = 1; k <= 3; k++){
+        const y = last.y + k * Pl; if (y + CARD_V.bot * Pl > H * 0.995) break;
+        const hits = new Set(lb.filter(x => cy(x.w) > y - 0.75 * Pl && cy(x.w) < y + 0.2 * Pl && cx(x.w) > box.x0).map(x => x.k));
+        if (hits.size < 2) break;
+        cards.push({ y, x0:last.x0, x1:last.x1, derived:true, trailing:true, items:[], hasN:last.hasN, pre:last.pre });
+      }
+    }
+    const n = cards.length;
     cards.forEach((c, i) => { c.xa = (c.x0 + c.x1) / 2; c.P = A.P; });
     /* lokalni razmik (perspektiva): povprečje razmika do sosednjih okvirjev */
     cards.forEach((c, i) => { const a = cards[i - 1], b = cards[i + 1]; c.P = a && b ? (b.y - a.y) / 2 : a ? c.y - a.y : b ? b.y - c.y : A.P; c.s = 0; });
@@ -416,7 +430,7 @@ const BSCAN = (() => {
       const cl = rows[i], co = k => cl[k].length ? cellOf(cl[k]) : { text:'', conf:0, min:0, n:0, ws:[] };
       const cc = { name:co('name'), from:co('from'), to:co('to'), time:co('time'), phone:co('phone'), note:co('mode'), pick:co('margin') };
       const nr = d0 + i, rd = numTok[i] && numVal(numTok[i].w.t) === nr;
-      const geo = { xa:c.xa, y:c.y, s:c.s, P:c.P, col:c.col, odX, cas:c.cas, casEnd:c.casEnd, x0:Math.max(0, odX - 5 * L), x1:right, L, pre:c.x1, derived:!!c.derived };
+      const geo = { xa:c.xa, y:c.y, s:c.s, P:c.P, col:c.col, odX, cas:c.cas, casEnd:c.casEnd, x0:Math.max(0, odX - 5 * L), x1:right, L, pre:c.x1, derived:!!c.derived, trailing:!!c.trailing };
       const row = { nr, derived:false, y0:c.y - 0.9 * c.P, y1:c.y + 0.14 * c.P, geo, layout:'card', ctext:cellOf(cl.margin.concat(cl.name, cl.from, cl.to, cl.phone, cl.mode, cl.time)).text };
       res.push({ row, cc, nrLvl:nrGuess ? (hasDatum || i > 0 ? 'ok' : 'chk') : 'ok', words:cw[i].length, hw:['name', 'from', 'to', 'phone', 'mode', 'time'].reduce((a, k) => a + cl[k].length, 0) });
     });
@@ -469,7 +483,7 @@ const BSCAN = (() => {
     const mh = Math.max(6, med(ws.map(w => w.y1 - w.y0)));
     const box = { x0:Math.min(...ws.map(w => w.x0)), y0:Math.min(...ws.map(w => w.y0)), x1:Math.max(...ws.map(w => w.x1)), y1:Math.max(...ws.map(w => w.y1)) };
     out.layout = 'table'; out.cols = out.cols || [];
-    const cardRes = parseCards(ws, mh, box, W, H, out);
+    const cardRes = parseCards(ws, mh, box, W, H, out, opt);
     if (cardRes){
       cardRes.forEach(({ row, cc, nrLvl, words, hw }) => {
         Object.assign(row, { text:row.ctext, raw:{}, f:{}, fl:{}, lvl:'ok', empty:false, nrLvl, words, touched:{} });
@@ -637,6 +651,7 @@ const BSCAN = (() => {
     if (!imgs.length) throw new Error('V tem PDF ni slike strani. Naredi fotografijo strani knjige ali izvozi stran kot sliko.');
     const out = []; for (const im of imgs.slice(0, MAX_PAGES)) out.push(await NSCAN.toCanvas(im, MAX_SIDE)); return out;
   }
+  const jpegBlob = (cv, q = 0.9) => new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('Slike ni mogoče pripraviti.')), 'image/jpeg', q));
   async function preparePage(cv){
     await tick(); const angle = skewAngle(cv);
     await tick(); const color = rotated(cv, angle);
@@ -692,7 +707,7 @@ const BSCAN = (() => {
   const hooks = { onPhoto:null };
   const canceledErr = () => { const e = new Error('Razpoznava je bila prekinjena.'); e.canceled = true; return e; };
   /* vnaprejšnji zagon razpoznave (prenos jedra in modela) med tem, ko uporabnik izbira fotografijo */
-  const warm = onProgress => NSCAN.ocrEnabled() ? NSCAN.ocrSession().warm(onProgress) : Promise.resolve();
+  const warm = onProgress => NSCAN.ocrEnabled() && !NSCAN.cloudOn() ? NSCAN.ocrSession().warm(onProgress) : Promise.resolve();   // v oblaku ni česa prenašati vnaprej
   const cancel = ctl => { if (ctl) ctl.cancelled = true; NSCAN.ocrAbort(); };
   /* cel postopek za eno ali več slik/PDF: vrne vrstice vseh strani (slika se ne shrani nikamor). ctl = { cancelled } omogoča prekinitev. */
   async function run(files, onProgress, ctl){
@@ -708,11 +723,13 @@ const BSCAN = (() => {
       const tag = pages.length > 1 ? `Stran ${i + 1}/${pages.length}: ` : '';
       chk(); say('prep', i, pages.length, 0);
       const prep = await preparePage(pages[i]); chk();
-      const ocrPsm = async psm => { try { return await NSCAN.ocr(prep.png, p => { say(p.stage, i, pages.length, p.pct); }, cfg, { words:true, psm }); } catch (e) { if (ctlr.cancelled) throw canceledErr(); throw e; } };
-      /* redko besedilo (psm 11) najde kartice tudi na ukrivljeni in nagnjeni strani; če stran ni v obliki kartic (tabela), se prebere še enkrat s členitvijo po stolpcih (psm 4). config.js → ocr.bookPsm vse to preglasi. */
+      const cloud = NSCAN.cloudOn(cfg);
+      const img = cloud ? await jpegBlob(prep.color) : prep.png;   // oblak dobi barvno sliko (modro pisalo se pri črno-beli pretvorbi izgubi), Tesseract črno-belo
+      const ocrPsm = async psm => { try { return await NSCAN.ocr(img, p => { say(p.stage, i, pages.length, p.pct); }, cfg, { words:true, psm, cloud }); } catch (e) { if (ctlr.cancelled) throw canceledErr(); throw e; } };
+      /* redko besedilo (psm 11) najde kartice tudi na ukrivljeni in nagnjeni strani; če stran ni v obliki kartic (tabela), se prebere še enkrat s členitvijo po stolpcih (psm 4). config.js → ocr.bookPsm vse to preglasi. V oblaku je en prehod. */
       let r = await ocrPsm(cfg.bookPsm || '11'); chk();
-      let words = fromOcr(r), ps = parse(words, prep.color.width, prep.color.height);
-      if (!cfg.bookPsm && ps.layout !== 'card'){ r = await ocrPsm('4'); chk(); words = fromOcr(r); ps = parse(words, prep.color.width, prep.color.height); }
+      let words = fromOcr(r), ps = parse(words, prep.color.width, prep.color.height, { trail:true });
+      if (!cloud && !cfg.bookPsm && ps.layout !== 'card'){ r = await ocrPsm('4'); chk(); words = fromOcr(r); ps = parse(words, prep.color.width, prep.color.height, { trail:true }); }
       say('prep', i, pages.length, 1); await tick();
       const pitch = ps.rows.length > 1 ? med(ps.rows.slice(1).map((x, j) => (x.y0 + x.y1) / 2 - (ps.rows[j].y0 + ps.rows[j].y1) / 2)) : 60;
       ps.rows.forEach(row => {
@@ -720,6 +737,7 @@ const BSCAN = (() => {
         if (row.geo) markCard(row, prep);
         else if (!row.empty) row.crop = cropRow(prep.color, row, ps.tbl, Math.abs(pitch));
       });
+      ps.rows = ps.rows.filter(row => !(row.geo && row.geo.trailing && row.ink < INK_BLANK));   // domnevna kartica ob spodnjem robu brez črnila: tam ni kartice
       res.pages.push({ w:prep.color.width, h:prep.color.height, angle:prep.angle, header:ps.header, layout:ps.layout, cards:ps.cards || 0, notes:ps.notes, words:ps.words });
       ps.notes.forEach(t => res.notes.push(tag + t)); res.words += ps.words;
       if (!res.date && ps.date) res.date = ps.date;

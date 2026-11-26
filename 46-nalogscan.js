@@ -307,8 +307,15 @@ const NSCAN = (() => {
       else for (let i = 0, n = w * h; i < n; i++){ d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = s[i]; d[i * 4 + 3] = 255; }
       ctx.putImageData(im, 0, 0);
     } else {
-      const bmp = await createImageBitmap(src.kind === 'jpeg' ? new Blob([src.bytes], { type:'image/jpeg' }) : src.blob);
-      w = bmp.width; h = bmp.height; cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(bmp, 0, 0); if (bmp.close) bmp.close();
+      let bmp; try { bmp = await createImageBitmap(src.kind === 'jpeg' ? new Blob([src.bytes], { type:'image/jpeg' }) : src.blob); }
+      catch (e) { throw new Error('Slike ni mogoče odpreti' + (src.blob && /hei[cf]/i.test((src.blob.type || '') + (src.blob.name || '')) ? ' (format HEIC: na iPhonu izberi Nastavitve → Kamera → Formati → »Najbolj združljivo« ali fotografiraj kar v aplikaciji)' : ' (poškodovana ali nepodprta datoteka)') + '.'); }
+      w = bmp.width; h = bmp.height;
+      /* velika fotografija (iPhone 12–48 MP) se pomanjša že pri risanju: cela slika v polni velikosti bi na telefonu lahko presegla omejitev pomnilnika platna */
+      const k0 = Math.min(1, max / Math.max(w, h));
+      cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(w * k0)); cv.height = Math.max(1, Math.round(h * k0));
+      const g0 = cv.getContext('2d'); if (!g0) throw new Error('Slike ni mogoče pripraviti (premalo pomnilnika). Poskusi z manjšo fotografijo.');
+      g0.imageSmoothingQuality = 'high'; g0.drawImage(bmp, 0, 0, cv.width, cv.height); if (bmp.close) bmp.close();
+      return cv;
     }
     const k = Math.min(1, max / Math.max(w, h));
     if (k < 1){ const c2 = document.createElement('canvas'); c2.width = Math.round(w * k); c2.height = Math.round(h * k); const x = c2.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(cv, 0, 0, c2.width, c2.height); cv = c2; }
@@ -346,7 +353,7 @@ const NSCAN = (() => {
      ne more hraniti prenesenih datotek: prenos jedra (~5 MB) in modela (~2 MB) se zato naredi ENKRAT na sejo (v ozadju, ob odprtju okna), ne za vsako sliko znova.
      Nadzor: če okvir 75 s ne pošlje nobenega napredka, se seja prekine z jasno napako; celotna omejitev 10 minut. Seja se po 6 minutah mirovanja sprosti (pomnilnik telefona). */
   const OCR_T = { silence:75000, hard:600000, idle:360000 };   // spremenljivo samo zaradi preizkusov
-  const STAGE_LABEL = { lib:'nalagam program za razpoznavo', 'loading tesseract core':'prenašam jedro razpoznave (samo prvič v seji)', 'initializing tesseract':'zaganjam razpoznavo', 'loading language traineddata':'prenašam slovenski jezikovni model (samo prvič v seji)', 'initializing api':'zaganjam razpoznavo', 'recognizing text':'berem besedilo', prep:'pripravljam sliko' };
+  const STAGE_LABEL = { lib:'nalagam program za razpoznavo', 'loading tesseract core':'prenašam jedro razpoznave (samo prvič v seji)', 'initializing tesseract':'zaganjam razpoznavo', 'loading language traineddata':'prenašam slovenski jezikovni model (samo prvič v seji)', 'initializing api':'zaganjam razpoznavo', 'recognizing text':'berem besedilo', cloud:'berem v oblaku (Google Vision)', prep:'pripravljam sliko' };
   const stageLabel = st => STAGE_LABEL[st] || String(st || 'delam');
   let SES = null;
   function makeSession(cfg){
@@ -407,9 +414,56 @@ const NSCAN = (() => {
   }
   const ocrClose = () => { if (SES) SES.close(); };
   /* prekinitev uporabnika: seja se ustavi samo, če ravno bere; drugače ostane pripravljena za naslednjo sliko */
-  const ocrAbort = () => { if (SES && SES.busy) SES.close(); };
-  function ocr(png, onProgress, cfg = ocrCfg(), extra){ return ocrSession(cfg).run(png, onProgress, extra); }
-  const ocrEnabled = (cfg = ocrCfg()) => cfg.on !== false && !!cfg.lib;
+  const ocrAbort = () => { if (SES && SES.busy) SES.close(); if (CLOUD_AC) CLOUD_AC.abort(); };
+  /* ---- NEOBVEZNO (privzeto izklopljeno): branje rokopisa v oblaku, Google Cloud Vision (config.js → ocr.cloud) ----
+     Klic je iz glavne strani, NE iz izoliranega okvirja: okvir nima izvora in ne pošlje Referer, zato omejitev ključa na naslov strani ne bi delovala.
+     Pošlje se samo slika strani; brez piškotkov in prijave; ključ je omejen na »Cloud Vision API« in na naslov te strani. */
+  let CLOUD_AC = null;
+  const b64 = buf => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+  function visionWords(j){
+    const out = [], r = j && j.responses && j.responses[0], pages = (r && r.fullTextAnnotation && r.fullTextAnnotation.pages) || [];
+    pages.forEach(pg => (pg.blocks || []).forEach(b => (b.paragraphs || []).forEach(p => (p.words || []).forEach(w => {
+      const t = (w.symbols || []).map(s => s.text || '').join(''), v = (w.boundingBox && w.boundingBox.vertices) || [];
+      if (!t || !v.length) return;
+      const xs = v.map(q => q.x || 0), ys = v.map(q => q.y || 0);
+      out.push({ text:t, confidence:Math.round((w.confidence == null ? 0.5 : +w.confidence) * 100), bbox:{ x0:Math.min(...xs), y0:Math.min(...ys), x1:Math.max(...xs), y1:Math.max(...ys) } });
+    }))));
+    return out;
+  }
+  function cloudMsg(status, err){
+    const m = String((err && err.message) || '').replace(/\s+/g, ' ').slice(0, 220), c = (err && err.code) || status;
+    if (c === 403 || c === 401) return `Google Vision je zavrnil dostop (${c}): preveri, da je vključen »Cloud Vision API«, da je projektu dodan obračunski račun (brezplačna kvota ostane) in da je ključ omejen na naslov te strani (HTTP referrer), ne na kak drug naslov. ${m}`;
+    if (c === 429) return `Google Vision: presežena kvota (429). Počakaj ali preveri kvoto v Google Cloud konzoli. ${m}`;
+    if (c === 400) return `Google Vision je zavrnil zahtevo (400): ${m} Preveri ključ v config.js (ocr.cloud.key).`;
+    return `Google Vision ni uspel (${c}). ${m}`;
+  }
+  async function cloudRead(png, onProgress, cfg, extra){
+    const c = cfg.cloud || {}, ep = String(c.endpoint || 'https://eu-vision.googleapis.com').replace(/\/+$/, '');
+    if (!c.key) throw new Error('Branje v oblaku ni nastavljeno (config.js → ocr.cloud.key).');
+    const tell = pct => { if (onProgress) { try { onProgress({ stage:'cloud', pct }); } catch (e) { /* prikaz ne sme ustaviti branja */ } } };
+    const ac = CLOUD_AC = new AbortController(); let timedOut = false; const to = setTimeout(() => { timedOut = true; ac.abort(); }, 90000);
+    tell(0);
+    try {
+      const body = JSON.stringify({ requests:[{ image:{ content:b64(await png.arrayBuffer()) }, features:[{ type:'DOCUMENT_TEXT_DETECTION' }], imageContext:{ languageHints:[c.lang || 'sl'] } }] });
+      let r, j = {};
+      try { r = await fetch(`${ep}/v1/images:annotate?key=${encodeURIComponent(c.key)}`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body, credentials:'omit', cache:'no-store', referrerPolicy:'strict-origin-when-cross-origin', signal:ac.signal }); }
+      catch (e) {
+        if (timedOut) throw new Error('Branje v oblaku je trajalo predolgo (90 s). Poskusi znova ali na Wi-Fi.');
+        if (ac.signal.aborted) throw new Error('Razpoznava je bila prekinjena.');
+        throw new Error('Povezava z Google Vision ni uspela: preveri internet, vsebinski blokator ali naslov (ocr.cloud.endpoint).');
+      }
+      try { j = await r.json(); } catch (e) { j = {}; }
+      const err = (j && j.error) || (j && j.responses && j.responses[0] && j.responses[0].error);
+      if (!r.ok || err) throw new Error(cloudMsg(r.status, err));
+      tell(1);
+      const full = (j.responses && j.responses[0] && j.responses[0].fullTextAnnotation) || {};
+      return extra && extra.words ? { text:S_(full.text), words:visionWords(j), tsv:'' } : S_(full.text);
+    } finally { clearTimeout(to); if (CLOUD_AC === ac) CLOUD_AC = null; }
+  }
+  function ocr(png, onProgress, cfg = ocrCfg(), extra){ return extra && extra.cloud && cloudOn(cfg) ? cloudRead(png, onProgress, cfg, extra) : ocrSession(cfg).run(png, onProgress, extra); }
+  /* neobvezno branje v oblaku (config.js → ocr.cloud.key; privzeto izklopljeno): samo za strani knjige, ne za naloge */
+  const cloudOn = (cfg = ocrCfg()) => cfg.on !== false && !!(cfg.cloud && cfg.cloud.key);
+  const ocrEnabled = (cfg = ocrCfg()) => cfg.on !== false && (!!cfg.lib || cloudOn(cfg));
 
-  return { parse, matchPatient, apply, pdfImages, prepare, ocr, ocrSession, ocrClose, ocrAbort, ocrLimits:OCR_T, stageLabel, ocrEnabled, ocrCfg, lines, zzzsIn, dates, title, fixDigits, toCanvas, enhance, toBlob };
+  return { parse, matchPatient, apply, pdfImages, prepare, ocr, ocrSession, ocrClose, ocrAbort, ocrLimits:OCR_T, stageLabel, ocrEnabled, cloudOn, ocrCfg, lines, zzzsIn, dates, title, fixDigits, toCanvas, enhance, toBlob };
 })();
