@@ -927,6 +927,30 @@ const MODES = { sede:'Sede', leze:'Leže', utila:'Utila', vzorci:'Vzorci' };   /
 const PMODES = { sede:'Sede', leze:'Leže', utila:'Utila' };       // načini prevoza pacienta (pacienti, nalogi)
 const VEH_VRSTE = { osebno:'Osebno vozilo', resevalni:'Reševalni kombi', transportni:'Transportni kombi' };
 const VEH_FN = { vse:'Vsi prevozi', dializa:'Primarno dializa (drugo po potrebi)' };
+/* Vozila ZD Brežice po tabelah na steni (fotografiji iz novembra 2026): oznaka, model, leto prve registracije, registrska oznaka, število sedežev/ležišč,
+   dovoljeno število pacientov za prevoz (pac). kat: sanitetno | nenujno (nenujno reševalno) | oboje (nujno ali nenujno) | nujno | vuz (vozilo urgentnega zdravnika).
+   Nujna vozila in VUZ niso za prevoze po knjigi: uvozijo se kot neaktivna. »d« = ročna oznaka »D« ob vozilu na tabeli (domnevno dializa): uvozi se samo na izrecno željo. */
+const VEH_TABLE = [
+  { n:'01', model:'Transporter 2.0 TDI 4M AUT',     leto:2012, reg:'KK FM-327', sedezev:9, pac:7, kat:'sanitetno', vrsta:'transportni' },
+  { n:'02', model:'Transporter 2.0 TDI 4M',         leto:2011, reg:'KK NK-123', sedezev:4, pac:1, kat:'nenujno',   vrsta:'resevalni' },
+  { n:'03', model:'Transporter 2.0 TDI 4M AUT',     leto:2020, reg:'KK FZ-623', sedezev:9, pac:7, kat:'sanitetno', vrsta:'transportni', d:true },
+  { n:'04', model:'T-ROC 1.5 TSI AUT',              leto:2021, reg:'KK FZ-794', sedezev:5, pac:3, kat:'sanitetno', vrsta:'osebno' },
+  { n:'05', model:'Tiguan 2.0 TDI 4M',              leto:2018, reg:'KK DP-318', sedezev:5, pac:0, kat:'vuz',       vrsta:'osebno' },
+  { n:'06', model:'Transporter 2.0 TDI 4M AUT',     leto:2021, reg:'KK RN-911', sedezev:5, pac:0, kat:'nujno',     vrsta:'resevalni' },
+  { n:'07', model:'Sharan 2.0 TDI 4M AUT-DSG',      leto:2018, reg:'KK CP-235', sedezev:7, pac:5, kat:'sanitetno', vrsta:'osebno' },
+  { n:'08', model:'Transporter 2.0 TDI 4M',         leto:2011, reg:'KK SH-671', sedezev:4, pac:2, kat:'sanitetno', vrsta:'transportni' },
+  { n:'09', model:'Transporter 2.0 TDI 4M',         leto:2015, reg:'KK CT-241', sedezev:9, pac:7, kat:'sanitetno', vrsta:'transportni', d:true },
+  { n:'10', model:'Transporter 2.0 TDI 4M AUT-DSG', leto:2020, reg:'KK NJ-817', sedezev:5, pac:0, kat:'nujno',     vrsta:'resevalni' },
+  { n:'11', model:'Vito tourer 119 CDI AUT',        leto:2020, reg:'KK FZ-645', sedezev:9, pac:7, kat:'sanitetno', vrsta:'transportni', d:true },
+  { n:'12', model:'308 1.6 AUT HY',                 leto:2024, reg:'KK HU-126', sedezev:5, pac:3, kat:'sanitetno', vrsta:'osebno' },
+  { n:'13', model:'Octavia Combi 4x4 TDI Family',   leto:2016, reg:'KK MV-807', sedezev:5, pac:3, kat:'sanitetno', vrsta:'osebno' },
+  { n:'14', model:'Transporter 2.0 TDI 4M',         leto:2017, reg:'KK NH-953', sedezev:4, pac:2, kat:'oboje',     vrsta:'resevalni' },
+  { n:'15', model:'Transporter 2.0 TDI 4M AUT-DSG', leto:2018, reg:'KK DE-809', sedezev:6, pac:3, kat:'nenujno',   vrsta:'resevalni' },
+  { n:'16', model:'Vito tourer 119 CDI AUT',        leto:2024, reg:'KK JZ-110', sedezev:7, pac:5, kat:'sanitetno', vrsta:'transportni', d:true },
+  { n:'17', model:'Sprinter 419 CDI AUT',           leto:2024, reg:'KK JZ-117', sedezev:6, pac:3, kat:'nenujno',   vrsta:'resevalni' },
+  { n:'18', model:'Trafic 2.0 DCI',                 leto:2024, reg:'KK JZ-127', sedezev:8, pac:6, kat:'sanitetno', vrsta:'transportni' },
+  { n:'19', model:'Trafic 2.0 DCI',                 leto:2024, reg:'KK JZ-119', sedezev:8, pac:6, kat:'sanitetno', vrsta:'transportni' }
+];
 
 /* ---------- Vloge, statusi prevoza, barve pacientov ---------- */
 const ROLES = { skrbnik:'Skrbnik', dispecer:'Dispečer', voznik:'Voznik', spremljevalec:'Spremljevalec' };
@@ -1030,6 +1054,49 @@ function parseStaffList(text, existing){
     seen.add(k); add.push(name);
   });
   return { add, dup, bad };
+}
+
+/* ---------- Vozila iz tabele (uvoz) ----------
+   Iz vrstice tabele sestavi vozilo. Običajno število pacientov = »dovoljeno število pacientov za prevoz« s tabele; izjemoma največ = isto
+   (tabela več ne pove: povečaj ročno v Nastavitve → Vozila). Nenujna reševalna vozila imajo eno nosilo (leže), preostali pacienti sede.
+   Nujna vozila in VUZ: neaktivna, brez kapacitete za prevoze. Ekipa »oboje« (v knjigi vozijo tudi NN posadke na istih vozilih). */
+function vehFromTable(e, opt){
+  const rez = e.kat === 'nenujno' || e.kat === 'oboje', off = e.kat === 'nujno' || e.kat === 'vuz';
+  const skupaj = off ? 0 : e.pac, leze = !off && rez ? Math.min(1, skupaj) : 0, sede = Math.max(0, skupaj - leze);
+  return { id:'v' + e.n, name:'Avto ' + e.n, reg:e.reg, model:e.model, leto:e.leto, sedezev:e.sedezev, tip:(rez || off) ? 'resevalno' : 'sanitetno', vrsta:e.vrsta,
+    fn:(opt && opt.dializa && e.d) ? 'dializa' : 'vse', ns:e.kat === 'nenujno' ? 'NN' : 'oboje', sede, leze, utila:0, skupaj, sedeMax:sede, lezeMax:leze, utilaMax:0, skupajMax:skupaj, aktiv:!off };
+}
+const vehNum = v => { const m = /^\s*(?:avto|vozilo|v)?\s*0*(\d{1,2})\s*$/i.exec(String(v.name || '')) || /^v0*(\d{1,2})$/.exec(String(v.id || '')); return m ? +m[1] : null; };
+/* Načrt uvoza: za vsako vrstico tabele ugotovi, ali je vozilo novo, ali ga je treba posodobiti (registrska, model, kapaciteta) ali je že enako. */
+function planVehImport(existing, table, opt){
+  const byNum = new Map(); (existing || []).forEach(v => { const n = vehNum(v); if (n != null && !byNum.has(n)) byNum.set(n, v); });
+  return table.map(e => {
+    const want = vehFromTable(e, opt), cur = byNum.get(+e.n) || null;
+    if (!cur) return { e, want, cur:null, st:'nov', diff:[] };
+    const diff = [];
+    if ((cur.reg || '') !== want.reg) diff.push('registrska');
+    if ((cur.model || '') !== want.model) diff.push('model');
+    if (['sede', 'leze', 'utila', 'skupaj'].some(k => (+cur[k] || 0) !== want[k])) diff.push('kapaciteta');
+    if (opt && opt.dializa && e.d && cur.fn !== 'dializa') diff.push('namen');
+    return { e, want, cur, st:diff.length ? 'posodobi' : 'enako', diff };
+  });
+}
+/* Uporabi načrt: novo vozilo se doda, obstoječe se posodobi (ime, ekipa, aktivnost in izjemne največje vrednosti ostanejo, razen če so manjše od običajnih). */
+function applyVehImport(vehicles, plan, opt){
+  let add = 0, upd = 0;
+  plan.forEach(p => {
+    if (p.st === 'nov'){ vehicles.push(p.want); add++; }
+    else if (p.st === 'posodobi'){
+      const c = p.cur, w = p.want; upd++;
+      Object.assign(c, { reg:w.reg, model:w.model, leto:w.leto, sedezev:w.sedezev, vrsta:w.vrsta, tip:c.tip === 'ostalo' ? 'ostalo' : w.tip });
+      ['sede', 'leze', 'utila', 'skupaj'].forEach(k => { c[k] = w[k]; c[k + 'Max'] = Math.max(w[k], +c[k + 'Max'] || 0); });
+      if (opt && opt.dializa && p.e.d) c.fn = 'dializa';
+    }
+  });
+  const key = v => v.tip === 'ostalo' ? 1000 : (vehNum(v) == null ? 500 : vehNum(v));
+  const ordered = vehicles.map((v, i) => [v, i]).sort((a, b) => (key(a[0]) - key(b[0])) || (a[1] - b[1])).map(x => x[0]);
+  vehicles.splice(0, vehicles.length, ...ordered);
+  return { add, upd };
 }
 
 /* ---------- Datumi ---------- */
@@ -5494,7 +5561,7 @@ function vehiclesHTML(date){
   return `<details class="card card-pad sect" data-sect="veh" ${UI.sect.veh ? 'open' : ''}><summary><h3>Vozila na voljo</h3><span class="chip mono">${onN}/${vs.length}</span></summary><div class="stack" style="gap:10px;margin-top:10px">
     ${S.vehicles.filter(v => v.aktiv && v.tip !== 'ostalo').map(v => {
       const b = vehBlocked(date, v.id), off = vehOff(date, v.id);
-      return `<div class="veh-item ${b || off ? 'off' : ''}"><label><input type="checkbox" data-act="vehToggle" data-id="${v.id}" ${!off && !b ? 'checked' : ''} ${b ? 'disabled' : ''}><span><span class="vn">${esc(v.name)}</span><br><span class="hint">${esc(VEH_VRSTE[v.vrsta] || '')} · ${esc(capText(v))}${v.fn === 'dializa' ? ' · primarno dializa' : ''}</span></span></label>${b ? `<span class="chip bad">${esc(b.tip)}</span>` : (v.ns === 'NN' ? '<span class="chip">NN</span>' : '')}</div>`;
+      return `<div class="veh-item ${b || off ? 'off' : ''}"><label><input type="checkbox" data-act="vehToggle" data-id="${v.id}" ${!off && !b ? 'checked' : ''} ${b ? 'disabled' : ''}><span><span class="vn">${esc(v.name)}</span><br><span class="hint">${esc(v.model || VEH_VRSTE[v.vrsta] || '')} · ${esc(capText(v))}${v.fn === 'dializa' ? ' · primarno dializa' : ''}</span></span></label>${b ? `<span class="chip bad">${esc(b.tip)}</span>` : (v.ns === 'NN' ? '<span class="chip">NN</span>' : '')}</div>`;
     }).join('') || '<div class="hint">Vozila dodaš v Nastavitve → Vozila.</div>'}
   </div></details>`;
 }
@@ -5867,6 +5934,20 @@ const accountOptions = cur => {
   const list = BACKEND === 'firebase' ? USERS_REMOTE.map(u => ({ id:u.id, name:u.name, role:u.role })) : USERS.map(u => ({ id:u.id, name:u.name, role:u.role }));
   return `<option value="">brez računa</option>` + list.map(u => `<option value="${esc(u.id)}" ${cur === u.id ? 'selected' : ''}>${esc(u.name)} (${esc(ROLES[u.role] || u.role)})</option>`).join('');
 };
+/* Uvoz vozil s tabele ZD Brežice (Nastavitve → Vozila): predogled po vrsticah, nič se ne podvoji, imena in ekipe obstoječih ostanejo */
+function vehImportCard(){
+  const plan = planVehImport(S.vehicles, VEH_TABLE), todo = plan.filter(p => p.st !== 'enako').length, nNew = plan.filter(p => p.st === 'nov').length, nUpd = plan.filter(p => p.st === 'posodobi').length;
+  const rows = plan.map(p => { const w = p.want, off = !w.aktiv;
+    const st = p.st === 'nov' ? '<span class="chip">novo</span>' : p.st === 'posodobi' ? `<span class="chip warn">posodobi: ${esc(p.diff.join(', '))}</span>` : '<span class="chip ok">že vneseno</span>';
+    return `<tr><td class="mono">${esc(p.e.n)}</td><td>${esc(w.model)} <span class="dim">(${esc(String(w.leto))})</span></td><td class="mono">${esc(w.reg)}</td><td>${off ? '<span class="dim">ni za prevoze</span>' : esc(String(w.skupaj)) + (w.leze ? ' (1 leže)' : '')}</td><td>${st}${off ? ' <span class="chip">neaktivno</span>' : ''}</td></tr>`; }).join('');
+  return `<details class="stimp" ${todo ? 'open' : ''}><summary><b>Uvozi vozila s tabele ZD Brežice (${VEH_TABLE.length})</b> ${todo ? `<span class="chip warn">${nNew} novih, ${nUpd} za posodobitev</span>` : '<span class="chip ok">vse vneseno</span>'}</summary>
+    <form class="stack" data-form="importVeh" style="gap:8px;margin-top:8px">
+      <p class="hint" style="margin:0">Vozila, registrske oznake, modeli in <b>dovoljeno število pacientov</b> s tabel na steni. Obstoječa vozila (Avto 04, Avto 13 …) se ujemajo po oznaki in se <b>posodobijo</b> (registrska, model, kapaciteta); ime, ekipa in aktivnost ostanejo. Nič se ne podvoji. <b>Izjemoma največ</b> je enako običajnemu (tabela več ne pove): po potrebi ga povečaj v tabeli zgoraj. Nujna vozila in vozilo urgentnega zdravnika se uvozijo kot <b>neaktivna</b> (niso za prevoze po knjigi): vključi jih s kljukico »Aktivno«. Nenujna reševalna vozila imajo eno nosilo (leže).</p>
+      <div class="tablewrap"><table class="edtable"><thead><tr><th>Oznaka</th><th>Model (leto)</th><th>Reg. oznaka</th><th>Pacientov</th><th>Stanje</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <label class="row" style="gap:8px;align-items:flex-start;flex-wrap:nowrap"><input type="checkbox" name="dializa" value="1" style="margin-top:3px"><span>Vozila z ročno oznako »D« na tabeli (03, 09, 11, 16) označi kot <b>primarno za dializo</b> <span class="dim">(domnevam, da D pomeni dializo; ni obvezno)</span></span></label>
+      <div class="row" style="gap:8px"><button class="btn primary" type="submit" ${todo ? '' : 'disabled'}>Uvozi</button></div>
+    </form></details>`;
+}
 function renderSettings(){
   if (!isAdmin() && ['vozila','pravila','planiranje','tisk','naslovi','uporabniki','varnost','logotipi'].includes(UI.setTab)) UI.setTab = 'dializa';
   let body = '';
@@ -5876,7 +5957,7 @@ function renderSettings(){
     body = `<div class="card card-pad stack"><div class="card-head" style="margin:0"><h3>Vozila in kapaciteta</h3><button type="button" class="btn primary sm" data-act="addVeh">${IC.plus} Dodaj vozilo</button></div>
       <div class="banner"><span>${IC.info}</span><div><b>Običajno</b> je število pacientov, ki jih vozilo vozi po pravilih. <b>Izjemoma</b> je največ, kar vozilo še lahko pelje, kadar je treba pravila prilagoditi (npr. vozilo s 6 sedeži, ki običajno vozi 4 paciente). Prilagoditev se uporabi samo, ko je potrebna, in je vedno izpisana. Vrstica »OSTALO« ni vozilo, ampak mesto za zaposlene brez vozila. Začetne številke so ocena, popravi jih.</div></div>
       <div class="tablewrap"><table class="edtable"><thead><tr><th rowspan="2">Ime</th><th rowspan="2">Reg. tablica</th><th rowspan="2">Vrsta</th><th rowspan="2">Tip vozila</th><th rowspan="2">Namen</th><th rowspan="2">Ekipa</th><th colspan="4">Običajno</th><th colspan="4">Izjemoma največ</th><th rowspan="2">Aktivno</th><th rowspan="2"></th></tr><tr><th>Sede</th><th>Leže</th><th>Utila</th><th>Skupaj</th><th>Sede</th><th>Leže</th><th>Utila</th><th>Skupaj</th></tr></thead><tbody>
-      ${S.vehicles.map((v, i) => `<tr><td>${field(`vehicles.${i}.name`, v.name, { label:'Ime' })}</td><td>${field(`vehicles.${i}.reg`, v.reg || '', { label:'Registrska tablica', ph:'KK AB-123' })}</td>
+      ${S.vehicles.map((v, i) => `<tr><td>${field(`vehicles.${i}.name`, v.name, { label:'Ime' })}${field(`vehicles.${i}.model`, v.model || '', { label:'Model vozila', ph:'Model' })}</td><td>${field(`vehicles.${i}.reg`, v.reg || '', { label:'Registrska tablica', ph:'KK AB-123' })}</td>
         <td><select data-path="vehicles.${i}.tip" aria-label="Vrsta"><option value="sanitetno" ${v.tip==='sanitetno'?'selected':''}>Sanitetno</option><option value="resevalno" ${v.tip==='resevalno'?'selected':''}>Reševalno</option><option value="ostalo" ${v.tip==='ostalo'?'selected':''}>Ostalo (brez vozila)</option></select></td>
         <td><select data-path="vehicles.${i}.vrsta" aria-label="Tip vozila">${Object.entries(VEH_VRSTE).map(([k, l]) => `<option value="${k}" ${v.vrsta === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
         <td><select data-path="vehicles.${i}.fn" aria-label="Namen">${Object.entries(VEH_FN).map(([k, l]) => `<option value="${k}" ${v.fn === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
@@ -5886,7 +5967,7 @@ function renderSettings(){
         <td><input type="checkbox" data-path="vehicles.${i}.aktiv" data-bool="1" ${v.aktiv ? 'checked' : ''} aria-label="Aktivno"></td>
         <td><button type="button" class="icon-btn" data-act="delVeh" data-i="${i}" aria-label="Izbriši vozilo">${IC.x}</button></td></tr>`).join('')}
       </tbody></table></div>
-      <p class="hint" style="margin:0">Nosil (leže) aplikacija nikoli ne »ustvari«: če vozilo nima nosil, ostane pacient leže nerazporejen in dobiš opozorilo.</p></div>`;
+      <p class="hint" style="margin:0">Nosil (leže) aplikacija nikoli ne »ustvari«: če vozilo nima nosil, ostane pacient leže nerazporejen in dobiš opozorilo.</p>${vehImportCard()}</div>`;
   } else if (T === 'zaposleni'){
     body = `<div class="card card-pad stack"><div class="card-head" style="margin:0"><h3>Zaposleni</h3></div>
       <form class="row" data-form="addStaff" style="flex-wrap:nowrap"><input type="text" name="name" placeholder="Ime in priimek" aria-label="Ime zaposlenega" required autocomplete="off"><select name="team" style="width:auto" aria-label="Ekipa"><option value="redna">Redna ekipa</option><option value="NN">NN ekipa</option></select><button class="btn primary" type="submit">Dodaj</button></form>
@@ -8393,6 +8474,13 @@ document.addEventListener('submit', async e => {
     else if (kind === 'addNotice'){ S.notices.push({ id:uid(), vehicleId:fd.get('vehicleId'), tip:fd.get('tip'), from:fd.get('from'), to:fd.get('to') || '', note:(fd.get('note') || '').trim(), closed:false }); save(); render(); toast('Posebnost dodana'); }
     else if (kind === 'diaAdd'){ const p = patientById(fd.get('pid')); if (!p){ toast('Izberi pacienta'); return; } p.dt = { t:fd.get('t') === 'pop' ? 'pop' : 'dop', d:[1, 3, 5] }; save(); rerender(); toast(`${p.name}: dodan na dializo (pon, sre, pet). Popravi dneve po potrebi.`); }
     else if (kind === 'addStaff'){ const name = (fd.get('name') || '').trim(); if (name){ S.staff.push({ id:uid(), name, team:fd.get('team'), userId:'' }); save(); rerender(); } }
+    else if (kind === 'importVeh'){
+      const opt = { dializa:fd.get('dializa') === '1' }, plan = planVehImport(S.vehicles, VEH_TABLE, opt);
+      if (!plan.some(p => p.st !== 'enako')){ toast('Vsa vozila so že vnesena.'); return; }
+      const r = applyVehImport(S.vehicles, plan, opt);
+      audit('vozila.uvoz', { novih:r.add, posodobljenih:r.upd, dializa:opt.dializa });
+      save(); rerender(); toast(`Vozila: ${r.add} novih, ${r.upd} posodobljenih`);
+    }
     else if (kind === 'importStaff'){
       const r = parseStaffList(fd.get('list') || '', S.staff.map(s => s.name)), team = fd.get('team') === 'NN' ? 'NN' : 'redna';
       if (!r.add.length){ toast('Ni novih imen za dodajanje.'); return; }

@@ -566,6 +566,13 @@ document.addEventListener('submit', async e => {
     else if (kind === 'addNotice'){ S.notices.push({ id:uid(), vehicleId:fd.get('vehicleId'), tip:fd.get('tip'), from:fd.get('from'), to:fd.get('to') || '', note:(fd.get('note') || '').trim(), closed:false }); save(); render(); toast('Posebnost dodana'); }
     else if (kind === 'diaAdd'){ const p = patientById(fd.get('pid')); if (!p){ toast('Izberi pacienta'); return; } p.dt = { t:fd.get('t') === 'pop' ? 'pop' : 'dop', d:[1, 3, 5] }; save(); rerender(); toast(`${p.name}: dodan na dializo (pon, sre, pet). Popravi dneve po potrebi.`); }
     else if (kind === 'addStaff'){ const name = (fd.get('name') || '').trim(); if (name){ S.staff.push({ id:uid(), name, team:fd.get('team'), userId:'' }); save(); rerender(); } }
+    else if (kind === 'importVeh'){
+      const opt = { dializa:fd.get('dializa') === '1' }, plan = planVehImport(S.vehicles, VEH_TABLE, opt);
+      if (!plan.some(p => p.st !== 'enako')){ toast('Vsa vozila so že vnesena.'); return; }
+      const r = applyVehImport(S.vehicles, plan, opt);
+      audit('vozila.uvoz', { novih:r.add, posodobljenih:r.upd, dializa:opt.dializa });
+      save(); rerender(); toast(`Vozila: ${r.add} novih, ${r.upd} posodobljenih`);
+    }
     else if (kind === 'importStaff'){
       const r = parseStaffList(fd.get('list') || '', S.staff.map(s => s.name)), team = fd.get('team') === 'NN' ? 'NN' : 'redna';
       if (!r.add.length){ toast('Ni novih imen za dodajanje.'); return; }

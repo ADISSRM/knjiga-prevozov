@@ -101,6 +101,30 @@ const MODES = { sede:'Sede', leze:'Leže', utila:'Utila', vzorci:'Vzorci' };   /
 const PMODES = { sede:'Sede', leze:'Leže', utila:'Utila' };       // načini prevoza pacienta (pacienti, nalogi)
 const VEH_VRSTE = { osebno:'Osebno vozilo', resevalni:'Reševalni kombi', transportni:'Transportni kombi' };
 const VEH_FN = { vse:'Vsi prevozi', dializa:'Primarno dializa (drugo po potrebi)' };
+/* Vozila ZD Brežice po tabelah na steni (fotografiji iz novembra 2026): oznaka, model, leto prve registracije, registrska oznaka, število sedežev/ležišč,
+   dovoljeno število pacientov za prevoz (pac). kat: sanitetno | nenujno (nenujno reševalno) | oboje (nujno ali nenujno) | nujno | vuz (vozilo urgentnega zdravnika).
+   Nujna vozila in VUZ niso za prevoze po knjigi: uvozijo se kot neaktivna. »d« = ročna oznaka »D« ob vozilu na tabeli (domnevno dializa): uvozi se samo na izrecno željo. */
+const VEH_TABLE = [
+  { n:'01', model:'Transporter 2.0 TDI 4M AUT',     leto:2012, reg:'KK FM-327', sedezev:9, pac:7, kat:'sanitetno', vrsta:'transportni' },
+  { n:'02', model:'Transporter 2.0 TDI 4M',         leto:2011, reg:'KK NK-123', sedezev:4, pac:1, kat:'nenujno',   vrsta:'resevalni' },
+  { n:'03', model:'Transporter 2.0 TDI 4M AUT',     leto:2020, reg:'KK FZ-623', sedezev:9, pac:7, kat:'sanitetno', vrsta:'transportni', d:true },
+  { n:'04', model:'T-ROC 1.5 TSI AUT',              leto:2021, reg:'KK FZ-794', sedezev:5, pac:3, kat:'sanitetno', vrsta:'osebno' },
+  { n:'05', model:'Tiguan 2.0 TDI 4M',              leto:2018, reg:'KK DP-318', sedezev:5, pac:0, kat:'vuz',       vrsta:'osebno' },
+  { n:'06', model:'Transporter 2.0 TDI 4M AUT',     leto:2021, reg:'KK RN-911', sedezev:5, pac:0, kat:'nujno',     vrsta:'resevalni' },
+  { n:'07', model:'Sharan 2.0 TDI 4M AUT-DSG',      leto:2018, reg:'KK CP-235', sedezev:7, pac:5, kat:'sanitetno', vrsta:'osebno' },
+  { n:'08', model:'Transporter 2.0 TDI 4M',         leto:2011, reg:'KK SH-671', sedezev:4, pac:2, kat:'sanitetno', vrsta:'transportni' },
+  { n:'09', model:'Transporter 2.0 TDI 4M',         leto:2015, reg:'KK CT-241', sedezev:9, pac:7, kat:'sanitetno', vrsta:'transportni', d:true },
+  { n:'10', model:'Transporter 2.0 TDI 4M AUT-DSG', leto:2020, reg:'KK NJ-817', sedezev:5, pac:0, kat:'nujno',     vrsta:'resevalni' },
+  { n:'11', model:'Vito tourer 119 CDI AUT',        leto:2020, reg:'KK FZ-645', sedezev:9, pac:7, kat:'sanitetno', vrsta:'transportni', d:true },
+  { n:'12', model:'308 1.6 AUT HY',                 leto:2024, reg:'KK HU-126', sedezev:5, pac:3, kat:'sanitetno', vrsta:'osebno' },
+  { n:'13', model:'Octavia Combi 4x4 TDI Family',   leto:2016, reg:'KK MV-807', sedezev:5, pac:3, kat:'sanitetno', vrsta:'osebno' },
+  { n:'14', model:'Transporter 2.0 TDI 4M',         leto:2017, reg:'KK NH-953', sedezev:4, pac:2, kat:'oboje',     vrsta:'resevalni' },
+  { n:'15', model:'Transporter 2.0 TDI 4M AUT-DSG', leto:2018, reg:'KK DE-809', sedezev:6, pac:3, kat:'nenujno',   vrsta:'resevalni' },
+  { n:'16', model:'Vito tourer 119 CDI AUT',        leto:2024, reg:'KK JZ-110', sedezev:7, pac:5, kat:'sanitetno', vrsta:'transportni', d:true },
+  { n:'17', model:'Sprinter 419 CDI AUT',           leto:2024, reg:'KK JZ-117', sedezev:6, pac:3, kat:'nenujno',   vrsta:'resevalni' },
+  { n:'18', model:'Trafic 2.0 DCI',                 leto:2024, reg:'KK JZ-127', sedezev:8, pac:6, kat:'sanitetno', vrsta:'transportni' },
+  { n:'19', model:'Trafic 2.0 DCI',                 leto:2024, reg:'KK JZ-119', sedezev:8, pac:6, kat:'sanitetno', vrsta:'transportni' }
+];
 
 /* ---------- Vloge, statusi prevoza, barve pacientov ---------- */
 const ROLES = { skrbnik:'Skrbnik', dispecer:'Dispečer', voznik:'Voznik', spremljevalec:'Spremljevalec' };

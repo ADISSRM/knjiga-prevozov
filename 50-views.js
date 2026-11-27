@@ -380,7 +380,7 @@ function vehiclesHTML(date){
   return `<details class="card card-pad sect" data-sect="veh" ${UI.sect.veh ? 'open' : ''}><summary><h3>Vozila na voljo</h3><span class="chip mono">${onN}/${vs.length}</span></summary><div class="stack" style="gap:10px;margin-top:10px">
     ${S.vehicles.filter(v => v.aktiv && v.tip !== 'ostalo').map(v => {
       const b = vehBlocked(date, v.id), off = vehOff(date, v.id);
-      return `<div class="veh-item ${b || off ? 'off' : ''}"><label><input type="checkbox" data-act="vehToggle" data-id="${v.id}" ${!off && !b ? 'checked' : ''} ${b ? 'disabled' : ''}><span><span class="vn">${esc(v.name)}</span><br><span class="hint">${esc(VEH_VRSTE[v.vrsta] || '')} · ${esc(capText(v))}${v.fn === 'dializa' ? ' · primarno dializa' : ''}</span></span></label>${b ? `<span class="chip bad">${esc(b.tip)}</span>` : (v.ns === 'NN' ? '<span class="chip">NN</span>' : '')}</div>`;
+      return `<div class="veh-item ${b || off ? 'off' : ''}"><label><input type="checkbox" data-act="vehToggle" data-id="${v.id}" ${!off && !b ? 'checked' : ''} ${b ? 'disabled' : ''}><span><span class="vn">${esc(v.name)}</span><br><span class="hint">${esc(v.model || VEH_VRSTE[v.vrsta] || '')} · ${esc(capText(v))}${v.fn === 'dializa' ? ' · primarno dializa' : ''}</span></span></label>${b ? `<span class="chip bad">${esc(b.tip)}</span>` : (v.ns === 'NN' ? '<span class="chip">NN</span>' : '')}</div>`;
     }).join('') || '<div class="hint">Vozila dodaš v Nastavitve → Vozila.</div>'}
   </div></details>`;
 }
@@ -753,6 +753,20 @@ const accountOptions = cur => {
   const list = BACKEND === 'firebase' ? USERS_REMOTE.map(u => ({ id:u.id, name:u.name, role:u.role })) : USERS.map(u => ({ id:u.id, name:u.name, role:u.role }));
   return `<option value="">brez računa</option>` + list.map(u => `<option value="${esc(u.id)}" ${cur === u.id ? 'selected' : ''}>${esc(u.name)} (${esc(ROLES[u.role] || u.role)})</option>`).join('');
 };
+/* Uvoz vozil s tabele ZD Brežice (Nastavitve → Vozila): predogled po vrsticah, nič se ne podvoji, imena in ekipe obstoječih ostanejo */
+function vehImportCard(){
+  const plan = planVehImport(S.vehicles, VEH_TABLE), todo = plan.filter(p => p.st !== 'enako').length, nNew = plan.filter(p => p.st === 'nov').length, nUpd = plan.filter(p => p.st === 'posodobi').length;
+  const rows = plan.map(p => { const w = p.want, off = !w.aktiv;
+    const st = p.st === 'nov' ? '<span class="chip">novo</span>' : p.st === 'posodobi' ? `<span class="chip warn">posodobi: ${esc(p.diff.join(', '))}</span>` : '<span class="chip ok">že vneseno</span>';
+    return `<tr><td class="mono">${esc(p.e.n)}</td><td>${esc(w.model)} <span class="dim">(${esc(String(w.leto))})</span></td><td class="mono">${esc(w.reg)}</td><td>${off ? '<span class="dim">ni za prevoze</span>' : esc(String(w.skupaj)) + (w.leze ? ' (1 leže)' : '')}</td><td>${st}${off ? ' <span class="chip">neaktivno</span>' : ''}</td></tr>`; }).join('');
+  return `<details class="stimp" ${todo ? 'open' : ''}><summary><b>Uvozi vozila s tabele ZD Brežice (${VEH_TABLE.length})</b> ${todo ? `<span class="chip warn">${nNew} novih, ${nUpd} za posodobitev</span>` : '<span class="chip ok">vse vneseno</span>'}</summary>
+    <form class="stack" data-form="importVeh" style="gap:8px;margin-top:8px">
+      <p class="hint" style="margin:0">Vozila, registrske oznake, modeli in <b>dovoljeno število pacientov</b> s tabel na steni. Obstoječa vozila (Avto 04, Avto 13 …) se ujemajo po oznaki in se <b>posodobijo</b> (registrska, model, kapaciteta); ime, ekipa in aktivnost ostanejo. Nič se ne podvoji. <b>Izjemoma največ</b> je enako običajnemu (tabela več ne pove): po potrebi ga povečaj v tabeli zgoraj. Nujna vozila in vozilo urgentnega zdravnika se uvozijo kot <b>neaktivna</b> (niso za prevoze po knjigi): vključi jih s kljukico »Aktivno«. Nenujna reševalna vozila imajo eno nosilo (leže).</p>
+      <div class="tablewrap"><table class="edtable"><thead><tr><th>Oznaka</th><th>Model (leto)</th><th>Reg. oznaka</th><th>Pacientov</th><th>Stanje</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <label class="row" style="gap:8px;align-items:flex-start;flex-wrap:nowrap"><input type="checkbox" name="dializa" value="1" style="margin-top:3px"><span>Vozila z ročno oznako »D« na tabeli (03, 09, 11, 16) označi kot <b>primarno za dializo</b> <span class="dim">(domnevam, da D pomeni dializo; ni obvezno)</span></span></label>
+      <div class="row" style="gap:8px"><button class="btn primary" type="submit" ${todo ? '' : 'disabled'}>Uvozi</button></div>
+    </form></details>`;
+}
 function renderSettings(){
   if (!isAdmin() && ['vozila','pravila','planiranje','tisk','naslovi','uporabniki','varnost','logotipi'].includes(UI.setTab)) UI.setTab = 'dializa';
   let body = '';
@@ -762,7 +776,7 @@ function renderSettings(){
     body = `<div class="card card-pad stack"><div class="card-head" style="margin:0"><h3>Vozila in kapaciteta</h3><button type="button" class="btn primary sm" data-act="addVeh">${IC.plus} Dodaj vozilo</button></div>
       <div class="banner"><span>${IC.info}</span><div><b>Običajno</b> je število pacientov, ki jih vozilo vozi po pravilih. <b>Izjemoma</b> je največ, kar vozilo še lahko pelje, kadar je treba pravila prilagoditi (npr. vozilo s 6 sedeži, ki običajno vozi 4 paciente). Prilagoditev se uporabi samo, ko je potrebna, in je vedno izpisana. Vrstica »OSTALO« ni vozilo, ampak mesto za zaposlene brez vozila. Začetne številke so ocena, popravi jih.</div></div>
       <div class="tablewrap"><table class="edtable"><thead><tr><th rowspan="2">Ime</th><th rowspan="2">Reg. tablica</th><th rowspan="2">Vrsta</th><th rowspan="2">Tip vozila</th><th rowspan="2">Namen</th><th rowspan="2">Ekipa</th><th colspan="4">Običajno</th><th colspan="4">Izjemoma največ</th><th rowspan="2">Aktivno</th><th rowspan="2"></th></tr><tr><th>Sede</th><th>Leže</th><th>Utila</th><th>Skupaj</th><th>Sede</th><th>Leže</th><th>Utila</th><th>Skupaj</th></tr></thead><tbody>
-      ${S.vehicles.map((v, i) => `<tr><td>${field(`vehicles.${i}.name`, v.name, { label:'Ime' })}</td><td>${field(`vehicles.${i}.reg`, v.reg || '', { label:'Registrska tablica', ph:'KK AB-123' })}</td>
+      ${S.vehicles.map((v, i) => `<tr><td>${field(`vehicles.${i}.name`, v.name, { label:'Ime' })}${field(`vehicles.${i}.model`, v.model || '', { label:'Model vozila', ph:'Model' })}</td><td>${field(`vehicles.${i}.reg`, v.reg || '', { label:'Registrska tablica', ph:'KK AB-123' })}</td>
         <td><select data-path="vehicles.${i}.tip" aria-label="Vrsta"><option value="sanitetno" ${v.tip==='sanitetno'?'selected':''}>Sanitetno</option><option value="resevalno" ${v.tip==='resevalno'?'selected':''}>Reševalno</option><option value="ostalo" ${v.tip==='ostalo'?'selected':''}>Ostalo (brez vozila)</option></select></td>
         <td><select data-path="vehicles.${i}.vrsta" aria-label="Tip vozila">${Object.entries(VEH_VRSTE).map(([k, l]) => `<option value="${k}" ${v.vrsta === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
         <td><select data-path="vehicles.${i}.fn" aria-label="Namen">${Object.entries(VEH_FN).map(([k, l]) => `<option value="${k}" ${v.fn === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
@@ -772,7 +786,7 @@ function renderSettings(){
         <td><input type="checkbox" data-path="vehicles.${i}.aktiv" data-bool="1" ${v.aktiv ? 'checked' : ''} aria-label="Aktivno"></td>
         <td><button type="button" class="icon-btn" data-act="delVeh" data-i="${i}" aria-label="Izbriši vozilo">${IC.x}</button></td></tr>`).join('')}
       </tbody></table></div>
-      <p class="hint" style="margin:0">Nosil (leže) aplikacija nikoli ne »ustvari«: če vozilo nima nosil, ostane pacient leže nerazporejen in dobiš opozorilo.</p></div>`;
+      <p class="hint" style="margin:0">Nosil (leže) aplikacija nikoli ne »ustvari«: če vozilo nima nosil, ostane pacient leže nerazporejen in dobiš opozorilo.</p>${vehImportCard()}</div>`;
   } else if (T === 'zaposleni'){
     body = `<div class="card card-pad stack"><div class="card-head" style="margin:0"><h3>Zaposleni</h3></div>
       <form class="row" data-form="addStaff" style="flex-wrap:nowrap"><input type="text" name="name" placeholder="Ime in priimek" aria-label="Ime zaposlenega" required autocomplete="off"><select name="team" style="width:auto" aria-label="Ekipa"><option value="redna">Redna ekipa</option><option value="NN">NN ekipa</option></select><button class="btn primary" type="submit">Dodaj</button></form>

@@ -9,6 +9,13 @@ Interna PWA za iPhone in Android: dispečer (knjiga, pacienti in nalogi, razpore
 
 **Pred prvim pravim pacientom** potrebuješ odobritev vodstva in pooblaščenca za varstvo podatkov (glej NAVODILA.md, razdelek 0.2). Do takrat uporabljaj samo izmišljene podatke.
 
+## Spremembe v2_11_3 (november 2026): vozila s tabel na steni
+- **Nastavitve → Vozila → »Uvozi vozila s tabele ZD Brežice (19)«:** en klik vnese vseh 19 vozil (oznaka, model, leto, registrska oznaka, število sedežev, **dovoljeno število pacientov**, vrsta). Predogled pove, kaj je novo in kaj se posodobi. **Nič se ne podvoji**: obstoječa vozila (Avto 04, Avto 13) se ujemajo po oznaki in se posodobijo; »C1 rdeči« in »OSTALO« ostaneta, »OSTALO« je spet zadnje. Ponovni uvoz ničesar ne spremeni.
+- **Kapaciteta** = »dovoljeno število pacientov« s tabele (običajno); **izjemoma največ** je enako običajnemu, ker tabela več ne pove (po potrebi povečaj sam). **Nenujna** reševalna vozila imajo eno nosilo (leže), ostalo sedeži. **Nujna vozila (06, 10) in VUZ (05)** so uvožena kot **neaktivna** (niso za prevoze po knjigi). Avto 14 (nujno ali nenujno) je aktiven z dvema pacientoma.
+- **Ročna oznaka »D«** ob vozilih 03, 09, 11, 16: domnevam, da pomeni dializo, zato je to **neobvezna kljukica** (privzeto izklopljena). Če je ne vključiš, se dializa ne spremeni.
+- Vsako vozilo ima zdaj tudi **model** (v tabeli in na seznamu vozil na dnevu).
+- Preizkusi: 77 + 190 v brskalniku + 7 + 25.
+
 ## Spremembe v2_11_2 (november 2026): nalaganje fotografij strani knjige, neobvezno branje rokopisa v oblaku
 - **Iskreno okno:** pred nalaganjem fotografije okno zdaj pove, da računalnik v telefonu **rokopisa ne prebere** (v poskusu tudi vrstico za vrstico na poravnanih izrezih ne): prepoznajo se kartice, natisnjeno besedilo in prazne kartice, ime izbereš ob izrezu s seznama pacientov. Prej je okno obljubljalo branje.
 - **NEOBVEZNO, PRIVZETO IZKLOPLJENO: branje rokopisa v oblaku (Google Cloud Vision, EU naslov).** Vklopi se samo z ključem v `config.js` → `ocr.cloud.key`. **Fotografija strani gre Googlu** (imena, naslovi, telefoni pacientov), zato je to odločitev za vodstvo in DPO (**NAVODILA 0.2 točka 8**, postopek 11.11). Gumb **»Preveri povezavo z oblakom«**, jasne napake (403/400/429), omejitev ključa na naslov strani. Preizkušeno **samo proti posnetku strežnika**; s pravim Googlom ni preizkušeno.

@@ -31,6 +31,49 @@ function parseStaffList(text, existing){
   return { add, dup, bad };
 }
 
+/* ---------- Vozila iz tabele (uvoz) ----------
+   Iz vrstice tabele sestavi vozilo. Običajno število pacientov = »dovoljeno število pacientov za prevoz« s tabele; izjemoma največ = isto
+   (tabela več ne pove: povečaj ročno v Nastavitve → Vozila). Nenujna reševalna vozila imajo eno nosilo (leže), preostali pacienti sede.
+   Nujna vozila in VUZ: neaktivna, brez kapacitete za prevoze. Ekipa »oboje« (v knjigi vozijo tudi NN posadke na istih vozilih). */
+function vehFromTable(e, opt){
+  const rez = e.kat === 'nenujno' || e.kat === 'oboje', off = e.kat === 'nujno' || e.kat === 'vuz';
+  const skupaj = off ? 0 : e.pac, leze = !off && rez ? Math.min(1, skupaj) : 0, sede = Math.max(0, skupaj - leze);
+  return { id:'v' + e.n, name:'Avto ' + e.n, reg:e.reg, model:e.model, leto:e.leto, sedezev:e.sedezev, tip:(rez || off) ? 'resevalno' : 'sanitetno', vrsta:e.vrsta,
+    fn:(opt && opt.dializa && e.d) ? 'dializa' : 'vse', ns:e.kat === 'nenujno' ? 'NN' : 'oboje', sede, leze, utila:0, skupaj, sedeMax:sede, lezeMax:leze, utilaMax:0, skupajMax:skupaj, aktiv:!off };
+}
+const vehNum = v => { const m = /^\s*(?:avto|vozilo|v)?\s*0*(\d{1,2})\s*$/i.exec(String(v.name || '')) || /^v0*(\d{1,2})$/.exec(String(v.id || '')); return m ? +m[1] : null; };
+/* Načrt uvoza: za vsako vrstico tabele ugotovi, ali je vozilo novo, ali ga je treba posodobiti (registrska, model, kapaciteta) ali je že enako. */
+function planVehImport(existing, table, opt){
+  const byNum = new Map(); (existing || []).forEach(v => { const n = vehNum(v); if (n != null && !byNum.has(n)) byNum.set(n, v); });
+  return table.map(e => {
+    const want = vehFromTable(e, opt), cur = byNum.get(+e.n) || null;
+    if (!cur) return { e, want, cur:null, st:'nov', diff:[] };
+    const diff = [];
+    if ((cur.reg || '') !== want.reg) diff.push('registrska');
+    if ((cur.model || '') !== want.model) diff.push('model');
+    if (['sede', 'leze', 'utila', 'skupaj'].some(k => (+cur[k] || 0) !== want[k])) diff.push('kapaciteta');
+    if (opt && opt.dializa && e.d && cur.fn !== 'dializa') diff.push('namen');
+    return { e, want, cur, st:diff.length ? 'posodobi' : 'enako', diff };
+  });
+}
+/* Uporabi načrt: novo vozilo se doda, obstoječe se posodobi (ime, ekipa, aktivnost in izjemne največje vrednosti ostanejo, razen če so manjše od običajnih). */
+function applyVehImport(vehicles, plan, opt){
+  let add = 0, upd = 0;
+  plan.forEach(p => {
+    if (p.st === 'nov'){ vehicles.push(p.want); add++; }
+    else if (p.st === 'posodobi'){
+      const c = p.cur, w = p.want; upd++;
+      Object.assign(c, { reg:w.reg, model:w.model, leto:w.leto, sedezev:w.sedezev, vrsta:w.vrsta, tip:c.tip === 'ostalo' ? 'ostalo' : w.tip });
+      ['sede', 'leze', 'utila', 'skupaj'].forEach(k => { c[k] = w[k]; c[k + 'Max'] = Math.max(w[k], +c[k + 'Max'] || 0); });
+      if (opt && opt.dializa && p.e.d) c.fn = 'dializa';
+    }
+  });
+  const key = v => v.tip === 'ostalo' ? 1000 : (vehNum(v) == null ? 500 : vehNum(v));
+  const ordered = vehicles.map((v, i) => [v, i]).sort((a, b) => (key(a[0]) - key(b[0])) || (a[1] - b[1])).map(x => x[0]);
+  vehicles.splice(0, vehicles.length, ...ordered);
+  return { add, upd };
+}
+
 /* ---------- Datumi ---------- */
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const parseYmd = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
